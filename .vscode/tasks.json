@@ -1,0 +1,76 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "command": "dotnet",
+      "type": "process",
+      "args": ["build", "${workspaceFolder}/AutoPartsErp.sln", "/property:GenerateFullPaths=true", "/consoleloggerparameters:NoSummary"],
+      "problemMatcher": "$msCompile",
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "test",
+      "command": "dotnet",
+      "type": "process",
+      "args": ["test", "${workspaceFolder}/AutoPartsErp.sln", "--nologo"],
+      "problemMatcher": "$msCompile",
+      "group": { "kind": "test", "isDefault": true }
+    },
+    {
+      "label": "watch api",
+      "command": "dotnet",
+      "type": "process",
+      "args": ["watch", "run", "--project", "${workspaceFolder}/src/Api/AutoPartsErp.Api/AutoPartsErp.Api.csproj"],
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "db: start",
+      "command": "docker",
+      "type": "process",
+      "args": ["compose", "up", "-d"],
+      "problemMatcher": []
+    },
+    {
+      "label": "db: stop",
+      "command": "docker",
+      "type": "process",
+      "args": ["compose", "down"],
+      "problemMatcher": []
+    },
+    {
+      "label": "ef: add catalog migration",
+      "detail": "Prompts for a migration name and scaffolds it into the Catalog module.",
+      "command": "dotnet",
+      "type": "process",
+      "args": [
+        "ef", "migrations", "add", "${input:migrationName}",
+        "--project", "${workspaceFolder}/src/Modules/Catalog/AutoPartsErp.Modules.Catalog.Infrastructure",
+        "--startup-project", "${workspaceFolder}/src/Api/AutoPartsErp.Api",
+        "--context", "CatalogDbContext",
+        "--output-dir", "Persistence/Migrations"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "ef: update database",
+      "command": "dotnet",
+      "type": "process",
+      "args": [
+        "ef", "database", "update",
+        "--project", "${workspaceFolder}/src/Modules/Catalog/AutoPartsErp.Modules.Catalog.Infrastructure",
+        "--startup-project", "${workspaceFolder}/src/Api/AutoPartsErp.Api",
+        "--context", "CatalogDbContext"
+      ],
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "migrationName",
+      "type": "promptString",
+      "description": "Migration name (PascalCase, e.g. AddPartFitments)",
+      "default": "InitialCatalog"
+    }
+  ]
+}

@@ -1,0 +1,173 @@
+### AutoParts ERP - sample requests
+### Install the "REST Client" extension (humao.rest-client) and click "Send Request" above any block.
+
+@host = https://localhost:7150
+@tenant = 00000000-0000-0000-0000-000000000001
+
+### Service info: which modules are loaded
+GET {{host}}/
+
+### Health
+GET {{host}}/health
+
+# ---------------------------------------------------------------------------
+# Reference data
+# ---------------------------------------------------------------------------
+
+### Brands, with a count of the parts carrying each
+GET {{host}}/api/catalog/brands
+X-Tenant-Id: {{tenant}}
+
+### Categories
+GET {{host}}/api/catalog/categories
+X-Tenant-Id: {{tenant}}
+
+### Create a brand
+POST {{host}}/api/catalog/brands
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "code": "TRW",
+  "name": "TRW Automotive",
+  "isOriginalEquipment": false,
+  "countryCode": "DE"
+}
+
+### Create a category
+POST {{host}}/api/catalog/categories
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "code": "BRK-DSC",
+  "name": "Brake Discs",
+  "sortOrder": 20
+}
+
+# ---------------------------------------------------------------------------
+# The searches the business actually runs
+# ---------------------------------------------------------------------------
+
+### Everything recorded as fitting a 2015 Golf VII
+GET {{host}}/api/catalog/parts/for-vehicle?make=Volkswagen&model=Golf VII&year=2015
+X-Tenant-Id: {{tenant}}
+
+### Narrowed by engine code - far fewer wrong-fit returns
+GET {{host}}/api/catalog/parts/for-vehicle?make=Volkswagen&model=Golf VII&year=2015&engineCode=CJZA
+X-Tenant-Id: {{tenant}}
+
+### An OEM number read off the old part, typed with spaces
+GET {{host}}/api/catalog/parts?term=5Q0 698 151 A
+X-Tenant-Id: {{tenant}}
+
+### The same number without them. Same result - that is the point.
+GET {{host}}/api/catalog/parts?term=5q0698151a
+X-Tenant-Id: {{tenant}}
+
+### A few words from the description
+GET {{host}}/api/catalog/parts?term=brake pad
+X-Tenant-Id: {{tenant}}
+
+### Only parts sold against a returnable core
+GET {{host}}/api/catalog/parts?requiresCoreReturn=true
+X-Tenant-Id: {{tenant}}
+
+### One part by SKU, the way a counter terminal looks it up
+GET {{host}}/api/catalog/parts/by-sku/BP-1188
+X-Tenant-Id: {{tenant}}
+
+# ---------------------------------------------------------------------------
+# Setting up a new part
+# ---------------------------------------------------------------------------
+
+### 1. Create it. Copy a brandId and categoryId from the list calls above.
+# @name createPart
+POST {{host}}/api/catalog/parts
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "sku": "BD-3301",
+  "manufacturerPartNumber": "DF 4249",
+  "brandId": "REPLACE-WITH-A-BRAND-ID",
+  "categoryId": "REPLACE-WITH-A-CATEGORY-ID",
+  "name": "Brake disc, front axle, vented",
+  "stockUnitCode": "EA",
+  "description": "Vented front brake disc, 312mm."
+}
+
+@partId = {{createPart.response.body.$}}
+
+### 2. Link the OEM number a customer will quote
+POST {{host}}/api/catalog/parts/{{partId}}/cross-references
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "kind": "Oem",
+  "number": "5Q0 615 301 F",
+  "sourceBrand": "VW",
+  "notes": "312mm vented"
+}
+
+### 3. Record what it fits
+POST {{host}}/api/catalog/parts/{{partId}}/fitments
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "make": "Volkswagen",
+  "model": "Golf VII",
+  "yearFrom": 2012,
+  "yearTo": 2020,
+  "engineCode": "CJZA",
+  "position": "FRONT"
+}
+
+### 4. Make it orderable and sellable
+POST {{host}}/api/catalog/parts/{{partId}}/activate
+X-Tenant-Id: {{tenant}}
+
+### 5. Read it back in full
+GET {{host}}/api/catalog/parts/{{partId}}
+X-Tenant-Id: {{tenant}}
+
+# ---------------------------------------------------------------------------
+# Rules the API will refuse - each returns a stable errorCode
+# ---------------------------------------------------------------------------
+
+### Duplicate SKU -> 409 catalog.part.sku_exists
+POST {{host}}/api/catalog/parts
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "sku": "BP-1188",
+  "manufacturerPartNumber": "99 999 99",
+  "brandId": "REPLACE-WITH-A-BRAND-ID",
+  "categoryId": "REPLACE-WITH-A-CATEGORY-ID",
+  "name": "Duplicate SKU test",
+  "stockUnitCode": "EA"
+}
+
+### Activating an already-discontinued part -> 422 catalog.part.cannot_reactivate
+POST {{host}}/api/catalog/parts/{{partId}}/discontinue
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{}
+
+### Missing required fields -> 400 with every bad field listed at once
+POST {{host}}/api/catalog/parts
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "sku": "",
+  "manufacturerPartNumber": "",
+  "brandId": "00000000-0000-0000-0000-000000000000",
+  "categoryId": "00000000-0000-0000-0000-000000000000",
+  "name": "",
+  "stockUnitCode": "PARSEC"
+}

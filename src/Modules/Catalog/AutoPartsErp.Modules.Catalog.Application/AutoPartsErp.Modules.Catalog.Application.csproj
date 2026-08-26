@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Catalog.Application</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Catalog.Application</AssemblyName>
+    <Description>
+      The Catalog module's use cases: one command or query per thing a user can do,
+      each with its own validator and handler.
+      Reads are served through ICatalogReadStore rather than the write-side repositories,
+      so grids and search never pay the cost of loading whole aggregates.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoPartsErp.Modules.Catalog.Domain\AutoPartsErp.Modules.Catalog.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

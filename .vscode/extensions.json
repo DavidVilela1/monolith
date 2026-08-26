@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "ms-dotnettools.csdevkit",
+    "ms-dotnettools.csharp",
+    "ms-azuretools.vscode-docker",
+    "ckolkman.vscode-postgres",
+    "humao.rest-client",
+    "editorconfig.editorconfig"
+  ]
+}

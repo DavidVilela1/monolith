@@ -1,0 +1,48 @@
+# Local development dependencies for AutoParts ERP.
+#   docker compose up -d
+#
+# PostgreSQL is the target database in every environment. Running the same engine locally as in
+# production is worth the container: schema behaviour, collation, index types and concurrency
+# semantics all differ enough between engines to hide real bugs until deployment.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: autoparts-erp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: autoparts_erp
+      POSTGRES_USER: erp
+      POSTGRES_PASSWORD: erp_dev_password
+      # Deterministic sorting regardless of the host's locale.
+      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erp -d autoparts_erp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Browse the database at http://localhost:8081 (login: erp@local / erp_dev_password)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: autoparts-erp-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: erp@local
+      PGADMIN_DEFAULT_PASSWORD: erp_dev_password
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "8081:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+
+volumes:
+  postgres-data:
+  pgadmin-data:

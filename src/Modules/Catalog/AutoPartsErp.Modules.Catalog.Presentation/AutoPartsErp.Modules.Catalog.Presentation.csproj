@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Catalog.Presentation</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Catalog.Presentation</AssemblyName>
+    <Description>
+      The Catalog module's HTTP surface and its IModule entry point.
+      This is the only project the host references; everything else about the module is
+      reached through here, which is what keeps the host ignorant of module internals.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- Supplies WithSummary()/WithDescription() for the OpenAPI document. -->
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoPartsErp.Modules.Catalog.Infrastructure\AutoPartsErp.Modules.Catalog.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Catalog.Domain</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Catalog.Domain</AssemblyName>
+    <Description>
+      The Catalog module's domain model: parts, brands, categories, cross-references and
+      vehicle fitments, with the rules that govern them.
+      Depends on the SharedKernel and nothing else - no EF Core, no ASP.NET, no NuGet.
+      If this project ever needs a package reference, a rule has leaked out of the domain.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.SharedKernel\AutoPartsErp.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>

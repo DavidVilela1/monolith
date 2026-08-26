@@ -1,0 +1,59 @@
+## .NET
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+artifacts/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+## Rider / VS
+.idea/
+.vs/
+*.DotSettings.user
+
+## VS Code (keep shared config, ignore local state)
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/settings.json
+!.vscode/extensions.json
+
+## Test / coverage
+[Tt]est[Rr]esult*/
+coverage*.json
+coverage*.xml
+coverage*.info
+*.coverage
+*.coveragexml
+
+## Secrets & local config
+appsettings.Local.json
+appsettings.*.Local.json
+*.pfx
+*.p12
+.env
+.env.*
+!.env.example
+
+## Database / docker volumes
+.data/
+*.db
+*.db-shm
+*.db-wal
+
+## OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+## Logs
+logs/
+*.log

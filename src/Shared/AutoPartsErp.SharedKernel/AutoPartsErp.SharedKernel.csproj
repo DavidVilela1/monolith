@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.SharedKernel</RootNamespace>
+    <AssemblyName>AutoPartsErp.SharedKernel</AssemblyName>
+    <Description>
+      Framework-free building blocks shared by every ERP module: entities, value objects,
+      results, domain events, CQRS contracts and persistence abstractions.
+      This project intentionally has ZERO NuGet dependencies so that domain code
+      can never accidentally take a dependency on infrastructure.
+    </Description>
+  </PropertyGroup>
+
+</Project>

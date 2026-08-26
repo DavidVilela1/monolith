@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Abstractions</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Abstractions</AssemblyName>
+    <Description>
+      The contract every ERP module implements, plus the wiring that lets the host discover
+      and compose modules without referencing any of them directly.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Uses the ASP.NET Core shared framework rather than NuGet packages, so this project
+      needs no restore of its own and stays in lockstep with the runtime.
+    -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoPartsErp.SharedKernel\AutoPartsErp.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>
