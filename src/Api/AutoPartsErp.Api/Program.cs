@@ -6,12 +6,17 @@ using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Catalog.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Catalog.Infrastructure.Persistence.Seed;
 using AutoPartsErp.Modules.Catalog.Presentation;
+using AutoPartsErp.Modules.Inventory.Infrastructure.Persistence;
+using AutoPartsErp.Modules.Inventory.Infrastructure.Persistence.Seed;
+using AutoPartsErp.Modules.Inventory.Presentation;
 using AutoPartsErp.SharedKernel.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using Serilog;
 
 // Bootstrap logger: catches anything that goes wrong before configuration is even read.
+// Logs are written with the invariant culture so that timestamps and numbers read the same
+// whoever runs the process - a log where 1.5 becomes 1,5 on one machine is a log you cannot grep.
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
     .CreateBootstrapLogger();
@@ -60,7 +65,8 @@ try
         .AllowAnyMethod()));
 
     builder.Services.AddHealthChecks()
-        .AddDbContextCheck<CatalogDbContext>("catalog-database");
+        .AddDbContextCheck<CatalogDbContext>("catalog-database")
+        .AddDbContextCheck<InventoryDbContext>("inventory-database");
 
     // ---------------------------------------------------------------------------------
     // Modules
@@ -70,6 +76,7 @@ try
     // ---------------------------------------------------------------------------------
     builder.Services.AddErpModules(
         builder.Configuration,
+        new InventoryModule(),
         new CatalogModule());
 
     WebApplication app = builder.Build();
@@ -108,6 +115,14 @@ try
     await app.RunAsync();
     return 0;
 }
+// HostAbortedException is not a failure: EF Core's design-time tooling (dotnet ef migrations,
+// dotnet ef database update) builds the host to read the DbContext configuration and then
+// deliberately aborts it. Letting it through as FATAL buries the actual EF error underneath a
+// stack trace that looks alarming and means nothing.
+catch (HostAbortedException)
+{
+    throw;
+}
 catch (Exception exception)
 {
     Log.Fatal(exception, "AutoParts ERP failed to start.");
@@ -123,15 +138,22 @@ finally
 // Deliberately Development-only. Applying migrations automatically on start is convenient on a
 // laptop and dangerous in production, where schema changes belong in a deployment step that can
 // be reviewed, timed and rolled back.
+//
+// A plain comment rather than an XML one: local functions are not a documentable language
+// element, so /// on one is a compiler error.
 static async Task MigrateAndSeedAsync(WebApplication app)
 {
     using IServiceScope scope = app.Services.CreateScope();
 
-    var context = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
-    await context.Database.MigrateAsync();
+    // Inventory first: OpenStockRecordOnPartActivated opens a balance in every active
+    // warehouse, so the warehouses have to exist before Catalog activates its seeded parts.
+    var inventory = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
+    await inventory.Database.MigrateAsync();
+    await scope.ServiceProvider.GetRequiredService<InventorySeeder>().SeedAsync();
 
-    var seeder = scope.ServiceProvider.GetRequiredService<CatalogSeeder>();
-    await seeder.SeedAsync();
+    var catalog = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
+    await catalog.Database.MigrateAsync();
+    await scope.ServiceProvider.GetRequiredService<CatalogSeeder>().SeedAsync();
 }
 
 /// <summary>Exposed so integration tests can reference the host with <c>WebApplicationFactory</c>.</summary>

@@ -17,11 +17,22 @@ public sealed class Quantity : ValueObject, IComparable<Quantity>
         Value = Math.Round(value, unit.DecimalPlaces, MidpointRounding.ToEven);
     }
 
+    /// <summary>
+    /// Required by object-relational mappers that materialize this type as an owned value and
+    /// write the backing fields directly. Domain code always goes through
+    /// <see cref="Of(decimal, UnitOfMeasure)"/> or <see cref="Create(decimal, UnitOfMeasure)"/>.
+    /// </summary>
+#pragma warning disable CS8618
+    private Quantity()
+    {
+    }
+#pragma warning restore CS8618
+
     /// <summary>The numeric amount, rounded to the unit's precision.</summary>
     public decimal Value { get; }
 
     /// <summary>The unit the amount is expressed in.</summary>
-    public UnitOfMeasure Unit { get; }
+    public UnitOfMeasure Unit { get; } = UnitOfMeasure.Each;
 
     /// <summary>True when the quantity is exactly zero.</summary>
     public bool IsZero => Value == 0m;

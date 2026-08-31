@@ -239,3 +239,4 @@ subscribes to that module's integration event; it never adds a project reference
 - Package versions live in `Directory.Packages.props` only. Never put a `Version` on a
   `PackageReference`.
 - One aggregate per repository. Read paths never go through repositories.
+
