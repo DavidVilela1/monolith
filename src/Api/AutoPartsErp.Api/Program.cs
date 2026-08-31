@@ -9,6 +9,9 @@ using AutoPartsErp.Modules.Catalog.Presentation;
 using AutoPartsErp.Modules.Inventory.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Inventory.Infrastructure.Persistence.Seed;
 using AutoPartsErp.Modules.Inventory.Presentation;
+using AutoPartsErp.Modules.Partners.Infrastructure.Persistence;
+using AutoPartsErp.Modules.Partners.Infrastructure.Persistence.Seed;
+using AutoPartsErp.Modules.Partners.Presentation;
 using AutoPartsErp.SharedKernel.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
@@ -66,7 +69,8 @@ try
 
     builder.Services.AddHealthChecks()
         .AddDbContextCheck<CatalogDbContext>("catalog-database")
-        .AddDbContextCheck<InventoryDbContext>("inventory-database");
+        .AddDbContextCheck<InventoryDbContext>("inventory-database")
+        .AddDbContextCheck<PartnersDbContext>("partners-database");
 
     // ---------------------------------------------------------------------------------
     // Modules
@@ -76,6 +80,7 @@ try
     // ---------------------------------------------------------------------------------
     builder.Services.AddErpModules(
         builder.Configuration,
+        new PartnersModule(),
         new InventoryModule(),
         new CatalogModule());
 
@@ -145,7 +150,12 @@ static async Task MigrateAndSeedAsync(WebApplication app)
 {
     using IServiceScope scope = app.Services.CreateScope();
 
-    // Inventory first: OpenStockRecordOnPartActivated opens a balance in every active
+    // Partners has no dependencies, so it goes first and simply gets out of the way.
+    var partners = scope.ServiceProvider.GetRequiredService<PartnersDbContext>();
+    await partners.Database.MigrateAsync();
+    await scope.ServiceProvider.GetRequiredService<PartnersSeeder>().SeedAsync();
+
+    // Inventory before Catalog: OpenStockRecordOnPartActivated opens a balance in every active
     // warehouse, so the warehouses have to exist before Catalog activates its seeded parts.
     var inventory = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
     await inventory.Database.MigrateAsync();

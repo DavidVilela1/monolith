@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Partners.Infrastructure</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Partners.Infrastructure</AssemblyName>
+    <Description>The Partners module's persistence: its own 'partners' schema.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="EFCore.NamingConventions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoPartsErp.Modules.Partners.Application\AutoPartsErp.Modules.Partners.Application.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.Modules.Abstractions\AutoPartsErp.Modules.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

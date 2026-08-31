@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Partners.Application</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Partners.Application</AssemblyName>
+    <Description>The Partners module's use cases.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoPartsErp.Modules.Partners.Domain\AutoPartsErp.Modules.Partners.Domain.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.IntegrationEvents\AutoPartsErp.IntegrationEvents.csproj" />
+  </ItemGroup>
+
+</Project>

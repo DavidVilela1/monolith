@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Partners.Domain</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Partners.Domain</AssemblyName>
+    <Description>
+      Customers and suppliers. One aggregate with roles rather than two, because in parts
+      distribution the same company is routinely both.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.SharedKernel\AutoPartsErp.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>

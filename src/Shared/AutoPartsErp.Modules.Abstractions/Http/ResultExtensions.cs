@@ -134,29 +134,62 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         ArgumentNullException.ThrowIfNull(httpContext);
         ArgumentNullException.ThrowIfNull(exception);
 
+        // A malformed body or an unparseable route value is the caller's mistake, not a defect
+        // here. ASP.NET signals it with BadHttpRequestException; letting it fall through to the
+        // 500 branch would log a false alarm on every fat-fingered request and tell the caller
+        // the server broke when in fact their JSON did.
+        if (exception is BadHttpRequestException badRequest)
+        {
+            await WriteProblemAsync(
+                httpContext,
+                badRequest.StatusCode,
+                "The request could not be read.",
+                _environment.IsDevelopment()
+                    ? badRequest.Message
+                    : "The request body or a route value was not in the expected format.",
+                cancellationToken).ConfigureAwait(false);
+
+            return true;
+        }
+
         _logger.LogError(
             exception,
             "Unhandled exception on {Method} {Path}",
             httpContext.Request.Method,
             httpContext.Request.Path);
 
-        var problem = new ProblemDetails
-        {
-            Status = StatusCodes.Status500InternalServerError,
-            Title = "Something went wrong.",
+        await WriteProblemAsync(
+            httpContext,
+            StatusCodes.Status500InternalServerError,
+            "Something went wrong.",
 
             // Stack traces are useful in development and a gift to an attacker in production.
-            Detail = _environment.IsDevelopment()
+            _environment.IsDevelopment()
                 ? exception.ToString()
                 : "An unexpected error occurred. The incident has been logged.",
+            cancellationToken).ConfigureAwait(false);
+
+        return true;
+    }
+
+    private static Task WriteProblemAsync(
+        HttpContext httpContext,
+        int statusCode,
+        string title,
+        string detail,
+        CancellationToken cancellationToken)
+    {
+        var problem = new ProblemDetails
+        {
+            Status = statusCode,
+            Title = title,
+            Detail = detail,
             Instance = httpContext.Request.Path,
         };
 
         problem.Extensions["traceId"] = Activity.Current?.Id ?? httpContext.TraceIdentifier;
 
-        httpContext.Response.StatusCode = StatusCodes.Status500InternalServerError;
-        await httpContext.Response.WriteAsJsonAsync(problem, cancellationToken).ConfigureAwait(false);
-
-        return true;
+        httpContext.Response.StatusCode = statusCode;
+        return httpContext.Response.WriteAsJsonAsync(problem, cancellationToken);
     }
 }
