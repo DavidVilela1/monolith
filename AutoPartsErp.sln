@@ -33,6 +33,16 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutoPartsErp.Modules.Catalo
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutoPartsErp.SharedKernel.Tests", "tests\AutoPartsErp.SharedKernel.Tests\AutoPartsErp.SharedKernel.Tests.csproj", "{286CA472-C178-4A64-91B0-5A4C1A425BFC}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutoPartsErp.IntegrationEvents", "src\Shared\AutoPartsErp.IntegrationEvents\AutoPartsErp.IntegrationEvents.csproj", "{6708805A-7CB3-43BA-B790-F62C056689A2}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Inventory", "Inventory", "{EC9FA2EA-E3D0-4FD8-9862-C9B13AA9442E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutoPartsErp.Modules.Inventory.Domain", "src\Modules\Inventory\AutoPartsErp.Modules.Inventory.Domain\AutoPartsErp.Modules.Inventory.Domain.csproj", "{1345F2F4-B18F-41AC-BDA3-9BB5D819A3D8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutoPartsErp.Modules.Inventory.Application", "src\Modules\Inventory\AutoPartsErp.Modules.Inventory.Application\AutoPartsErp.Modules.Inventory.Application.csproj", "{CA96B8C3-4BA1-4178-BF48-3D6D67062222}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutoPartsErp.Modules.Inventory.Tests", "tests\AutoPartsErp.Modules.Inventory.Tests\AutoPartsErp.Modules.Inventory.Tests.csproj", "{E0DB862D-D3EC-4AA2-8195-2A0E996C2478}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -78,6 +88,22 @@ Global
 		{286CA472-C178-4A64-91B0-5A4C1A425BFC}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{286CA472-C178-4A64-91B0-5A4C1A425BFC}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{286CA472-C178-4A64-91B0-5A4C1A425BFC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6708805A-7CB3-43BA-B790-F62C056689A2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6708805A-7CB3-43BA-B790-F62C056689A2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6708805A-7CB3-43BA-B790-F62C056689A2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6708805A-7CB3-43BA-B790-F62C056689A2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1345F2F4-B18F-41AC-BDA3-9BB5D819A3D8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1345F2F4-B18F-41AC-BDA3-9BB5D819A3D8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1345F2F4-B18F-41AC-BDA3-9BB5D819A3D8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1345F2F4-B18F-41AC-BDA3-9BB5D819A3D8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CA96B8C3-4BA1-4178-BF48-3D6D67062222}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CA96B8C3-4BA1-4178-BF48-3D6D67062222}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CA96B8C3-4BA1-4178-BF48-3D6D67062222}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CA96B8C3-4BA1-4178-BF48-3D6D67062222}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E0DB862D-D3EC-4AA2-8195-2A0E996C2478}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E0DB862D-D3EC-4AA2-8195-2A0E996C2478}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E0DB862D-D3EC-4AA2-8195-2A0E996C2478}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E0DB862D-D3EC-4AA2-8195-2A0E996C2478}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{DB27224D-3D57-461A-8ECD-B5DA12913621} = {64614F6A-1F0F-4D71-B3AA-CAD6A36304D4}
@@ -93,5 +119,10 @@ Global
 		{912540B1-A5AB-4DB6-9EC5-25B068FDB5EB} = {C0D8D75C-54C4-433A-9A5A-3B70665C8D4F}
 		{CB382E07-51FF-4540-B607-05E0C8E61BD1} = {E7CD4630-2608-4685-990A-6911FF6334AD}
 		{286CA472-C178-4A64-91B0-5A4C1A425BFC} = {E7CD4630-2608-4685-990A-6911FF6334AD}
+		{6708805A-7CB3-43BA-B790-F62C056689A2} = {C0D8D75C-54C4-433A-9A5A-3B70665C8D4F}
+		{EC9FA2EA-E3D0-4FD8-9862-C9B13AA9442E} = {6A1D0BE8-7AA1-44D0-BDAD-E4E58ACA0976}
+		{1345F2F4-B18F-41AC-BDA3-9BB5D819A3D8} = {EC9FA2EA-E3D0-4FD8-9862-C9B13AA9442E}
+		{CA96B8C3-4BA1-4178-BF48-3D6D67062222} = {EC9FA2EA-E3D0-4FD8-9862-C9B13AA9442E}
+		{E0DB862D-D3EC-4AA2-8195-2A0E996C2478} = {E7CD4630-2608-4685-990A-6911FF6334AD}
 	EndGlobalSection
 EndGlobal

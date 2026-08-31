@@ -338,7 +338,7 @@ public sealed class Part : AggregateRoot<PartId>, IAuditable, ISoftDeletable, IT
         }
 
         Status = PartStatus.Active;
-        Raise(new PartActivatedDomainEvent(Id, Sku.Value));
+        Raise(new PartActivatedDomainEvent(Id, Sku.Value, StockUnit.Code));
 
         return Result.Success();
     }

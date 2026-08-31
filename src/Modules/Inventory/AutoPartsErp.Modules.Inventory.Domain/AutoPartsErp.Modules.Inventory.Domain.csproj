@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Inventory.Domain</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Inventory.Domain</AssemblyName>
+    <Description>
+      The Inventory module's domain model: warehouses, storage bins, stock balances,
+      reservations and the movement ledger.
+      Note what it does NOT reference: the Catalog module. Parts are held by identity only.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.SharedKernel\AutoPartsErp.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>

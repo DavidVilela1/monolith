@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AutoPartsErp.Modules.Catalog.Domain\AutoPartsErp.Modules.Catalog.Domain.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.IntegrationEvents\AutoPartsErp.IntegrationEvents.csproj" />
   </ItemGroup>
 
 </Project>

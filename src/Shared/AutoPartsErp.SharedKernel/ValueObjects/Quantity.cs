@@ -1,5 +1,6 @@
 using System.Globalization;
 using AutoPartsErp.SharedKernel.Primitives;
+using AutoPartsErp.SharedKernel.Results;
 
 namespace AutoPartsErp.SharedKernel.ValueObjects;
 
@@ -37,6 +38,25 @@ public sealed class Quantity : ValueObject, IComparable<Quantity>
         {
             throw new ArgumentException(
                 $"Unit '{unit.Code}' is counted in whole units; {value} is not valid.", nameof(value));
+        }
+
+        return new Quantity(value, unit);
+    }
+
+    /// <summary>
+    /// Creates a quantity, reporting an invalid fraction as a failure rather than an exception.
+    /// Use this wherever the value came from outside the process; <see cref="Of(decimal, UnitOfMeasure)"/>
+    /// is for values the code itself already knows are valid.
+    /// </summary>
+    public static Result<Quantity> Create(decimal value, UnitOfMeasure unit)
+    {
+        ArgumentNullException.ThrowIfNull(unit);
+
+        if (!unit.AllowsFractions && value != Math.Truncate(value))
+        {
+            return Error.Validation(
+                "quantity.whole_units_only",
+                $"'{unit.Name}' is counted in whole units, so {value} is not a valid quantity.");
         }
 
         return new Quantity(value, unit);

@@ -14,7 +14,11 @@ public sealed record PartCreatedDomainEvent(PartId PartId, string Sku, BrandId B
 /// </summary>
 /// <param name="PartId">The part.</param>
 /// <param name="Sku">Its stock keeping unit.</param>
-public sealed record PartActivatedDomainEvent(PartId PartId, string Sku) : DomainEvent;
+/// <param name="StockUnitCode">The unit stock is counted in, carried so Inventory need not ask.</param>
+public sealed record PartActivatedDomainEvent(
+    PartId PartId,
+    string Sku,
+    string StockUnitCode) : DomainEvent;
 
 /// <summary>
 /// Raised when a part is withdrawn from purchasing. Purchasing stops reordering it and

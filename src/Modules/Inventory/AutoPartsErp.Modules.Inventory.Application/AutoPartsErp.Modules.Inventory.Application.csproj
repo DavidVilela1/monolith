@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Inventory.Application</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Inventory.Application</AssemblyName>
+    <Description>
+      The Inventory module's use cases, plus the handlers that react to events published by
+      other modules. The reference to AutoPartsErp.IntegrationEvents is the only thing this
+      module shares with Catalog - there is no project reference between the two.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoPartsErp.Modules.Inventory.Domain\AutoPartsErp.Modules.Inventory.Domain.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.IntegrationEvents\AutoPartsErp.IntegrationEvents.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.IntegrationEvents</RootNamespace>
+    <AssemblyName>AutoPartsErp.IntegrationEvents</AssemblyName>
+    <Description>
+      Cross-module contracts. Records only, no behaviour and no dependencies beyond the
+      SharedKernel. This is the one assembly every module is allowed to share, and it is what
+      lets Inventory react to something Catalog did without either referencing the other.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoPartsErp.SharedKernel\AutoPartsErp.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>
