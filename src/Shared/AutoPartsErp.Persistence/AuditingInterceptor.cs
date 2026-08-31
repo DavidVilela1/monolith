@@ -4,15 +4,21 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 
-namespace AutoPartsErp.Modules.Catalog.Infrastructure.Persistence.Interceptors;
+namespace AutoPartsErp.Persistence;
 
 /// <summary>
 /// Stamps who changed what and when, assigns the tenant on insert, and turns deletes into
 /// archival updates.
 /// <para>
-/// Doing this in an interceptor rather than in each handler means it cannot be forgotten.
-/// In an ERP the audit trail is not a nice-to-have: it is what an auditor asks for, and what
-/// answers "who changed this price at 4am?" three months later.
+/// One implementation for every module. It was written three times — once each in Catalog,
+/// Inventory and Partners — and never varied, which is what made lifting it here the right call
+/// rather than a premature abstraction. It works off the marker interfaces in the shared kernel,
+/// so it needs to know nothing about any module's entities.
+/// </para>
+/// <para>
+/// Doing this in an interceptor rather than in each handler means it cannot be forgotten. In an
+/// ERP the audit trail is what an auditor asks for, and what answers "who changed this price at
+/// 4am?" three months later.
 /// </para>
 /// </summary>
 public sealed class AuditingInterceptor : SaveChangesInterceptor
@@ -94,7 +100,9 @@ public sealed class AuditingInterceptor : SaveChangesInterceptor
                 }
             }
 
-            // A part referenced by ten years of invoices is never physically removed.
+            // A record referenced by ten years of documents is never physically removed.
+            // Entities that do not implement ISoftDeletable — stock movements, for instance —
+            // fall through and are deleted normally, which is correct: nothing deletes those.
             if (entry.State == EntityState.Deleted && entry.Entity is ISoftDeletable deletable)
             {
                 entry.State = EntityState.Modified;

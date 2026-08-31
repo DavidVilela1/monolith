@@ -2,8 +2,8 @@ using AutoPartsErp.Modules.Catalog.Domain;
 using AutoPartsErp.Modules.Catalog.Domain.Brands;
 using AutoPartsErp.Modules.Catalog.Domain.Categories;
 using AutoPartsErp.Modules.Catalog.Domain.Parts;
+using AutoPartsErp.Persistence;
 using AutoPartsErp.SharedKernel.Abstractions;
-using AutoPartsErp.SharedKernel.Primitives;
 using Microsoft.EntityFrameworkCore;
 
 namespace AutoPartsErp.Modules.Catalog.Infrastructure.Persistence;
@@ -13,17 +13,13 @@ namespace AutoPartsErp.Modules.Catalog.Infrastructure.Persistence;
 /// <para>
 /// Each module owns exactly one context and exactly one schema. Nothing outside this project
 /// may reference it, and it maps no other module's tables. That single rule is what makes the
-/// module boundary real at the database level as well as in the project graph, and it is what
-/// makes extracting a module into its own service later a mechanical job.
+/// module boundary real at the database level as well as in the project graph.
 /// </para>
 /// </summary>
-public sealed class CatalogDbContext : DbContext, ICatalogUnitOfWork
+public sealed class CatalogDbContext : ModuleDbContext, ICatalogUnitOfWork
 {
     /// <summary>The PostgreSQL schema this context owns.</summary>
     public const string SchemaName = "catalog";
-
-    private readonly ITenantContext? _tenantContext;
-    private readonly IDomainEventDispatcher? _domainEventDispatcher;
 
     /// <summary>Initializes the context.</summary>
     /// <param name="options">EF Core options, supplied by the container.</param>
@@ -33,10 +29,8 @@ public sealed class CatalogDbContext : DbContext, ICatalogUnitOfWork
         DbContextOptions<CatalogDbContext> options,
         ITenantContext? tenantContext = null,
         IDomainEventDispatcher? domainEventDispatcher = null)
-        : base(options)
+        : base(options, tenantContext, domainEventDispatcher)
     {
-        _tenantContext = tenantContext;
-        _domainEventDispatcher = domainEventDispatcher;
     }
 
     /// <summary>Parts in the catalogue.</summary>
@@ -47,9 +41,6 @@ public sealed class CatalogDbContext : DbContext, ICatalogUnitOfWork
 
     /// <summary>Categories in the product hierarchy.</summary>
     public DbSet<PartCategory> Categories => Set<PartCategory>();
-
-    /// <summary>The tenant every query is scoped to.</summary>
-    internal Guid CurrentTenantId => _tenantContext?.TenantId ?? Guid.Empty;
 
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -84,35 +75,5 @@ public sealed class CatalogDbContext : DbContext, ICatalogUnitOfWork
 
         modelBuilder.Entity<PartCategory>()
             .HasQueryFilter(category => !category.IsDeleted && category.TenantId == CurrentTenantId);
-    }
-
-    /// <summary>
-    /// Commits the transaction, then dispatches the domain events raised along the way.
-    /// Events are collected before the write and dispatched after it, so a handler can never
-    /// observe state that later rolls back.
-    /// </summary>
-    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
-    {
-        IHasDomainEvents[] aggregates = [.. ChangeTracker
-            .Entries()
-            .Select(entry => entry.Entity)
-            .OfType<IHasDomainEvents>()
-            .Where(aggregate => aggregate.DomainEvents.Count > 0)];
-
-        IDomainEvent[] domainEvents = [.. aggregates.SelectMany(aggregate => aggregate.DomainEvents)];
-
-        foreach (IHasDomainEvents aggregate in aggregates)
-        {
-            aggregate.ClearDomainEvents();
-        }
-
-        int written = await base.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-
-        if (domainEvents.Length > 0 && _domainEventDispatcher is not null)
-        {
-            await _domainEventDispatcher.DispatchAsync(domainEvents, cancellationToken).ConfigureAwait(false);
-        }
-
-        return written;
     }
 }

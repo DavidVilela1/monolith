@@ -7,6 +7,7 @@ using AutoPartsErp.Modules.Partners.Infrastructure.Persistence.ReadStore;
 using AutoPartsErp.Modules.Partners.Infrastructure.Persistence.Repositories;
 using AutoPartsErp.Modules.Partners.Infrastructure.Persistence.Seed;
 using AutoPartsErp.Modules.Partners.Presentation.Endpoints;
+using AutoPartsErp.Persistence;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -37,7 +38,7 @@ public sealed class PartnersModule : IModule
         string connectionString = configuration.GetConnectionString("Erp")
             ?? throw new InvalidOperationException("Connection string 'Erp' is not configured.");
 
-        services.AddScoped<PartnersAuditingInterceptor>();
+        services.AddScoped<AuditingInterceptor>();
 
         services.AddDbContext<PartnersDbContext>((provider, options) =>
         {
@@ -49,7 +50,7 @@ public sealed class PartnersModule : IModule
             });
 
             options.UseSnakeCaseNamingConvention();
-            options.AddInterceptors(provider.GetRequiredService<PartnersAuditingInterceptor>());
+            options.AddInterceptors(provider.GetRequiredService<AuditingInterceptor>());
         });
 
         services.AddScoped<IPartnersUnitOfWork>(provider =>

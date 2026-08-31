@@ -3,11 +3,11 @@ using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Catalog.Application.Abstractions;
 using AutoPartsErp.Modules.Catalog.Domain;
 using AutoPartsErp.Modules.Catalog.Infrastructure.Persistence;
-using AutoPartsErp.Modules.Catalog.Infrastructure.Persistence.Interceptors;
 using AutoPartsErp.Modules.Catalog.Infrastructure.Persistence.ReadStore;
 using AutoPartsErp.Modules.Catalog.Infrastructure.Persistence.Repositories;
 using AutoPartsErp.Modules.Catalog.Infrastructure.Persistence.Seed;
 using AutoPartsErp.Modules.Catalog.Presentation.Endpoints;
+using AutoPartsErp.Persistence;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -63,9 +63,11 @@ public sealed class CatalogModule : IModule
             });
 
             // snake_case table and column names, so the database is pleasant to query directly.
+            // This replaces a hand-rolled model pass: getting it right means handling owned types
+            // that share their owner's table, where the key column must stay shared rather than
+            // being renamed independently.
             options.UseSnakeCaseNamingConvention();
 
-            options.AddInterceptors(provider.GetRequiredService<AuditingInterceptor>());
             options.AddInterceptors(provider.GetRequiredService<AuditingInterceptor>());
         });
 

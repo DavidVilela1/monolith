@@ -8,6 +8,7 @@ using AutoPartsErp.Modules.Inventory.Infrastructure.Persistence.ReadStore;
 using AutoPartsErp.Modules.Inventory.Infrastructure.Persistence.Repositories;
 using AutoPartsErp.Modules.Inventory.Infrastructure.Persistence.Seed;
 using AutoPartsErp.Modules.Inventory.Presentation.Endpoints;
+using AutoPartsErp.Persistence;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -46,7 +47,7 @@ public sealed class InventoryModule : IModule
             ?? throw new InvalidOperationException(
                 "Connection string 'Erp' is not configured.");
 
-        services.AddScoped<InventoryAuditingInterceptor>();
+        services.AddScoped<AuditingInterceptor>();
 
         services.AddDbContext<InventoryDbContext>((provider, options) =>
         {
@@ -58,7 +59,7 @@ public sealed class InventoryModule : IModule
             });
 
             options.UseSnakeCaseNamingConvention();
-            options.AddInterceptors(provider.GetRequiredService<InventoryAuditingInterceptor>());
+            options.AddInterceptors(provider.GetRequiredService<AuditingInterceptor>());
         });
 
         services.AddScoped<IInventoryUnitOfWork>(provider =>
