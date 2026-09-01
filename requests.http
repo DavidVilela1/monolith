@@ -171,3 +171,138 @@ X-Tenant-Id: {{tenant}}
   "name": "",
   "stockUnitCode": "PARSEC"
 }
+
+# ---------------------------------------------------------------------------
+# Purchasing
+#
+# The full loop, in order. Steps 1-2 need a supplier and a part you already
+# have: grab them from /api/partners?isSupplier=true and /api/catalog/parts.
+# ---------------------------------------------------------------------------
+
+### 1. Start a draft order. The order number is assigned server-side.
+POST {{host}}/api/purchasing/orders
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "supplierId": "REPLACE-WITH-A-SUPPLIER-PARTNER-ID",
+  "supplierCode": "BOSCH",
+  "warehouseId": "REPLACE-WITH-A-WAREHOUSE-ID",
+  "currencyCode": "EUR",
+  "notes": "Weekly stock order."
+}
+
+### 2. Put a part on it. Sku and description are snapshotted onto the document.
+POST {{host}}/api/purchasing/orders/{{orderId}}/lines
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "partId": "REPLACE-WITH-A-PART-ID",
+  "sku": "BP-1188",
+  "description": "Brake pad set, front",
+  "quantity": 10,
+  "unitCode": "EA",
+  "unitPrice": 24.50
+}
+
+### 3. Send it to the supplier. This is the point of commitment.
+POST {{host}}/api/purchasing/orders/{{orderId}}/submit
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{ "expectedOn": "2026-09-15" }
+
+### 4. Record their acknowledgement.
+POST {{host}}/api/purchasing/orders/{{orderId}}/confirm
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{ "expectedOn": "2026-09-16", "supplierReference": "ACK-77213" }
+
+### 5. Book part of the delivery in. Inventory picks this up and adds the stock.
+POST {{host}}/api/purchasing/orders/{{orderId}}/lines/{{lineId}}/receipts
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{ "quantity": 6 }
+
+### 6. Check the stock actually moved - on hand should have gone up by 6.
+GET {{host}}/api/inventory/stock?partId={{partId}}
+X-Tenant-Id: {{tenant}}
+
+### The order now reads PartiallyReceived, with 4 still outstanding
+GET {{host}}/api/purchasing/orders/{{orderId}}
+X-Tenant-Id: {{tenant}}
+
+### The buyer's working list
+GET {{host}}/api/purchasing/orders?outstandingOnly=true
+X-Tenant-Id: {{tenant}}
+
+### Orders past their promised date
+GET {{host}}/api/purchasing/orders?overdueOnly=true
+X-Tenant-Id: {{tenant}}
+
+### Look one up the way you read it off a delivery note
+GET {{host}}/api/purchasing/orders/by-number/PO-2026-00001
+X-Tenant-Id: {{tenant}}
+
+# ---------------------------------------------------------------------------
+# Replenishment
+#
+# Nothing creates these by hand. Issue stock in Inventory until a part drops
+# below its reorder point and one appears here on its own.
+# ---------------------------------------------------------------------------
+
+### Parts that have run low, worst shortfall first
+GET {{host}}/api/purchasing/suggestions
+X-Tenant-Id: {{tenant}}
+
+### Roll one onto a draft order and mark it dealt with
+POST {{host}}/api/purchasing/suggestions/{{suggestionId}}/order-line
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "purchaseOrderId": "REPLACE-WITH-A-DRAFT-ORDER-ID",
+  "sku": "BP-1188",
+  "description": "Brake pad set, front",
+  "unitCode": "EA",
+  "unitPrice": 24.50
+}
+
+### Or decide not to buy it, with a reason
+POST {{host}}/api/purchasing/suggestions/{{suggestionId}}/dismiss
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{ "reason": "Being run down; sell the shelf stock first." }
+
+# ---------------------------------------------------------------------------
+# Rules Purchasing will refuse
+# ---------------------------------------------------------------------------
+
+### Receiving more than was ordered -> 422 purchasing.line.over_receipt
+POST {{host}}/api/purchasing/orders/{{orderId}}/lines/{{lineId}}/receipts
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{ "quantity": 9999 }
+
+### Editing an order that has gone out -> 422 purchasing.order.not_editable
+DELETE {{host}}/api/purchasing/orders/{{orderId}}/lines/{{lineId}}
+X-Tenant-Id: {{tenant}}
+
+### Cancelling after goods arrived -> 422 purchasing.order.cannot_cancel_after_receipt
+POST {{host}}/api/purchasing/orders/{{orderId}}/cancel
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{ "reason": "Changed our mind." }
+
+### Accepting the shortfall instead -> 204
+POST {{host}}/api/purchasing/orders/{{orderId}}/close-short
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{ "reason": "Supplier had no more; agreed to leave it." }

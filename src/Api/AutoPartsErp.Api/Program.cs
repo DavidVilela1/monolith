@@ -12,6 +12,8 @@ using AutoPartsErp.Modules.Inventory.Presentation;
 using AutoPartsErp.Modules.Partners.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Partners.Infrastructure.Persistence.Seed;
 using AutoPartsErp.Modules.Partners.Presentation;
+using AutoPartsErp.Modules.Purchasing.Infrastructure.Persistence;
+using AutoPartsErp.Modules.Purchasing.Presentation;
 using AutoPartsErp.SharedKernel.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
@@ -70,19 +72,21 @@ try
     builder.Services.AddHealthChecks()
         .AddDbContextCheck<CatalogDbContext>("catalog-database")
         .AddDbContextCheck<InventoryDbContext>("inventory-database")
-        .AddDbContextCheck<PartnersDbContext>("partners-database");
+        .AddDbContextCheck<PartnersDbContext>("partners-database")
+        .AddDbContextCheck<PurchasingDbContext>("purchasing-database");
 
     // ---------------------------------------------------------------------------------
     // Modules
     //
-    // This list IS the deployment. Adding Inventory, Purchasing, Sales or Finance later
-    // means adding one line here and referencing that module's Presentation project.
+    // This list IS the deployment. Adding Sales or Finance later means adding one line
+    // here and referencing that module's Presentation project.
     // ---------------------------------------------------------------------------------
     builder.Services.AddErpModules(
         builder.Configuration,
         new PartnersModule(),
         new InventoryModule(),
-        new CatalogModule());
+        new CatalogModule(),
+        new PurchasingModule());
 
     WebApplication app = builder.Build();
 
@@ -164,6 +168,12 @@ static async Task MigrateAndSeedAsync(WebApplication app)
     var catalog = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
     await catalog.Database.MigrateAsync();
     await scope.ServiceProvider.GetRequiredService<CatalogSeeder>().SeedAsync();
+
+    // Purchasing last, and with no seeder. Its two tables start empty on purpose: purchase
+    // orders are raised by people, and replenishment suggestions arrive on their own the first
+    // time a seeded part is picked below its reorder point.
+    var purchasing = scope.ServiceProvider.GetRequiredService<PurchasingDbContext>();
+    await purchasing.Database.MigrateAsync();
 }
 
 /// <summary>Exposed so integration tests can reference the host with <c>WebApplicationFactory</c>.</summary>

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Purchasing.Domain</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Purchasing.Domain</AssemblyName>
+    <Description>
+      Purchase orders and replenishment. Turns "we are running out" into a document a supplier
+      can act on, and the resulting delivery into stock somebody can sell.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.SharedKernel\AutoPartsErp.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>

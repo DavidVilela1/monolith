@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Purchasing.Infrastructure</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Purchasing.Infrastructure</AssemblyName>
+    <Description>The Purchasing module's persistence: its own 'purchasing' schema.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="EFCore.NamingConventions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoPartsErp.Modules.Purchasing.Application\AutoPartsErp.Modules.Purchasing.Application.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.Modules.Abstractions\AutoPartsErp.Modules.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.Persistence\AutoPartsErp.Persistence.csproj" />
+  </ItemGroup>
+
+</Project>

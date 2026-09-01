@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Purchasing.Application</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Purchasing.Application</AssemblyName>
+    <Description>The Purchasing module's use cases.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoPartsErp.Modules.Purchasing.Domain\AutoPartsErp.Modules.Purchasing.Domain.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.IntegrationEvents\AutoPartsErp.IntegrationEvents.csproj" />
+  </ItemGroup>
+
+</Project>
