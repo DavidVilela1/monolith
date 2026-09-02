@@ -73,11 +73,9 @@ public sealed class ReplenishmentSuggestionConfiguration
         // would both find nothing and both insert; this partial index is what stops that becoming
         // a buyer's list with the same part on it twice.
         //
-        // What happens to the loser of that race is currently: nothing useful. InProcessEventBus
-        // logs the failure and moves on, so the second signal is dropped rather than retried, and
-        // the surviving row simply holds a slightly staler reading than it might have. Acceptable
-        // while a suggestion is a prompt rather than a number anybody relies on - and one more
-        // thing the inbox will fix properly.
+        // The loser of that race now recovers on its own: the insert fails, the handler throws,
+        // the outbox row keeps its place and the sweep retries it - by which point the winning
+        // row exists and the handler takes the refresh path instead.
         //
         // The filter is raw SQL, and it is correct only because the column is named 'status' by
         // the snake_case convention and the enum is stored by member name. Change either and

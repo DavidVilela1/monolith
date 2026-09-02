@@ -4,12 +4,21 @@
     <RootNamespace>AutoPartsErp.Persistence</RootNamespace>
     <AssemblyName>AutoPartsErp.Persistence</AssemblyName>
     <Description>
-      EF Core plumbing every module repeats: the auditing interceptor and the base context
-      that collects and dispatches domain events after a commit.
+      EF Core plumbing every module repeats: the auditing interceptor, the base context that
+      turns domain events into outbox rows inside the business transaction, and the background
+      processor that delivers them.
       Kept out of AutoPartsErp.Modules.Abstractions so that project stays free of EF Core -
       only a module's Infrastructure should know a database exists.
     </Description>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      For IHostedService and IOptions, which the outbox processor needs. The shared framework
+      rather than NuGet packages, so this stays in lockstep with the runtime.
+    -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" />

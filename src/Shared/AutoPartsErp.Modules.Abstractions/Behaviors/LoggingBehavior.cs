@@ -39,6 +39,10 @@ public sealed class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRe
             TResponse response = await next().ConfigureAwait(false);
             TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
 
+            // The IsEnabled guards are not ceremony: building these argument arrays costs
+            // allocations and boxing on every single request, and this behaviour wraps every
+            // request in the system. When the level is switched off in production, the work
+            // should not happen at all.
             if (response is Result { IsFailure: true } failure)
             {
                 if (_logger.IsEnabled(LogLevel.Warning))

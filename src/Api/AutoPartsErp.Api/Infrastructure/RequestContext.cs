@@ -11,6 +11,12 @@ namespace AutoPartsErp.Api.Infrastructure;
 /// already asks for the tenant through this interface, so replacing this with a claim read from
 /// a validated token later touches one file rather than every query in the application.
 /// </para>
+/// <para>
+/// An explicitly set <see cref="AmbientTenant"/> wins over everything else. That is how the
+/// outbox processor tells a handler which company's data it is working on: there is no request
+/// behind a background sweep, and without this the tenant would quietly fall back to the default
+/// and one company's goods would be received onto another company's shelf.
+/// </para>
 /// </summary>
 public sealed class HttpTenantContext : ITenantContext
 {
@@ -21,17 +27,23 @@ public sealed class HttpTenantContext : ITenantContext
     public const string TenantClaim = "tenant_id";
 
     private readonly IHttpContextAccessor _accessor;
+    private readonly AmbientTenant _ambient;
     private readonly Guid _defaultTenantId;
+    private readonly string _defaultTenantCode;
 
     /// <summary>Initializes the tenant context.</summary>
-    public HttpTenantContext(IHttpContextAccessor accessor, IConfiguration configuration)
+    public HttpTenantContext(
+        IHttpContextAccessor accessor,
+        AmbientTenant ambient,
+        IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
         _accessor = accessor;
+        _ambient = ambient;
         _defaultTenantId = configuration.GetValue<Guid?>("Erp:DefaultTenantId")
             ?? Guid.Parse("00000000-0000-0000-0000-000000000001");
-        TenantCode = configuration.GetValue<string>("Erp:DefaultTenantCode") ?? "DEFAULT";
+        _defaultTenantCode = configuration.GetValue<string>("Erp:DefaultTenantCode") ?? "DEFAULT";
     }
 
     /// <inheritdoc />
@@ -39,6 +51,11 @@ public sealed class HttpTenantContext : ITenantContext
     {
         get
         {
+            if (_ambient.TenantId is { } ambient)
+            {
+                return ambient;
+            }
+
             HttpContext? context = _accessor.HttpContext;
 
             if (context is null)
@@ -63,7 +80,7 @@ public sealed class HttpTenantContext : ITenantContext
     }
 
     /// <inheritdoc />
-        public string TenantCode { get; }
+    public string TenantCode => _ambient.TenantCode ?? _defaultTenantCode;
 }
 
 /// <summary>

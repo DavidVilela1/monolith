@@ -3,7 +3,6 @@ using AutoPartsErp.Modules.Catalog.Domain.Brands;
 using AutoPartsErp.Modules.Catalog.Domain.Categories;
 using AutoPartsErp.Modules.Catalog.Domain.Parts;
 using AutoPartsErp.Persistence;
-using AutoPartsErp.SharedKernel.Abstractions;
 using Microsoft.EntityFrameworkCore;
 
 namespace AutoPartsErp.Modules.Catalog.Infrastructure.Persistence;
@@ -23,13 +22,14 @@ public sealed class CatalogDbContext : ModuleDbContext, ICatalogUnitOfWork
 
     /// <summary>Initializes the context.</summary>
     /// <param name="options">EF Core options, supplied by the container.</param>
-    /// <param name="tenantContext">The active tenant, used by the global query filters.</param>
-    /// <param name="domainEventDispatcher">Dispatches domain events after a successful commit.</param>
+    /// <param name="dependencies">
+    /// Shared plumbing: the tenant, the domain event dispatcher and the outbox. Optional so the
+    /// design-time tooling can build the model with no container behind it.
+    /// </param>
     public CatalogDbContext(
         DbContextOptions<CatalogDbContext> options,
-        ITenantContext? tenantContext = null,
-        IDomainEventDispatcher? domainEventDispatcher = null)
-        : base(options, tenantContext, domainEventDispatcher)
+        ModuleDbContextDependencies? dependencies = null)
+        : base(options, dependencies)
     {
     }
 

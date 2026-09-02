@@ -46,24 +46,18 @@ public sealed class ReceiveStockOnGoodsReceived
     /// <inheritdoc />
     /// <remarks>
     /// <para>
-    /// <b>Not yet idempotent.</b> Every delivery of this event adds to the balance, so a
-    /// redelivered receipt would count the goods twice. That is safe today because the in-process
-    /// bus publishes once and does not retry, and it stops being safe the moment a real broker is
-    /// introduced. The fix is the inbox table that belongs with the outbox already on the list —
-    /// not a check bolted on here, because "have I seen this event?" is a question every consumer
-    /// in the system will need to ask.
+    /// Adding to a balance is not naturally idempotent — run this twice and the goods are on the
+    /// shelf twice — and outbox delivery is explicitly at-least-once. What makes that safe is not
+    /// anything in this method: the module's <c>DbContext</c> records an inbox row in the same
+    /// transaction as the stock movement, so a redelivery finds it, discards the work and returns
+    /// without writing. The handler is free to stay written as though it runs exactly once.
     /// </para>
     /// <para>
-    /// <b>And it fails open.</b> The bus logs a throwing handler and carries on, so any of the
-    /// exceptions below leave the purchase order recorded as received while the stock never
-    /// arrives on the balance — two records that disagree, with a log line as the only trace.
-    /// The same outbox work is what makes that recoverable; until then the log is load-bearing.
-    /// </para>
-    /// <para>
-    /// The tenant comes from the ambient <see cref="ITenantContext"/>, not from the event's own
-    /// <c>TenantId</c>, which is correct only because the in-process bus runs the handler inside
-    /// the publishing request. Dispatch this out of band and the query filters would resolve to
-    /// an empty tenant and match nothing. Every handler in the system shares that assumption.
+    /// Throwing is now the right thing to do when the receipt cannot be applied. The exception
+    /// fails the delivery, the outbox row keeps its place and the sweep retries with backoff, so
+    /// a part activated late or a warehouse created after the order will resolve itself. Only
+    /// after the attempt limit does the message stop, and it stops visibly — a row with an error
+    /// in it, not a line in yesterday's log.
     /// </para>
     /// </remarks>
     /// <exception cref="InvalidOperationException">

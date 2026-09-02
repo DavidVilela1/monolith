@@ -6,8 +6,15 @@ using Microsoft.Extensions.Logging;
 namespace AutoPartsErp.Modules.Abstractions.Events;
 
 /// <summary>
-/// Dispatches domain events raised by aggregates to their handlers, after the unit of work
-/// has committed. Handlers therefore always observe persisted state.
+/// Dispatches domain events raised by aggregates to their handlers, inside the unit of work
+/// that raised them and before it commits.
+/// <para>
+/// A failure here fails the whole save, on purpose. These handlers exist to translate a domain
+/// event into an integration event and queue it for the outbox; if that cannot happen, the
+/// business change must not commit either — otherwise the module has recorded something and
+/// silently decided not to tell anyone about it, which is the exact failure the outbox was
+/// built to remove.
+/// </para>
 /// </summary>
 public sealed class DomainEventDispatcher : IDomainEventDispatcher
 {
@@ -51,6 +58,11 @@ public sealed class DomainEventDispatcher : IDomainEventDispatcher
                         handler.GetType().Name,
                         domainEvent.GetType().Name,
                         domainEvent.EventId);
+
+                    // Rethrown, unlike before. This runs inside the caller's transaction now,
+                    // so the honest response to a handler that cannot do its job is to fail the
+                    // save rather than commit and hope somebody reads the log.
+                    throw;
                 }
             }
         }

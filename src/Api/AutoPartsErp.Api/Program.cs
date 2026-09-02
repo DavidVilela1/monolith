@@ -1,5 +1,6 @@
 using System.Globalization;
 using AutoPartsErp.Api.Infrastructure;
+using AutoPartsErp.IntegrationEvents.Catalog;
 using AutoPartsErp.Modules.Abstractions.DependencyInjection;
 using AutoPartsErp.Modules.Abstractions.Http;
 using AutoPartsErp.Modules.Abstractions.Modules;
@@ -14,6 +15,7 @@ using AutoPartsErp.Modules.Partners.Infrastructure.Persistence.Seed;
 using AutoPartsErp.Modules.Partners.Presentation;
 using AutoPartsErp.Modules.Purchasing.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Purchasing.Presentation;
+using AutoPartsErp.Persistence;
 using AutoPartsErp.SharedKernel.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
@@ -43,7 +45,11 @@ try
     builder.Services.AddScoped<ITenantContext, HttpTenantContext>();
     builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
 
-    builder.Services.AddErpCore();
+    // The contracts assembly is passed in so the outbox can rebuild a stored event from the
+    // type name in its row. Any type from it will do; this one just has to be something that
+    // will not be renamed casually.
+    builder.Services.AddErpCore(typeof(PartActivatedIntegrationEvent).Assembly);
+    builder.Services.AddErpPersistence(builder.Configuration);
 
     builder.Services.AddProblemDetails();
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();

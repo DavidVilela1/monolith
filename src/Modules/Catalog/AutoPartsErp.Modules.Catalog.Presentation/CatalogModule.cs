@@ -71,6 +71,10 @@ public sealed class CatalogModule : IModule
             options.AddInterceptors(provider.GetRequiredService<AuditingInterceptor>());
         });
 
+        // Delivers this module's committed integration events. One sweep per module,
+        // because the outbox it drains is a table in this module's own schema.
+        services.AddModuleOutbox<CatalogDbContext>();
+
         services.AddScoped<ICatalogUnitOfWork>(provider => provider.GetRequiredService<CatalogDbContext>());
 
         services.AddScoped<IPartRepository, PartRepository>();

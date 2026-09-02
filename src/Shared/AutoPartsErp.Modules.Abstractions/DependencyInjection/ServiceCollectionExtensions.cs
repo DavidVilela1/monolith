@@ -17,17 +17,40 @@ namespace AutoPartsErp.Modules.Abstractions.DependencyInjection;
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the dispatcher, the event bus, the clock and the standard pipeline behaviours.
-    /// Call this once, before registering any module.
+    /// Registers the dispatcher, the event plumbing, the clock and the standard pipeline
+    /// behaviours. Call this once, before registering any module.
     /// </summary>
-    public static IServiceCollection AddErpCore(this IServiceCollection services)
+    /// <param name="services">The service collection.</param>
+    /// <param name="integrationEventContracts">
+    /// Assemblies holding the published integration event records. Scanned once at startup to
+    /// build the map from a stored type name back to a type; without them the outbox can store
+    /// events but never rebuild one to deliver it.
+    /// </param>
+    public static IServiceCollection AddErpCore(
+        this IServiceCollection services,
+        params Assembly[] integrationEventContracts)
     {
         ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(integrationEventContracts);
 
         services.TryAddScoped<IDispatcher, Dispatcher>();
         services.TryAddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
-        services.TryAddSingleton<IEventBus, InProcessEventBus>();
         services.TryAddScoped<IDomainEventDispatcher, DomainEventDispatcher>();
+
+        // Publishing and delivering are two different things now. IEventBus only queues, so it
+        // is scoped to the unit of work whose transaction will carry the row; the dispatcher
+        // that actually calls handlers runs later, from the outbox sweep.
+        services.TryAddScoped<IIntegrationEventQueue, IntegrationEventQueue>();
+        services.TryAddScoped<IEventBus, OutboxEventBus>();
+        services.TryAddScoped<IIntegrationEventDispatcher, IntegrationEventDispatcher>();
+
+        // Both are per-scope carriers, empty during an ordinary request and filled in by the
+        // outbox processor around a handler call.
+        services.TryAddScoped<IntegrationEventScope>();
+        services.TryAddScoped<AmbientTenant>();
+
+        services.TryAddSingleton(new IntegrationEventContracts(integrationEventContracts));
+        services.TryAddSingleton<IIntegrationEventSerializer, JsonIntegrationEventSerializer>();
 
         // Order matters: logging wraps validation, which wraps the handler.
         services.AddScoped(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));

@@ -2,7 +2,6 @@ using AutoPartsErp.Modules.Inventory.Domain;
 using AutoPartsErp.Modules.Inventory.Domain.Stock;
 using AutoPartsErp.Modules.Inventory.Domain.Warehouses;
 using AutoPartsErp.Persistence;
-using AutoPartsErp.SharedKernel.Abstractions;
 using Microsoft.EntityFrameworkCore;
 
 namespace AutoPartsErp.Modules.Inventory.Infrastructure.Persistence;
@@ -22,13 +21,14 @@ public sealed class InventoryDbContext : ModuleDbContext, IInventoryUnitOfWork
 
     /// <summary>Initializes the context.</summary>
     /// <param name="options">EF Core options, supplied by the container.</param>
-    /// <param name="tenantContext">The active tenant, used by the global query filters.</param>
-    /// <param name="domainEventDispatcher">Dispatches domain events after a successful commit.</param>
+    /// <param name="dependencies">
+    /// Shared plumbing: the tenant, the domain event dispatcher and the outbox. Optional so the
+    /// design-time tooling can build the model with no container behind it.
+    /// </param>
     public InventoryDbContext(
         DbContextOptions<InventoryDbContext> options,
-        ITenantContext? tenantContext = null,
-        IDomainEventDispatcher? domainEventDispatcher = null)
-        : base(options, tenantContext, domainEventDispatcher)
+        ModuleDbContextDependencies? dependencies = null)
+        : base(options, dependencies)
     {
     }
 
