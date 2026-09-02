@@ -306,3 +306,125 @@ Content-Type: application/json
 X-Tenant-Id: {{tenant}}
 
 { "reason": "Supplier had no more; agreed to leave it." }
+
+# ---------------------------------------------------------------------------
+# Sales
+#
+# Customer accounts are NOT created here. They arrive from Partners: grant the
+# customer role to a partner and the account appears within a few seconds,
+# once the outbox sweep has delivered the event.
+# ---------------------------------------------------------------------------
+
+### Who can we sell to, and how much credit is left
+GET {{host}}/api/sales/customers
+X-Tenant-Id: {{tenant}}
+
+### One account, by the code typed at the counter
+GET {{host}}/api/sales/customers/by-code/WKSP
+X-Tenant-Id: {{tenant}}
+
+### 1. Start an order. Code, name and currency come off the account.
+POST {{host}}/api/sales/orders
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "customerId": "REPLACE-WITH-A-CUSTOMER-PARTNER-ID",
+  "warehouseId": "REPLACE-WITH-A-WAREHOUSE-ID",
+  "kind": "Order",
+  "customerReference": "PO-4471",
+  "notes": "Collecting Friday."
+}
+
+### 2. Add a line. 10 at 24.50, 10% off, 23% VAT -> net 220.50, VAT 50.72, gross 271.22
+POST {{host}}/api/sales/orders/{{salesOrderId}}/lines
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "partId": "REPLACE-WITH-A-PART-ID",
+  "sku": "BP-1188",
+  "description": "Brake pad set, front",
+  "quantity": 10,
+  "unitCode": "EA",
+  "unitPrice": 24.50,
+  "discountPercent": 10,
+  "vatRatePercent": 23
+}
+
+### 3. Confirm. Checks hold and credit, then claims the stock.
+POST {{host}}/api/sales/orders/{{salesOrderId}}/confirm
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{ "requiredBy": "2026-09-10" }
+
+### 4. Check Inventory held it - reserved should have gone up by 10, on hand unchanged
+GET {{host}}/api/inventory/stock?partId={{partId}}
+X-Tenant-Id: {{tenant}}
+
+### 5. Ship four of the ten. The claim is released, 4 issued, 6 re-claimed.
+POST {{host}}/api/sales/orders/{{salesOrderId}}/lines/{{lineId}}/dispatches
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{ "quantity": 4 }
+
+### 6. On hand down by 4, reserved down to 6
+GET {{host}}/api/inventory/stock?partId={{partId}}
+X-Tenant-Id: {{tenant}}
+
+### The credit committed against the account until the order ships in full
+GET {{host}}/api/sales/customers/{{customerId}}
+X-Tenant-Id: {{tenant}}
+
+### The picking list
+GET {{host}}/api/sales/orders?outstandingOnly=true
+X-Tenant-Id: {{tenant}}
+
+### Orders past their promised date
+GET {{host}}/api/sales/orders?lateOnly=true
+X-Tenant-Id: {{tenant}}
+
+# ---------------------------------------------------------------------------
+# Rules Sales will refuse
+# ---------------------------------------------------------------------------
+
+### Put the partner on hold in Partners first...
+POST {{host}}/api/partners/{{customerId}}/hold
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{ "reason": "Invoice 4471 is 40 days overdue." }
+
+### ...then this comes back 422 sales.customer.on_hold, a few seconds later
+POST {{host}}/api/sales/orders
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "customerId": "REPLACE-WITH-A-CUSTOMER-PARTNER-ID",
+  "warehouseId": "REPLACE-WITH-A-WAREHOUSE-ID",
+  "kind": "Order"
+}
+
+### An order beyond the limit -> 422 sales.customer.credit_limit_exceeded
+POST {{host}}/api/sales/orders/{{salesOrderId}}/confirm
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{}
+
+### Shipping more than was sold -> 422 sales.line.over_dispatch
+POST {{host}}/api/sales/orders/{{salesOrderId}}/lines/{{lineId}}/dispatches
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{ "quantity": 9999 }
+
+### Cancelling after goods went out -> 422 sales.order.cannot_cancel_after_dispatch
+POST {{host}}/api/sales/orders/{{salesOrderId}}/cancel
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{ "reason": "Customer changed their mind." }

@@ -27,6 +27,20 @@ public interface IStockItemRepository : IRepository<StockItem, StockItemId>
         DateTimeOffset now,
         int maxItems,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Loads every balance still holding an active claim for one document.
+    /// <para>
+    /// A cancelled sales order names itself and nothing else — it does not carry its lines — so
+    /// releasing what it was holding means finding the claims by their reference. Bounded by the
+    /// number of lines that order had.
+    /// </para>
+    /// </summary>
+    /// <param name="referenceNumber">The document number, e.g. "SO-2026-01188".</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<IReadOnlyList<StockItem>> GetWithActiveReservationForAsync(
+        string referenceNumber,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>Write-side access to warehouses.</summary>

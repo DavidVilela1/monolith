@@ -67,6 +67,25 @@ public sealed class StockItemRepository : IStockItemRepository
             .ConfigureAwait(false);
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<StockItem>> GetWithActiveReservationForAsync(
+        string referenceNumber,
+        CancellationToken cancellationToken = default)
+    {
+        // Uppercased because MovementReference normalises document numbers on the way in, and a
+        // reference that only matches in one case is a reference that silently matches nothing.
+        string normalized = referenceNumber?.Trim().ToUpperInvariant() ?? string.Empty;
+
+        List<StockItem> items = await _context.StockItems
+            .Where(item => item.Reservations.Any(reservation =>
+                reservation.Status == ReservationStatus.Active
+                && reservation.Reference.Number == normalized))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return items;
+    }
+
+    /// <inheritdoc />
     public void Add(StockItem aggregate)
     {
         ArgumentNullException.ThrowIfNull(aggregate);

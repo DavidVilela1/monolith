@@ -15,6 +15,8 @@ using AutoPartsErp.Modules.Partners.Infrastructure.Persistence.Seed;
 using AutoPartsErp.Modules.Partners.Presentation;
 using AutoPartsErp.Modules.Purchasing.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Purchasing.Presentation;
+using AutoPartsErp.Modules.Sales.Infrastructure.Persistence;
+using AutoPartsErp.Modules.Sales.Presentation;
 using AutoPartsErp.Persistence;
 using AutoPartsErp.SharedKernel.Abstractions;
 using Microsoft.EntityFrameworkCore;
@@ -79,20 +81,22 @@ try
         .AddDbContextCheck<CatalogDbContext>("catalog-database")
         .AddDbContextCheck<InventoryDbContext>("inventory-database")
         .AddDbContextCheck<PartnersDbContext>("partners-database")
-        .AddDbContextCheck<PurchasingDbContext>("purchasing-database");
+        .AddDbContextCheck<PurchasingDbContext>("purchasing-database")
+        .AddDbContextCheck<SalesDbContext>("sales-database");
 
     // ---------------------------------------------------------------------------------
     // Modules
     //
-    // This list IS the deployment. Adding Sales or Finance later means adding one line
-    // here and referencing that module's Presentation project.
+    // This list IS the deployment. Adding Finance later means adding one line here and
+    // referencing that module's Presentation project.
     // ---------------------------------------------------------------------------------
     builder.Services.AddErpModules(
         builder.Configuration,
         new PartnersModule(),
         new InventoryModule(),
         new CatalogModule(),
-        new PurchasingModule());
+        new PurchasingModule(),
+        new SalesModule());
 
     WebApplication app = builder.Build();
 
@@ -180,6 +184,12 @@ static async Task MigrateAndSeedAsync(WebApplication app)
     // time a seeded part is picked below its reorder point.
     var purchasing = scope.ServiceProvider.GetRequiredService<PurchasingDbContext>();
     await purchasing.Database.MigrateAsync();
+
+    // Sales last, and with no seeder either. Its customer accounts are not seeded because they
+    // are not Sales' to invent: they arrive as events when Partners grants the customer role, so
+    // the seeded partners populate them on the first run through the outbox.
+    var sales = scope.ServiceProvider.GetRequiredService<SalesDbContext>();
+    await sales.Database.MigrateAsync();
 }
 
 /// <summary>Exposed so integration tests can reference the host with <c>WebApplicationFactory</c>.</summary>
