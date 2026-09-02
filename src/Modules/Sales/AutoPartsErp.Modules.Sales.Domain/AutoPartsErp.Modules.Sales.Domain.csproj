@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Sales.Domain</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Sales.Domain</AssemblyName>
+    <Description>
+      Selling: the counter sale, the trade order, and the credit decision that has to be made
+      in the seconds before somebody walks out with the goods.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.SharedKernel\AutoPartsErp.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>

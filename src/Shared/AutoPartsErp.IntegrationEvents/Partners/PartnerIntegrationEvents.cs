@@ -58,3 +58,44 @@ public sealed record SupplierTermsChangedIntegrationEvent(
     string Code,
     int LeadTimeDays,
     Guid TenantId) : IntegrationEvent;
+
+/// <summary>
+/// A partner became a customer, on these terms.
+/// <para>
+/// Sales listens for this and opens its own account record. That record is the whole reason
+/// Sales can answer "may I sell to them, and for how much?" at the counter without reading the
+/// Partners schema or calling into it — the question has to be answerable in milliseconds by
+/// whoever is standing at the till.
+/// </para>
+/// </summary>
+/// <param name="PartnerId">The partner.</param>
+/// <param name="Code">Their short code.</param>
+/// <param name="LegalName">Their registered name, as it goes on an invoice.</param>
+/// <param name="CreditLimit">How much they may owe at once. Zero means cash only.</param>
+/// <param name="CurrencyCode">Currency of the limit.</param>
+/// <param name="PaymentDueInDays">Days to pay. Zero means on delivery.</param>
+/// <param name="PaymentEndOfMonth">True when the days run from the end of the invoice month.</param>
+/// <param name="PriceListCode">Which price list applies.</param>
+/// <param name="TenantId">The owning tenant.</param>
+public sealed record CustomerAccountOpenedIntegrationEvent(
+    Guid PartnerId,
+    string Code,
+    string LegalName,
+    decimal CreditLimit,
+    string CurrencyCode,
+    int PaymentDueInDays,
+    bool PaymentEndOfMonth,
+    string? PriceListCode,
+    Guid TenantId) : IntegrationEvent;
+
+/// <summary>
+/// The relationship ended. Unlike a hold this is not expected to be lifted, so anything holding
+/// an account record should close it rather than wait.
+/// </summary>
+/// <param name="PartnerId">The partner.</param>
+/// <param name="Code">Their short code.</param>
+/// <param name="TenantId">The owning tenant.</param>
+public sealed record PartnerClosedIntegrationEvent(
+    Guid PartnerId,
+    string Code,
+    Guid TenantId) : IntegrationEvent;

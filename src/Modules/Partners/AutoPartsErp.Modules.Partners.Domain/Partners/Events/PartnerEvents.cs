@@ -11,14 +11,31 @@ public sealed record PartnerCreatedDomainEvent(
     string Code,
     string LegalName) : DomainEvent;
 
-/// <summary>Raised when we start selling to a partner.</summary>
+/// <summary>
+/// Raised when we start selling to a partner.
+/// <para>
+/// Carries the whole commercial arrangement, not just the identity. Sales keeps its own record
+/// of who may buy and on what terms, and an event that made it call back into Partners for the
+/// details would not be a boundary at all.
+/// </para>
+/// </summary>
 /// <param name="PartnerId">The partner.</param>
 /// <param name="Code">Their short code.</param>
+/// <param name="LegalName">Their registered name, as it goes on an invoice.</param>
 /// <param name="CreditLimit">The agreed limit.</param>
+/// <param name="CurrencyCode">Currency of the limit.</param>
+/// <param name="PaymentDueInDays">Days to pay. Zero means on delivery.</param>
+/// <param name="PaymentEndOfMonth">True when the days run from the end of the invoice month.</param>
+/// <param name="PriceListCode">Which price list applies.</param>
 public sealed record CustomerRoleGrantedDomainEvent(
     PartnerId PartnerId,
     string Code,
-    decimal CreditLimit) : DomainEvent;
+    string LegalName,
+    decimal CreditLimit,
+    string CurrencyCode,
+    int PaymentDueInDays,
+    bool PaymentEndOfMonth,
+    string? PriceListCode) : DomainEvent;
 
 /// <summary>Raised when we start buying from a partner.</summary>
 /// <param name="PartnerId">The partner.</param>

@@ -189,7 +189,15 @@ public sealed class Partner : AggregateRoot<PartnerId>, IAuditable, ISoftDeletab
         Roles |= PartnerRoles.Customer;
         CustomerTerms = terms;
 
-        Raise(new CustomerRoleGrantedDomainEvent(Id, Code, terms.CreditLimit.Amount));
+        Raise(new CustomerRoleGrantedDomainEvent(
+            Id,
+            Code,
+            LegalName,
+            terms.CreditLimit.Amount,
+            terms.CreditLimit.Currency.Code,
+            terms.PaymentTerms.DueInDays,
+            terms.PaymentTerms.EndOfMonth,
+            terms.PriceListCode));
 
         return Result.Success();
     }

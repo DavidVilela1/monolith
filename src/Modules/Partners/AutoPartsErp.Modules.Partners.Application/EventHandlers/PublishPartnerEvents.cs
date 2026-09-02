@@ -98,3 +98,67 @@ public sealed class PublishCreditLimitChanged : IDomainEventHandler<CreditLimitC
             cancellationToken);
     }
 }
+
+/// <summary>Republishes the opening of a customer account so Sales can serve them.</summary>
+public sealed class PublishCustomerAccountOpened : IDomainEventHandler<CustomerRoleGrantedDomainEvent>
+{
+    private readonly IEventBus _eventBus;
+    private readonly ITenantContext _tenantContext;
+
+    /// <summary>Initializes the handler.</summary>
+    public PublishCustomerAccountOpened(IEventBus eventBus, ITenantContext tenantContext)
+    {
+        _eventBus = eventBus;
+        _tenantContext = tenantContext;
+    }
+
+    /// <inheritdoc />
+    public Task HandleAsync(
+        CustomerRoleGrantedDomainEvent domainEvent,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(domainEvent);
+
+        return _eventBus.PublishAsync(
+            new CustomerAccountOpenedIntegrationEvent(
+                domainEvent.PartnerId.Value,
+                domainEvent.Code,
+                domainEvent.LegalName,
+                domainEvent.CreditLimit,
+                domainEvent.CurrencyCode,
+                domainEvent.PaymentDueInDays,
+                domainEvent.PaymentEndOfMonth,
+                domainEvent.PriceListCode,
+                _tenantContext.TenantId),
+            cancellationToken);
+    }
+}
+
+/// <summary>Republishes the end of a relationship.</summary>
+public sealed class PublishPartnerClosed : IDomainEventHandler<PartnerClosedDomainEvent>
+{
+    private readonly IEventBus _eventBus;
+    private readonly ITenantContext _tenantContext;
+
+    /// <summary>Initializes the handler.</summary>
+    public PublishPartnerClosed(IEventBus eventBus, ITenantContext tenantContext)
+    {
+        _eventBus = eventBus;
+        _tenantContext = tenantContext;
+    }
+
+    /// <inheritdoc />
+    public Task HandleAsync(
+        PartnerClosedDomainEvent domainEvent,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(domainEvent);
+
+        return _eventBus.PublishAsync(
+            new PartnerClosedIntegrationEvent(
+                domainEvent.PartnerId.Value,
+                domainEvent.Code,
+                _tenantContext.TenantId),
+            cancellationToken);
+    }
+}
