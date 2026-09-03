@@ -1,3 +1,4 @@
+using AutoPartsErp.ModuleContracts.Catalog;
 using AutoPartsErp.ModuleContracts.Inventory;
 using AutoPartsErp.Modules.Sales.Domain;
 using AutoPartsErp.Modules.Sales.Domain.Customers;
@@ -148,20 +149,20 @@ public sealed class CreateSalesOrderCommandHandler : ICommandHandler<CreateSales
 /// <summary>Adds a part to a draft order.</summary>
 /// <param name="SalesOrderId">The order.</param>
 /// <param name="PartId">The part to sell.</param>
-/// <param name="Sku">Its SKU, snapshotted onto the document.</param>
-/// <param name="Description">Its description, snapshotted onto the document.</param>
-/// <param name="Quantity">How much to sell.</param>
-/// <param name="UnitCode">The unit to sell it in, e.g. EA, SET, L.</param>
+/// <param name="Quantity">How much to sell, in the part's stocking unit.</param>
 /// <param name="UnitPrice">The list price per unit, in the order's currency.</param>
 /// <param name="DiscountPercent">The discount given, 0 to 100.</param>
 /// <param name="VatRatePercent">The VAT rate, 0 to 100. Portugal's normal rate is 23.</param>
+/// <remarks>
+/// This command used to carry the SKU, the description and the unit as well. It no longer does:
+/// the caller says which part it means and the catalogue is asked what that part is called and
+/// how it is counted. Three fewer chances to disagree with the catalogue on every line, on a
+/// document that is kept for years.
+/// </remarks>
 public sealed record AddSalesOrderLineCommand(
     Guid SalesOrderId,
     Guid PartId,
-    string Sku,
-    string Description,
     decimal Quantity,
-    string UnitCode,
     decimal UnitPrice,
     decimal DiscountPercent = 0m,
     decimal VatRatePercent = 23m) : ICommand<Guid>;
@@ -207,13 +208,6 @@ public sealed class AddSalesOrderLineCommandValidator : IValidator<AddSalesOrder
                 nameof(instance.VatRatePercent), "range", "A VAT rate must be between 0 and 100 percent."));
         }
 
-        if (!UnitOfMeasure.TryFromCode(instance.UnitCode, out _))
-        {
-            failures.Add(new ValidationFailure(
-                nameof(instance.UnitCode), "unknown_unit",
-                $"'{instance.UnitCode}' is not a known unit of measure."));
-        }
-
         return ValueTask.FromResult<IReadOnlyList<ValidationFailure>>(failures);
     }
 }
@@ -222,12 +216,17 @@ public sealed class AddSalesOrderLineCommandValidator : IValidator<AddSalesOrder
 public sealed class AddSalesOrderLineCommandHandler : ICommandHandler<AddSalesOrderLineCommand, Guid>
 {
     private readonly ISalesOrderRepository _orders;
+    private readonly ICatalogDirectory _catalogue;
     private readonly ISalesUnitOfWork _unitOfWork;
 
     /// <summary>Initializes the handler.</summary>
-    public AddSalesOrderLineCommandHandler(ISalesOrderRepository orders, ISalesUnitOfWork unitOfWork)
+    public AddSalesOrderLineCommandHandler(
+        ISalesOrderRepository orders,
+        ICatalogDirectory catalogue,
+        ISalesUnitOfWork unitOfWork)
     {
         _orders = orders;
+        _catalogue = catalogue;
         _unitOfWork = unitOfWork;
     }
 
@@ -247,8 +246,36 @@ public sealed class AddSalesOrderLineCommandHandler : ICommandHandler<AddSalesOr
             return Result.Failure<Guid>(SalesErrors.Order.NotFound(request.SalesOrderId.ToString()));
         }
 
+        // The order's own state guard first. Asking the catalogue about a part nobody is allowed
+        // to add is a wasted round trip, and reporting "that part is obsolete" when the real
+        // answer is "that order was confirmed on Tuesday" sends somebody looking in the wrong
+        // place.
+        if (!order.IsEditable)
+        {
+            return Result.Failure<Guid>(SalesErrors.Order.NotEditable);
+        }
+
+        PartDescriptor? part = await _catalogue
+            .GetAsync(request.PartId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (part is null)
+        {
+            return Result.Failure<Guid>(
+                SalesErrors.Line.PartNotInCatalogue(request.PartId.ToString()));
+        }
+
+        if (!part.IsSellable)
+        {
+            return Result.Failure<Guid>(
+                SalesErrors.Line.PartNotSellable(part.Sku, part.SupersededByPartId));
+        }
+
+        // The stocking unit, not a unit the caller chose. Every quantity ever recorded against
+        // this part is in this unit, and a line raised in another one is a reservation that
+        // cannot be filled and an invoice that cannot be reconciled.
         Result<Quantity> quantity = Quantity.Create(
-            request.Quantity, UnitOfMeasure.FromCode(request.UnitCode));
+            request.Quantity, UnitOfMeasure.FromCode(part.StockUnitCode));
 
         if (quantity.IsFailure)
         {
@@ -256,9 +283,9 @@ public sealed class AddSalesOrderLineCommandHandler : ICommandHandler<AddSalesOr
         }
 
         Result<SalesOrderLineId> line = order.AddLine(
-            new PartRef(request.PartId),
-            request.Sku,
-            request.Description,
+            new PartRef(part.PartId),
+            part.Sku,
+            part.Name,
             quantity.Value,
             Money.Of(request.UnitPrice, order.Currency),
             request.DiscountPercent,

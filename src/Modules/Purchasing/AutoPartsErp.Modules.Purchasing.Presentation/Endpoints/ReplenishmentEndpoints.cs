@@ -88,9 +88,6 @@ public sealed class ReplenishmentEndpoints : IEndpointGroup
             new AddSuggestionToPurchaseOrderCommand(
                 suggestionId,
                 body.PurchaseOrderId,
-                body.Sku,
-                body.Description,
-                body.UnitCode,
                 body.UnitPrice,
                 body.Quantity),
             cancellationToken);
@@ -106,15 +103,9 @@ public sealed record DismissRequest(string Reason);
 
 /// <summary>Body of a request that turns a suggestion into an order line.</summary>
 /// <param name="PurchaseOrderId">The draft order to add it to.</param>
-/// <param name="Sku">The part's SKU, snapshotted onto the document.</param>
-/// <param name="Description">The part's description, snapshotted onto the document.</param>
-/// <param name="UnitCode">The unit to order in, e.g. EA, SET, L.</param>
 /// <param name="UnitPrice">The agreed price per unit, in the order's currency.</param>
 /// <param name="Quantity">How much to order, when the buyer wants something other than the suggestion.</param>
 public sealed record AddSuggestionToOrderRequest(
     Guid PurchaseOrderId,
-    string Sku,
-    string Description,
-    string UnitCode,
     decimal UnitPrice,
     decimal? Quantity);

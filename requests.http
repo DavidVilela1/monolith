@@ -191,17 +191,16 @@ X-Tenant-Id: {{tenant}}
   "notes": "Weekly stock order."
 }
 
-### 2. Put a part on it. Sku and description are snapshotted onto the document.
+### 2. Put a part on it. The SKU, the description and the unit come from the catalogue -
+### only the part, the quantity and the agreed price are typed. A part that is not
+### purchasable is refused here with purchasing.line.part_not_purchasable.
 POST {{host}}/api/purchasing/orders/{{orderId}}/lines
 Content-Type: application/json
 X-Tenant-Id: {{tenant}}
 
 {
   "partId": "REPLACE-WITH-A-PART-ID",
-  "sku": "BP-1188",
-  "description": "Brake pad set, front",
   "quantity": 10,
-  "unitCode": "EA",
   "unitPrice": 24.50
 }
 
@@ -264,9 +263,6 @@ X-Tenant-Id: {{tenant}}
 
 {
   "purchaseOrderId": "REPLACE-WITH-A-DRAFT-ORDER-ID",
-  "sku": "BP-1188",
-  "description": "Brake pad set, front",
-  "unitCode": "EA",
   "unitPrice": 24.50
 }
 
@@ -342,10 +338,7 @@ X-Tenant-Id: {{tenant}}
 
 {
   "partId": "REPLACE-WITH-A-PART-ID",
-  "sku": "BP-1188",
-  "description": "Brake pad set, front",
   "quantity": 10,
-  "unitCode": "EA",
   "unitPrice": 24.50,
   "discountPercent": 10,
   "vatRatePercent": 23

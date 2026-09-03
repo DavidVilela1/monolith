@@ -106,6 +106,28 @@ public static class PurchasingErrors
         public static readonly Error PartRequired =
             Error.Validation("purchasing.line.part_required", "A part is required.");
 
+        /// <summary>The catalogue has never heard of that part.</summary>
+        public static Error PartNotInCatalogue(string identifier) =>
+            Error.NotFound(
+                "purchasing.line.part_not_in_catalogue",
+                $"No part in the catalogue matches '{identifier}'.");
+
+        /// <summary>
+        /// The part exists but is not something to be buying.
+        /// <para>
+        /// Stricter than the sales rule, deliberately: a discontinued part may still be sold down
+        /// off the shelf, but ordering more of it is how dead stock is bought on purpose.
+        /// </para>
+        /// </summary>
+        public static Error PartNotPurchasable(string sku, Guid? supersededBy) =>
+            Error.DomainRule(
+                "purchasing.line.part_not_purchasable",
+                supersededBy is null
+                    ? $"{sku} is not available to order. It may be a draft, or withdrawn from " +
+                      "purchasing and being sold down."
+                    : $"{sku} has been withdrawn from purchasing. The catalogue replaces it with " +
+                      $"part {supersededBy.Value}.");
+
         /// <summary>Ordering nothing is not ordering.</summary>
         public static readonly Error QuantityNotPositive =
             Error.Validation("purchasing.line.quantity_not_positive", "An order quantity must be above zero.");

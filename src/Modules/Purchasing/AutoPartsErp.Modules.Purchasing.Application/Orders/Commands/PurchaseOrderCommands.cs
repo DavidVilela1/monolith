@@ -1,3 +1,4 @@
+using AutoPartsErp.ModuleContracts.Catalog;
 using AutoPartsErp.ModuleContracts.Partners;
 using AutoPartsErp.Modules.Purchasing.Domain;
 using AutoPartsErp.Modules.Purchasing.Domain.Orders;
@@ -142,18 +143,18 @@ public sealed class CreatePurchaseOrderCommandHandler : ICommandHandler<CreatePu
 /// <summary>Adds a part to a draft order.</summary>
 /// <param name="PurchaseOrderId">The order.</param>
 /// <param name="PartId">The part to buy.</param>
-/// <param name="Sku">Its SKU, snapshotted onto the document.</param>
-/// <param name="Description">Its description, snapshotted onto the document.</param>
-/// <param name="Quantity">How much to order.</param>
-/// <param name="UnitCode">The unit to order it in, e.g. EA, SET, L.</param>
+/// <param name="Quantity">How much to order, in the part's stocking unit.</param>
 /// <param name="UnitPrice">The agreed price per unit, in the order's currency.</param>
+/// <remarks>
+/// This command used to carry the SKU, the description and the unit as well. It no longer does:
+/// the caller says which part it means and the catalogue is asked what that part is called and
+/// how it is counted. An old client still sending those three gets them silently ignored, which
+/// is worth knowing if you have anything scripted against that endpoint.
+/// </remarks>
 public sealed record AddPurchaseOrderLineCommand(
     Guid PurchaseOrderId,
     Guid PartId,
-    string Sku,
-    string Description,
     decimal Quantity,
-    string UnitCode,
     decimal UnitPrice) : ICommand<Guid>;
 
 /// <summary>Checks the shape of an <see cref="AddPurchaseOrderLineCommand"/>.</summary>
@@ -185,13 +186,6 @@ public sealed class AddPurchaseOrderLineCommandValidator : IValidator<AddPurchas
                 nameof(instance.UnitPrice), "negative", "A unit price cannot be negative."));
         }
 
-        if (!UnitOfMeasure.TryFromCode(instance.UnitCode, out _))
-        {
-            failures.Add(new ValidationFailure(
-                nameof(instance.UnitCode), "unknown_unit",
-                $"'{instance.UnitCode}' is not a known unit of measure."));
-        }
-
         return ValueTask.FromResult<IReadOnlyList<ValidationFailure>>(failures);
     }
 }
@@ -200,14 +194,17 @@ public sealed class AddPurchaseOrderLineCommandValidator : IValidator<AddPurchas
 public sealed class AddPurchaseOrderLineCommandHandler : ICommandHandler<AddPurchaseOrderLineCommand, Guid>
 {
     private readonly IPurchaseOrderRepository _orders;
+    private readonly ICatalogDirectory _catalogue;
     private readonly IPurchasingUnitOfWork _unitOfWork;
 
     /// <summary>Initializes the handler.</summary>
     public AddPurchaseOrderLineCommandHandler(
         IPurchaseOrderRepository orders,
+        ICatalogDirectory catalogue,
         IPurchasingUnitOfWork unitOfWork)
     {
         _orders = orders;
+        _catalogue = catalogue;
         _unitOfWork = unitOfWork;
     }
 
@@ -228,8 +225,33 @@ public sealed class AddPurchaseOrderLineCommandHandler : ICommandHandler<AddPurc
                 PurchasingErrors.Order.NotFound(request.PurchaseOrderId.ToString()));
         }
 
+        // The order's own state guard first, so a line added to a sent order reports that rather
+        // than whatever the catalogue happens to think of the part.
+        if (!order.IsEditable)
+        {
+            return Result.Failure<Guid>(PurchasingErrors.Order.NotEditable);
+        }
+
+        PartDescriptor? part = await _catalogue
+            .GetAsync(request.PartId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (part is null)
+        {
+            return Result.Failure<Guid>(
+                PurchasingErrors.Line.PartNotInCatalogue(request.PartId.ToString()));
+        }
+
+        if (!part.IsPurchasable)
+        {
+            return Result.Failure<Guid>(
+                PurchasingErrors.Line.PartNotPurchasable(part.Sku, part.SupersededByPartId));
+        }
+
+        // The stocking unit, not a unit the caller chose. Goods received against this line become
+        // stock, and stock is counted in one unit per part.
         Result<Quantity> quantity = Quantity.Create(
-            request.Quantity, UnitOfMeasure.FromCode(request.UnitCode));
+            request.Quantity, UnitOfMeasure.FromCode(part.StockUnitCode));
 
         if (quantity.IsFailure)
         {
@@ -237,9 +259,9 @@ public sealed class AddPurchaseOrderLineCommandHandler : ICommandHandler<AddPurc
         }
 
         Result<PurchaseOrderLineId> line = order.AddLine(
-            new PartRef(request.PartId),
-            request.Sku,
-            request.Description,
+            new PartRef(part.PartId),
+            part.Sku,
+            part.Name,
             quantity.Value,
             Money.Of(request.UnitPrice, order.Currency));
 

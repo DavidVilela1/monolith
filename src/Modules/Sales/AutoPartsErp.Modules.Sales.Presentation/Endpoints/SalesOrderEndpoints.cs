@@ -162,8 +162,8 @@ public sealed class SalesOrderEndpoints : IEndpointGroup
 
         Result<Guid> result = await dispatcher.SendAsync(
             new AddSalesOrderLineCommand(
-                salesOrderId, body.PartId, body.Sku, body.Description, body.Quantity,
-                body.UnitCode, body.UnitPrice, body.DiscountPercent, body.VatRatePercent),
+                salesOrderId, body.PartId, body.Quantity, body.UnitPrice,
+                body.DiscountPercent, body.VatRatePercent),
             cancellationToken);
 
         return result.ToCreated(lineId => $"/api/sales/orders/{salesOrderId}/lines/{lineId}");
@@ -265,19 +265,13 @@ public sealed class SalesOrderEndpoints : IEndpointGroup
 
 /// <summary>Body of an add-line request.</summary>
 /// <param name="PartId">The part to sell.</param>
-/// <param name="Sku">Its SKU, snapshotted onto the document.</param>
-/// <param name="Description">Its description, snapshotted onto the document.</param>
-/// <param name="Quantity">How much to sell.</param>
-/// <param name="UnitCode">The unit to sell it in, e.g. EA, SET, L.</param>
+/// <param name="Quantity">How much to sell, in the part's stocking unit.</param>
 /// <param name="UnitPrice">The list price per unit, in the order's currency.</param>
 /// <param name="DiscountPercent">The discount given, 0 to 100.</param>
 /// <param name="VatRatePercent">The VAT rate, 0 to 100. Portugal's normal rate is 23.</param>
 public sealed record AddSalesLineRequest(
     Guid PartId,
-    string Sku,
-    string Description,
     decimal Quantity,
-    string UnitCode,
     decimal UnitPrice,
     decimal DiscountPercent = 0m,
     decimal VatRatePercent = 23m);

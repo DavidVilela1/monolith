@@ -1,7 +1,9 @@
+using AutoPartsErp.ModuleContracts.Catalog;
 using AutoPartsErp.Modules.Abstractions.DependencyInjection;
 using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Catalog.Application.Abstractions;
 using AutoPartsErp.Modules.Catalog.Domain;
+using AutoPartsErp.Modules.Catalog.Infrastructure.Contracts;
 using AutoPartsErp.Modules.Catalog.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Catalog.Infrastructure.Persistence.ReadStore;
 using AutoPartsErp.Modules.Catalog.Infrastructure.Persistence.Repositories;
@@ -82,6 +84,11 @@ public sealed class CatalogModule : IModule
         services.AddScoped<ICategoryRepository, CategoryRepository>();
         services.AddScoped<ICatalogReadStore, CatalogReadStore>();
         services.AddScoped<CatalogSeeder>();
+
+        // The one question this module answers for the rest of the system, synchronously.
+        // Registered here rather than in the consumers, because a contract is only a boundary if
+        // the module that owns the data is the one that decides how it is answered.
+        services.AddScoped<ICatalogDirectory, CatalogDirectory>();
 
         // Picks up every command handler, query handler and validator in the application assembly.
         services.AddModuleHandlers(typeof(Application.Parts.Commands.CreatePartCommand).Assembly);

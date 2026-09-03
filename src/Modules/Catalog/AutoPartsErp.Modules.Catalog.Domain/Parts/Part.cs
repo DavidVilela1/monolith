@@ -133,11 +133,22 @@ public sealed class Part : AggregateRoot<PartId>, IAuditable, ISoftDeletable, IT
     /// </summary>
     public static readonly PartStatus[] SellableStatuses = [PartStatus.Active, PartStatus.Discontinued];
 
+    /// <summary>
+    /// The statuses in which a part may still be ordered from a supplier: live only. A part
+    /// withdrawn from purchasing is being sold down, not restocked.
+    /// <para>
+    /// Exposed as data for the same reason as <see cref="SellableStatuses"/>: query and
+    /// projection code cannot call a computed property, and a rule restated in two places is a
+    /// rule that will eventually disagree with itself.
+    /// </para>
+    /// </summary>
+    public static readonly PartStatus[] PurchasableStatuses = [PartStatus.Active];
+
     /// <summary>True when the part can appear on a new sales order.</summary>
-    public bool IsSellable => Status is PartStatus.Active or PartStatus.Discontinued;
+    public bool IsSellable => SellableStatuses.Contains(Status);
 
     /// <summary>True when the part can appear on a new purchase order.</summary>
-    public bool IsPurchasable => Status == PartStatus.Active;
+    public bool IsPurchasable => PurchasableStatuses.Contains(Status);
 
     /// <summary>
     /// Registers a new part. It starts in <see cref="PartStatus.Draft"/>: nothing can be bought

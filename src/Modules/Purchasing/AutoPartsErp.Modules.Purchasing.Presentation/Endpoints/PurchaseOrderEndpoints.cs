@@ -166,8 +166,7 @@ public sealed class PurchaseOrderEndpoints : IEndpointGroup
 
         Result<Guid> result = await dispatcher.SendAsync(
             new AddPurchaseOrderLineCommand(
-                purchaseOrderId, body.PartId, body.Sku, body.Description,
-                body.Quantity, body.UnitCode, body.UnitPrice),
+                purchaseOrderId, body.PartId, body.Quantity, body.UnitPrice),
             cancellationToken);
 
         return result.ToCreated(lineId => $"/api/purchasing/orders/{purchaseOrderId}/lines/{lineId}");
@@ -282,17 +281,11 @@ public sealed class PurchaseOrderEndpoints : IEndpointGroup
 
 /// <summary>Body of an add-line request.</summary>
 /// <param name="PartId">The part to buy.</param>
-/// <param name="Sku">Its SKU, snapshotted onto the document.</param>
-/// <param name="Description">Its description, snapshotted onto the document.</param>
-/// <param name="Quantity">How much to order.</param>
-/// <param name="UnitCode">The unit to order it in, e.g. EA, SET, L.</param>
+/// <param name="Quantity">How much to order, in the part's stocking unit.</param>
 /// <param name="UnitPrice">The agreed price per unit, in the order's currency.</param>
 public sealed record AddLineRequest(
     Guid PartId,
-    string Sku,
-    string Description,
     decimal Quantity,
-    string UnitCode,
     decimal UnitPrice);
 
 /// <summary>Body of a request that carries a single quantity.</summary>

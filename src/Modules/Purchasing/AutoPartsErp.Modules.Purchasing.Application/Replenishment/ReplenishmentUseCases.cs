@@ -1,3 +1,4 @@
+using AutoPartsErp.ModuleContracts.Catalog;
 using AutoPartsErp.Modules.Purchasing.Application.Abstractions;
 using AutoPartsErp.Modules.Purchasing.Application.Contracts;
 using AutoPartsErp.Modules.Purchasing.Domain;
@@ -117,24 +118,23 @@ public sealed class DismissReplenishmentSuggestionCommandHandler
 /// system that raised a purchase order per reorder signal would be worse than useless.
 /// </para>
 /// <para>
-/// The SKU, description and price come from the caller because a suggestion knows none of them:
-/// it carries a part id, a warehouse and a number. Pricing is its own module, and until it
-/// exists somebody has to type what the supplier charges.
+/// A suggestion carries a part id, a warehouse and a number, and nothing else. The SKU, the
+/// description and the unit come from the catalogue, exactly as they do on the hand-raised
+/// path — two ways onto the same document that describe a part differently is how the same
+/// part ends up on one order as "Brake pad set" and on the next as "brk pads frt".
+/// </para>
+/// <para>
+/// The price still comes from the caller. Pricing is its own module, and until it exists
+/// somebody has to type what the supplier charges.
 /// </para>
 /// </summary>
 /// <param name="SuggestionId">The suggestion to act on.</param>
 /// <param name="PurchaseOrderId">The draft order to add it to.</param>
-/// <param name="Sku">The part's SKU, snapshotted onto the document.</param>
-/// <param name="Description">The part's description, snapshotted onto the document.</param>
-/// <param name="UnitCode">The unit to order in, e.g. EA, SET, L.</param>
 /// <param name="UnitPrice">The agreed price per unit, in the order's currency.</param>
 /// <param name="Quantity">How much to order, when the buyer wants something other than the suggestion.</param>
 public sealed record AddSuggestionToPurchaseOrderCommand(
     Guid SuggestionId,
     Guid PurchaseOrderId,
-    string Sku,
-    string Description,
-    string UnitCode,
     decimal UnitPrice,
     decimal? Quantity = null) : ICommand<Guid>;
 
@@ -144,16 +144,19 @@ public sealed class AddSuggestionToPurchaseOrderCommandHandler
 {
     private readonly IReplenishmentSuggestionRepository _suggestions;
     private readonly IPurchaseOrderRepository _orders;
+    private readonly ICatalogDirectory _catalogue;
     private readonly IPurchasingUnitOfWork _unitOfWork;
 
     /// <summary>Initializes the handler.</summary>
     public AddSuggestionToPurchaseOrderCommandHandler(
         IReplenishmentSuggestionRepository suggestions,
         IPurchaseOrderRepository orders,
+        ICatalogDirectory catalogue,
         IPurchasingUnitOfWork unitOfWork)
     {
         _suggestions = suggestions;
         _orders = orders;
+        _catalogue = catalogue;
         _unitOfWork = unitOfWork;
     }
 
@@ -184,15 +187,33 @@ public sealed class AddSuggestionToPurchaseOrderCommandHandler
                 PurchasingErrors.Order.NotFound(request.PurchaseOrderId.ToString()));
         }
 
-        if (!UnitOfMeasure.TryFromCode(request.UnitCode, out UnitOfMeasure unit))
+        if (!order.IsEditable)
         {
-            return Result.Failure<Guid>(Error.Validation(
-                "purchasing.suggestion.unknown_unit",
-                $"'{request.UnitCode}' is not a known unit of measure."));
+            return Result.Failure<Guid>(PurchasingErrors.Order.NotEditable);
+        }
+
+        PartDescriptor? part = await _catalogue
+            .GetAsync(suggestion.PartId.Value, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (part is null)
+        {
+            return Result.Failure<Guid>(
+                PurchasingErrors.Line.PartNotInCatalogue(suggestion.PartId.Value.ToString()));
+        }
+
+        // A suggestion raised weeks ago against a part since withdrawn from purchasing is exactly
+        // the case this catches. The reorder point fired on real stock movement; whether the
+        // company still wants to carry the part is a separate decision, and the catalogue holds it.
+        if (!part.IsPurchasable)
+        {
+            return Result.Failure<Guid>(
+                PurchasingErrors.Line.PartNotPurchasable(part.Sku, part.SupersededByPartId));
         }
 
         Result<Quantity> quantity = Quantity.Create(
-            request.Quantity ?? suggestion.SuggestedQuantity, unit);
+            request.Quantity ?? suggestion.SuggestedQuantity,
+            UnitOfMeasure.FromCode(part.StockUnitCode));
 
         if (quantity.IsFailure)
         {
@@ -201,8 +222,8 @@ public sealed class AddSuggestionToPurchaseOrderCommandHandler
 
         Result<PurchaseOrderLineId> line = order.AddLine(
             suggestion.PartId,
-            request.Sku,
-            request.Description,
+            part.Sku,
+            part.Name,
             quantity.Value,
             Money.Of(request.UnitPrice, order.Currency));
 

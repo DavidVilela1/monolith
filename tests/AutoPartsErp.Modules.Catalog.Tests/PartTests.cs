@@ -339,7 +339,6 @@ internal static class PartTestData
             UnitOfMeasure.Each).Value;
 }
 
-
 /// <summary>
 /// The sellable-status list is what the counter-facing queries filter on, so it has to stay
 /// in step with the IsSellable rule. If someone adds a status and updates only one of them,
@@ -374,5 +373,36 @@ public sealed class SellableStatusTests
 
         part.IsSellable.Should().BeTrue();
         Part.SellableStatuses.Should().Contain(part.Status);
+    }
+}
+
+/// <summary>
+/// The purchasable-status list is the other half of the same guard, and it is stricter: a
+/// discontinued part may still be sold down off the shelf, but ordering more of it is how dead
+/// stock gets bought on purpose. Catalog now answers this question for Purchasing across a
+/// module boundary, so the list and the rule disagreeing would not fail loudly here — it would
+/// quietly let somebody restock a part the company decided to stop carrying.
+/// </summary>
+public sealed class PurchasableStatusTests
+{
+    [Theory]
+    [InlineData(PartStatus.Draft, false)]
+    [InlineData(PartStatus.Active, true)]
+    [InlineData(PartStatus.Discontinued, false)]
+    [InlineData(PartStatus.Obsolete, false)]
+    public void The_purchasable_list_agrees_with_the_IsPurchasable_rule(PartStatus status, bool expected)
+    {
+        Part.PurchasableStatuses.Contains(status).Should().Be(expected);
+    }
+
+    [Fact]
+    public void A_discontinued_part_can_still_be_sold_but_not_ordered()
+    {
+        Part part = PartTestData.NewPart();
+        part.Activate();
+        part.Discontinue();
+
+        part.IsSellable.Should().BeTrue();
+        part.IsPurchasable.Should().BeFalse();
     }
 }

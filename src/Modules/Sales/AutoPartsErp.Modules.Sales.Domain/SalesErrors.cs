@@ -82,6 +82,28 @@ public static class SalesErrors
         public static readonly Error PartRequired =
             Error.Validation("sales.line.part_required", "A part is required.");
 
+        /// <summary>The catalogue has never heard of that part.</summary>
+        public static Error PartNotInCatalogue(string identifier) =>
+            Error.NotFound(
+                "sales.line.part_not_in_catalogue",
+                $"No part in the catalogue matches '{identifier}'.");
+
+        /// <summary>
+        /// The part exists but is not something that may be sold today.
+        /// <para>
+        /// A draft part is half set up; an obsolete one is kept only so old invoices still
+        /// resolve. Either way the answer is no, and where the catalogue knows what replaces it,
+        /// saying so is the difference between a refusal and a dead end.
+        /// </para>
+        /// </summary>
+        public static Error PartNotSellable(string sku, Guid? supersededBy) =>
+            Error.DomainRule(
+                "sales.line.part_not_sellable",
+                supersededBy is null
+                    ? $"{sku} is not available for sale."
+                    : $"{sku} is not available for sale. The catalogue replaces it with part " +
+                      $"{supersededBy.Value}.");
+
         /// <summary>Selling nothing is not selling.</summary>
         public static readonly Error QuantityNotPositive =
             Error.Validation("sales.line.quantity_not_positive", "A quantity must be above zero.");
