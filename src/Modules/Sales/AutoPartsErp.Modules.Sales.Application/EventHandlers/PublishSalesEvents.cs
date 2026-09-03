@@ -79,6 +79,7 @@ public sealed class PublishStockReservationRequested
                 domainEvent.WarehouseId.Value,
                 domainEvent.Quantity,
                 domainEvent.UnitCode,
+                domainEvent.AllowPartial,
                 _tenantContext.TenantId),
             cancellationToken);
     }

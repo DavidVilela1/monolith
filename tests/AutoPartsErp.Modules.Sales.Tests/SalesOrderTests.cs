@@ -332,6 +332,35 @@ public sealed class SalesOrderConfirmationTests
     }
 
     [Fact]
+    public void A_normal_confirmation_asks_for_the_whole_quantity()
+    {
+        (SalesOrder order, _) = Fixture.DraftWithLine(10);
+        order.ClearDomainEvents();
+
+        order.Confirm(Fixture.Today);
+
+        StockReservationRequestedDomainEvent requested =
+            order.DomainEvents.OfType<StockReservationRequestedDomainEvent>().Single();
+
+        requested.Quantity.Should().Be(10m);
+        requested.AllowPartial.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_back_order_tells_inventory_to_hold_what_it_can()
+    {
+        // Without this flag a deliberate back-order would fail its reservation ten times and
+        // dead-letter — a 204 at the counter and a broken row nobody looks at.
+        (SalesOrder order, _) = Fixture.DraftWithLine(10);
+        order.ClearDomainEvents();
+
+        order.Confirm(Fixture.Today, requiredBy: null, allowBackorder: true);
+
+        order.DomainEvents.OfType<StockReservationRequestedDomainEvent>()
+            .Single().AllowPartial.Should().BeTrue();
+    }
+
+    [Fact]
     public void A_required_date_in_the_past_is_refused()
     {
         (SalesOrder order, _) = Fixture.DraftWithLine();

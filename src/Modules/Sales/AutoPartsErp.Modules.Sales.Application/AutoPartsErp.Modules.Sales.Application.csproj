@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\AutoPartsErp.Modules.Sales.Domain\AutoPartsErp.Modules.Sales.Domain.csproj" />
     <ProjectReference Include="..\..\..\Shared\AutoPartsErp.IntegrationEvents\AutoPartsErp.IntegrationEvents.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.ModuleContracts\AutoPartsErp.ModuleContracts.csproj" />
   </ItemGroup>
 
 </Project>

@@ -50,6 +50,11 @@ public sealed record SalesOrderConfirmedDomainEvent(
 /// <param name="WarehouseId">Where to hold it.</param>
 /// <param name="Quantity">How much.</param>
 /// <param name="UnitCode">The unit the quantity is in.</param>
+/// <param name="AllowPartial">
+/// True when the order was confirmed as a back-order, so Inventory should hold whatever it can
+/// rather than refusing. Without this, a deliberate back-order would fail its reservation ten
+/// times and dead-letter — a 204 at the counter and a broken row nobody looks at.
+/// </param>
 public sealed record StockReservationRequestedDomainEvent(
     SalesOrderId SalesOrderId,
     string OrderNumber,
@@ -57,7 +62,8 @@ public sealed record StockReservationRequestedDomainEvent(
     PartRef PartId,
     WarehouseRef WarehouseId,
     decimal Quantity,
-    string UnitCode) : DomainEvent;
+    string UnitCode,
+    bool AllowPartial) : DomainEvent;
 
 /// <summary>Raised when goods leave against a line.</summary>
 /// <param name="SalesOrderId">The order.</param>

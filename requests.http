@@ -179,14 +179,13 @@ X-Tenant-Id: {{tenant}}
 # have: grab them from /api/partners?isSupplier=true and /api/catalog/parts.
 # ---------------------------------------------------------------------------
 
-### 1. Start a draft order. The order number is assigned server-side.
+### 1. Start a draft order. The supplier's code is read from Partners, not typed.
 POST {{host}}/api/purchasing/orders
 Content-Type: application/json
 X-Tenant-Id: {{tenant}}
 
 {
   "supplierId": "REPLACE-WITH-A-SUPPLIER-PARTNER-ID",
-  "supplierCode": "BOSCH",
   "warehouseId": "REPLACE-WITH-A-WAREHOUSE-ID",
   "currencyCode": "EUR",
   "notes": "Weekly stock order."
@@ -352,7 +351,7 @@ X-Tenant-Id: {{tenant}}
   "vatRatePercent": 23
 }
 
-### 3. Confirm. Checks hold and credit, then claims the stock.
+### 3. Confirm. Checks stock, then the hold and the credit, then claims the stock.
 POST {{host}}/api/sales/orders/{{salesOrderId}}/confirm
 Content-Type: application/json
 X-Tenant-Id: {{tenant}}
@@ -428,3 +427,55 @@ Content-Type: application/json
 X-Tenant-Id: {{tenant}}
 
 { "reason": "Customer changed their mind." }
+
+# ---------------------------------------------------------------------------
+# Module query contracts
+#
+# The two places one module now asks another a question synchronously,
+# instead of trusting the caller or finding out an hour later in a log.
+# ---------------------------------------------------------------------------
+
+### Confirming without enough stock -> 422 sales.line.insufficient_stock, with the numbers
+POST {{host}}/api/sales/orders/{{salesOrderId}}/confirm
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{}
+
+### The same order, taken deliberately as a back-order -> 204
+POST {{host}}/api/sales/orders/{{salesOrderId}}/confirm
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{ "allowBackorder": true }
+
+### Raising a purchase order on a partner who is not a supplier
+### -> 422 purchasing.order.supplier_not_purchasable
+POST {{host}}/api/purchasing/orders
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "supplierId": "REPLACE-WITH-A-CUSTOMER-ONLY-PARTNER-ID",
+  "warehouseId": "REPLACE-WITH-A-WAREHOUSE-ID",
+  "currencyCode": "EUR"
+}
+
+### ...or on a partner who does not exist -> 404 purchasing.order.supplier_not_found
+POST {{host}}/api/purchasing/orders
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "supplierId": "00000000-0000-0000-0000-000000000099",
+  "warehouseId": "REPLACE-WITH-A-WAREHOUSE-ID",
+  "currencyCode": "EUR"
+}
+
+### Put a supplier on hold in Partners, then try to buy from them
+### -> 422 purchasing.order.supplier_not_purchasable, immediately (no outbox delay)
+POST {{host}}/api/partners/{{supplierId}}/hold
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{ "reason": "Quality dispute on the last three deliveries." }

@@ -1,3 +1,4 @@
+using AutoPartsErp.ModuleContracts.Partners;
 using AutoPartsErp.Modules.Purchasing.Domain;
 using AutoPartsErp.Modules.Purchasing.Domain.Orders;
 using AutoPartsErp.SharedKernel.Abstractions;
@@ -10,21 +11,17 @@ namespace AutoPartsErp.Modules.Purchasing.Application.Orders.Commands;
 /// <summary>
 /// Starts a draft purchase order.
 /// <para>
-/// The supplier's code is supplied by the caller rather than looked up. Purchasing cannot see
-/// the Partners schema, and there is no synchronous module contract yet — so for now the caller
-/// passes what it read from Partners, and this module snapshots it onto the document. The check
-/// that the partner really is an active supplier is the one thing still missing from this path;
-/// <c>PurchasingErrors.Order.SupplierNotPurchasable</c> is defined and waiting for it.
+/// Only the supplier is named. Their code comes from Partners, through the directory contract,
+/// and so does the answer to the question this command used to take on trust: is this partner
+/// actually a supplier we are allowed to buy from right now?
 /// </para>
 /// </summary>
 /// <param name="SupplierId">Who we are buying from.</param>
-/// <param name="SupplierCode">Their short code, snapshotted onto the document.</param>
 /// <param name="WarehouseId">Where the goods are to be delivered.</param>
 /// <param name="CurrencyCode">The currency the order is priced in.</param>
 /// <param name="Notes">Anything the buyer wants recorded against it.</param>
 public sealed record CreatePurchaseOrderCommand(
     Guid SupplierId,
-    string SupplierCode,
     Guid WarehouseId,
     string CurrencyCode,
     string? Notes = null) : ICommand<Guid>;
@@ -69,16 +66,19 @@ public sealed class CreatePurchaseOrderCommandValidator : IValidator<CreatePurch
 public sealed class CreatePurchaseOrderCommandHandler : ICommandHandler<CreatePurchaseOrderCommand, Guid>
 {
     private readonly IPurchaseOrderRepository _orders;
+    private readonly IPartnerDirectory _partners;
     private readonly IPurchasingUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
 
     /// <summary>Initializes the handler.</summary>
     public CreatePurchaseOrderCommandHandler(
         IPurchaseOrderRepository orders,
+        IPartnerDirectory partners,
         IPurchasingUnitOfWork unitOfWork,
         IDateTimeProvider clock)
     {
         _orders = orders;
+        _partners = partners;
         _unitOfWork = unitOfWork;
         _clock = clock;
     }
@@ -90,6 +90,23 @@ public sealed class CreatePurchaseOrderCommandHandler : ICommandHandler<CreatePu
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        PartnerTradingStatus? supplier = await _partners
+            .GetAsync(request.SupplierId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (supplier is null)
+        {
+            return Result.Failure<Guid>(
+                PurchasingErrors.Order.SupplierNotFound(request.SupplierId.ToString()));
+        }
+
+        // The rule itself lives on the Partner aggregate - "a supplier, and not on hold". This
+        // asks the question; it does not answer it a second time.
+        if (!supplier.CanPlacePurchaseOrders)
+        {
+            return Result.Failure<Guid>(PurchasingErrors.Order.SupplierNotPurchasable);
+        }
+
         string orderNumber = await _orders
             .NextOrderNumberAsync(_clock.TodayUtc.Year, cancellationToken)
             .ConfigureAwait(false);
@@ -97,7 +114,7 @@ public sealed class CreatePurchaseOrderCommandHandler : ICommandHandler<CreatePu
         Result<PurchaseOrder> order = PurchaseOrder.Draft(
             orderNumber,
             new SupplierRef(request.SupplierId),
-            request.SupplierCode,
+            supplier.Code,
             new WarehouseRef(request.WarehouseId),
             Currency.FromCode(request.CurrencyCode));
 

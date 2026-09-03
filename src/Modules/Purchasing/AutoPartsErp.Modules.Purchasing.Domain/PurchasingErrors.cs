@@ -26,6 +26,12 @@ public static class PurchasingErrors
                 "purchasing.order.warehouse_required",
                 "Say which warehouse the goods are being delivered to.");
 
+        /// <summary>No such partner exists.</summary>
+        public static Error SupplierNotFound(string identifier) =>
+            Error.NotFound(
+                "purchasing.order.supplier_not_found",
+                $"No partner matches '{identifier}'.");
+
         /// <summary>The supplier is not set up to be bought from.</summary>
         public static readonly Error SupplierNotPurchasable =
             Error.DomainRule(

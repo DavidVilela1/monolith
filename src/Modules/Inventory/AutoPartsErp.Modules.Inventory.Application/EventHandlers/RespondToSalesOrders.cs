@@ -16,10 +16,15 @@ namespace AutoPartsErp.Modules.Inventory.Application.EventHandlers;
 /// minutes between quoting it and picking it.
 /// </para>
 /// <para>
-/// If there is not enough available, this throws. The outbox retries with backoff and eventually
-/// gives up, leaving a row with an error on it. That is the honest outcome of the gap Sales still
-/// has: it confirms orders without asking whether the stock exists, so the refusal surfaces here
-/// rather than at the counter where it belongs.
+/// Sales asks Inventory what is available before it confirms, so a short line is normally
+/// refused at the counter and never reaches here. This still throws when there is not enough,
+/// because by then something has gone wrong that a person should see — stock sold in the seconds
+/// between the check and the commit, most likely.
+/// </para>
+/// <para>
+/// The exception is a deliberate back-order, which arrives with <c>AllowPartial</c> set. Then
+/// holding whatever is there is the right answer and refusing is not: somebody chose to promise
+/// goods that had not arrived, and ten failed retries would be the system arguing with them.
 /// </para>
 /// </summary>
 public sealed class ReserveStockOnSalesOrderConfirmed
@@ -85,13 +90,30 @@ public sealed class ReserveStockOnSalesOrderConfirmed
                 $"Could not build a reference for {integrationEvent.OrderNumber}: {reference.Error}");
         }
 
+        decimal toHold = integrationEvent.Quantity;
+
+        if (integrationEvent.AllowPartial)
+        {
+            decimal available = stockItem.Available.Value;
+
+            if (available <= 0m)
+            {
+                // A back-order with nothing on the shelf to hold. Not a failure — the order is
+                // outstanding and will be picked when the goods arrive. Writes nothing, so no
+                // inbox row either; re-running it would decide the same thing.
+                return;
+            }
+
+            toHold = Math.Min(toHold, available);
+        }
+
         Result<StockReservation> reserved = stockItem.Reserve(
-            integrationEvent.Quantity, reference.Value, _clock.UtcNow);
+            toHold, reference.Value, _clock.UtcNow);
 
         if (reserved.IsFailure)
         {
             throw new InvalidOperationException(
-                $"Could not reserve {integrationEvent.Quantity} of part {integrationEvent.PartId} " +
+                $"Could not reserve {toHold} of part {integrationEvent.PartId} " +
                 $"for {integrationEvent.OrderNumber}: {reserved.Error}");
         }
 

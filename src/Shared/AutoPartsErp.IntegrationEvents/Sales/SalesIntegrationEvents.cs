@@ -44,6 +44,11 @@ public sealed record SalesOrderConfirmedIntegrationEvent(
 /// <param name="WarehouseId">Where to hold it.</param>
 /// <param name="Quantity">How much.</param>
 /// <param name="UnitCode">The unit the quantity is expressed in.</param>
+/// <param name="AllowPartial">
+/// True when the order was taken as a back-order. Inventory holds what it can rather than
+/// refusing, because refusing would mean ten retries and a dead-lettered row for something a
+/// person deliberately chose to do.
+/// </param>
 /// <param name="TenantId">The owning tenant.</param>
 public sealed record StockReservationRequestedIntegrationEvent(
     Guid SalesOrderId,
@@ -53,6 +58,7 @@ public sealed record StockReservationRequestedIntegrationEvent(
     Guid WarehouseId,
     decimal Quantity,
     string UnitCode,
+    bool AllowPartial,
     Guid TenantId) : IntegrationEvent;
 
 /// <summary>

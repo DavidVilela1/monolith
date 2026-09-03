@@ -46,9 +46,13 @@ public sealed class PurchaseOrderEndpoints : IEndpointGroup
 
         group.MapPost("/orders", CreateAsync)
             .WithName("CreatePurchaseOrder")
-            .WithSummary("Start a draft order. The order number is assigned here.")
+            .WithSummary(
+                "Start a draft order. The supplier is verified with Partners and their code read "
+                + "from there; the order number is assigned here.")
             .Produces<Guid>(StatusCodes.Status201Created)
-            .ProducesValidationProblem();
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         group.MapPost("/orders/{purchaseOrderId:guid}/lines", AddLineAsync)
             .WithName("AddPurchaseOrderLine")

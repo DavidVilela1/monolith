@@ -353,7 +353,11 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
     /// </summary>
     /// <param name="today">The current date, supplied so the transition is testable.</param>
     /// <param name="requiredBy">When the customer wants it.</param>
-    public Result Confirm(DateOnly today, DateOnly? requiredBy = null)
+    /// <param name="allowBackorder">
+    /// True when the order was deliberately taken without the stock being there. Travels on to
+    /// Inventory so it holds what it can instead of refusing outright.
+    /// </param>
+    public Result Confirm(DateOnly today, DateOnly? requiredBy = null, bool allowBackorder = false)
     {
         if (Status != SalesOrderStatus.Draft)
         {
@@ -396,7 +400,8 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
                 line.PartId,
                 FromWarehouseId,
                 line.Quantity.Value,
-                line.Quantity.Unit.Code));
+                line.Quantity.Unit.Code,
+                allowBackorder));
         }
 
         return Result.Success();

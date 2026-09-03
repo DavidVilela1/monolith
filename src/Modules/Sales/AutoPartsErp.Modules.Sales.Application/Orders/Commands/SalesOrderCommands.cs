@@ -1,3 +1,4 @@
+using AutoPartsErp.ModuleContracts.Inventory;
 using AutoPartsErp.Modules.Sales.Domain;
 using AutoPartsErp.Modules.Sales.Domain.Customers;
 using AutoPartsErp.Modules.Sales.Domain.Orders;
@@ -450,12 +451,22 @@ public sealed class RemoveSalesOrderLineCommandHandler : ICommandHandler<RemoveS
 /// <summary>Agrees the order with the customer and claims the stock.</summary>
 /// <param name="SalesOrderId">The order.</param>
 /// <param name="RequiredBy">When the customer wants it.</param>
+/// <param name="AllowBackorder">
+/// True to confirm even where there is not enough on the shelf.
+/// <para>
+/// Off by default, and a deliberate act when it is on. A distributor does take back-orders —
+/// but the person promising one should know they are doing it, rather than finding out when
+/// the customer rings about goods that were never going to be there.
+/// </para>
+/// </param>
 public sealed record ConfirmSalesOrderCommand(
     Guid SalesOrderId,
-    DateOnly? RequiredBy = null) : ICommand;
+    DateOnly? RequiredBy = null,
+    bool AllowBackorder = false) : ICommand;
 
 /// <summary>
-/// Confirms the order, after the customer's account has agreed to carry it.
+/// Confirms the order, after the customer's account has agreed to carry it and Inventory has
+/// confirmed the goods exist.
 /// <para>
 /// Two aggregates change here — the order and the account — which is a rule usually worth
 /// keeping. It is broken deliberately: the credit committed and the order that committed it have
@@ -463,11 +474,17 @@ public sealed record ConfirmSalesOrderCommand(
 /// same transaction. Splitting them across an event would buy purity and pay for it with a
 /// number nobody can trust.
 /// </para>
+/// <para>
+/// The stock check is the one synchronous call Sales makes into another module, and it is here
+/// rather than anywhere else because this is the moment a promise is made. It asks about every
+/// line in one round trip.
+/// </para>
 /// </summary>
 public sealed class ConfirmSalesOrderCommandHandler : ICommandHandler<ConfirmSalesOrderCommand>
 {
     private readonly ISalesOrderRepository _orders;
     private readonly ICustomerAccountRepository _customers;
+    private readonly IInventoryAvailability _availability;
     private readonly ISalesUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
 
@@ -475,11 +492,13 @@ public sealed class ConfirmSalesOrderCommandHandler : ICommandHandler<ConfirmSal
     public ConfirmSalesOrderCommandHandler(
         ISalesOrderRepository orders,
         ICustomerAccountRepository customers,
+        IInventoryAvailability availability,
         ISalesUnitOfWork unitOfWork,
         IDateTimeProvider clock)
     {
         _orders = orders;
         _customers = customers;
+        _availability = availability;
         _unitOfWork = unitOfWork;
         _clock = clock;
     }
@@ -509,6 +528,28 @@ public sealed class ConfirmSalesOrderCommandHandler : ICommandHandler<ConfirmSal
             return SalesErrors.Customer.NotFound(order.CustomerId.ToString());
         }
 
+        // The order's own state guard runs first. Without this, re-confirming an order would
+        // spend a cross-module round trip and then report "not enough stock" - because the
+        // order's own reservations are what consumed it - instead of "already confirmed".
+        if (order.Status != SalesOrderStatus.Draft)
+        {
+            return order.Confirm(_clock.TodayUtc, request.RequiredBy, request.AllowBackorder);
+        }
+
+        // A back-order is a deliberate promise of goods that are not there, and it only makes
+        // sense for something being delivered later. A counter sale is goods leaving now, so it
+        // is checked whatever the caller asked for.
+        if (!request.AllowBackorder || !order.ConsumesCredit)
+        {
+            Result stocked = await EnsureStockAvailableAsync(order, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (stocked.IsFailure)
+            {
+                return stocked;
+            }
+        }
+
         if (order.ConsumesCredit)
         {
             // Commit checks the hold and the limit together and reports whichever failed.
@@ -529,13 +570,76 @@ public sealed class ConfirmSalesOrderCommandHandler : ICommandHandler<ConfirmSal
             }
         }
 
-        Result confirmed = order.Confirm(_clock.TodayUtc, request.RequiredBy);
+        Result confirmed = order.Confirm(
+            _clock.TodayUtc, request.RequiredBy, request.AllowBackorder);
+
         if (confirmed.IsFailure)
         {
             return confirmed;
         }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Asks Inventory whether every line can actually be promised.
+    /// <para>
+    /// One call for the whole order rather than one per line: a ten-line order asking ten times
+    /// is the kind of thing that looks fine on a laptop and makes a counter unusable.
+    /// </para>
+    /// <para>
+    /// Reports the first line that fails rather than all of them. The person confirming has to
+    /// deal with one problem at a time anyway, and the first shortfall is usually the whole
+    /// story.
+    /// </para>
+    /// <para>
+    /// This reads; it does not hold. Two confirmations for the last of something can both pass
+    /// here and one will lose when Inventory actually reserves — that race is inherent to a
+    /// read-only contract, and closing it would mean Sales taking a lock inside another module's
+    /// data. The window is milliseconds and the loser gets a dead-lettered reservation rather
+    /// than a wrong balance, which is the right way round.
+    /// </para>
+    /// </summary>
+    private async Task<Result> EnsureStockAvailableAsync(
+        SalesOrder order,
+        CancellationToken cancellationToken)
+    {
+        Guid[] partIds = [.. order.Lines.Select(line => line.PartId.Value)];
+
+        if (partIds.Length == 0)
+        {
+            return Result.Success();
+        }
+
+        IReadOnlyDictionary<Guid, StockAvailability> availability = await _availability
+            .GetManyAsync(partIds, order.FromWarehouseId.Value, cancellationToken)
+            .ConfigureAwait(false);
+
+        foreach (SalesOrderLine line in order.Lines)
+        {
+            if (!availability.TryGetValue(line.PartId.Value, out StockAvailability? stock))
+            {
+                return SalesErrors.Line.NoStockRecord(line.Sku);
+            }
+
+            // Compared before the magnitudes, because "5" of something stocked in litres and
+            // sold in boxes is not a shortfall, it is a different question. Inventory refuses
+            // this outright when the reservation arrives; catching it here is the whole point
+            // of asking first.
+            if (!string.Equals(stock.UnitCode, line.Quantity.Unit.Code, StringComparison.OrdinalIgnoreCase))
+            {
+                return SalesErrors.Line.UnitDiffersFromStock(
+                    line.Sku, line.Quantity.Unit.Code, stock.UnitCode);
+            }
+
+            if (stock.Available < line.Quantity.Value)
+            {
+                return SalesErrors.Line.InsufficientStock(
+                    line.Sku, line.Quantity.Value, stock.Available, stock.UnitCode);
+            }
+        }
 
         return Result.Success();
     }

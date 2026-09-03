@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.ModuleContracts</RootNamespace>
+    <AssemblyName>AutoPartsErp.ModuleContracts</AssemblyName>
+    <Description>
+      Read-only questions one module will answer for another, and the flat records it answers
+      with. The synchronous counterpart to AutoPartsErp.IntegrationEvents: that project is for
+      facts a module announces, this one is for questions a module answers on demand.
+
+      Deliberately has no dependencies at all - not even the SharedKernel. A contract that
+      referenced Money or Quantity would drag the whole value-object model across the boundary
+      and stop being a contract.
+    </Description>
+  </PropertyGroup>
+
+</Project>

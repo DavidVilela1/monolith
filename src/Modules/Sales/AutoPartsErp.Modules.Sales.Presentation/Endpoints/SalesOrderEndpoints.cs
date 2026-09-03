@@ -81,7 +81,9 @@ public sealed class SalesOrderEndpoints : IEndpointGroup
 
         group.MapPost("/orders/{salesOrderId:guid}/confirm", ConfirmAsync)
             .WithName("ConfirmSalesOrder")
-            .WithSummary("Agree the order. Checks the account's hold and credit, then claims the stock.")
+            .WithSummary(
+                "Agree the order. Checks stock, the account's hold and its credit, then claims the stock. "
+                + "Pass allowBackorder to confirm without the stock being there.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
@@ -222,7 +224,8 @@ public sealed class SalesOrderEndpoints : IEndpointGroup
         CancellationToken cancellationToken)
     {
         Result result = await dispatcher.SendAsync(
-            new ConfirmSalesOrderCommand(salesOrderId, body?.RequiredBy),
+            new ConfirmSalesOrderCommand(
+                salesOrderId, body?.RequiredBy, body?.AllowBackorder ?? false),
             cancellationToken);
 
         return result.ToNoContent();
@@ -297,7 +300,10 @@ public sealed record PricingRequest(decimal UnitPrice, decimal DiscountPercent);
 
 /// <summary>Body of a confirm request.</summary>
 /// <param name="RequiredBy">When the customer wants it.</param>
-public sealed record ConfirmSalesRequest(DateOnly? RequiredBy);
+/// <param name="AllowBackorder">
+/// True to confirm even where there is not enough on the shelf. Off unless somebody says so.
+/// </param>
+public sealed record ConfirmSalesRequest(DateOnly? RequiredBy, bool AllowBackorder = false);
 
 /// <summary>Body of a cancel request.</summary>
 /// <param name="Reason">Why.</param>

@@ -1,7 +1,9 @@
+using AutoPartsErp.ModuleContracts.Inventory;
 using AutoPartsErp.Modules.Abstractions.DependencyInjection;
 using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Inventory.Application.Abstractions;
 using AutoPartsErp.Modules.Inventory.Domain;
+using AutoPartsErp.Modules.Inventory.Infrastructure.Contracts;
 using AutoPartsErp.Modules.Inventory.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Inventory.Infrastructure.Persistence.Jobs;
 using AutoPartsErp.Modules.Inventory.Infrastructure.Persistence.ReadStore;
@@ -75,6 +77,11 @@ public sealed class InventoryModule : IModule
         services.AddScoped<IStorageBinRepository, StorageBinRepository>();
         services.AddScoped<IInventoryReadStore, InventoryReadStore>();
         services.AddScoped<InventorySeeder>();
+
+        // The one question this module answers synchronously for others. Registered here, in
+        // the module that owns the data, so no consumer ever references this project — they
+        // reference the contract and the container introduces them.
+        services.AddScoped<IInventoryAvailability, InventoryAvailability>();
 
         services.AddModuleHandlers(
             typeof(Application.Stock.Commands.ReceiveStockCommand).Assembly);

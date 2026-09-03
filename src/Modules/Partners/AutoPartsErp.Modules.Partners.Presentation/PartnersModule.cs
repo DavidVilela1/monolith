@@ -1,7 +1,9 @@
+using AutoPartsErp.ModuleContracts.Partners;
 using AutoPartsErp.Modules.Abstractions.DependencyInjection;
 using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Partners.Application.Abstractions;
 using AutoPartsErp.Modules.Partners.Domain;
+using AutoPartsErp.Modules.Partners.Infrastructure.Contracts;
 using AutoPartsErp.Modules.Partners.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Partners.Infrastructure.Persistence.ReadStore;
 using AutoPartsErp.Modules.Partners.Infrastructure.Persistence.Repositories;
@@ -63,6 +65,10 @@ public sealed class PartnersModule : IModule
         services.AddScoped<IPartnerRepository, PartnerRepository>();
         services.AddScoped<IPartnersReadStore, PartnersReadStore>();
         services.AddScoped<PartnersSeeder>();
+
+        // The one question this module answers synchronously for others. Registered here, in
+        // the module that owns the data, so no consumer ever references this project.
+        services.AddScoped<IPartnerDirectory, PartnerDirectory>();
 
         services.AddModuleHandlers(
             typeof(Application.Commands.CreatePartnerCommand).Assembly);

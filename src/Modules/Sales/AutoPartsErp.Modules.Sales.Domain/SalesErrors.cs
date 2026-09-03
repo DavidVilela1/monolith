@@ -131,6 +131,45 @@ public static class SalesErrors
         public static readonly Error AlreadyDispatched =
             Error.DomainRule("sales.line.already_dispatched", "That line has already gone out in full.");
 
+        /// <summary>
+        /// There is not enough on the shelf to promise this line.
+        /// <para>
+        /// Refused at confirmation, where somebody is standing there and can do something about
+        /// it — reduce the line, try another warehouse, or take it as a back-order deliberately.
+        /// Before Sales could ask Inventory this question, the order was confirmed anyway and
+        /// the reservation failed silently in a background sweep an hour later.
+        /// </para>
+        /// </summary>
+        public static Error InsufficientStock(
+            string sku,
+            decimal requested,
+            decimal available,
+            string unitCode) =>
+            Error.DomainRule(
+                "sales.line.insufficient_stock",
+                $"Only {available} {unitCode} of {sku} is available and this order needs {requested}. " +
+                "Reduce the line, ship from another warehouse, or confirm it as a back-order.");
+
+        /// <summary>
+        /// The line is sold in one unit and stocked in another.
+        /// <para>
+        /// Not a shortfall — a different question. Comparing the numbers would be comparing
+        /// litres to boxes, and Inventory refuses the reservation outright when it arrives.
+        /// </para>
+        /// </summary>
+        public static Error UnitDiffersFromStock(string sku, string lineUnit, string stockUnit) =>
+            Error.Validation(
+                "sales.line.unit_differs_from_stock",
+                $"{sku} is sold on this line in {lineUnit} but stocked in {stockUnit}. " +
+                "Raise the line in the stocking unit.");
+
+        /// <summary>Inventory has never heard of this part in this warehouse.</summary>
+        public static Error NoStockRecord(string sku) =>
+            Error.DomainRule(
+                "sales.line.no_stock_record",
+                $"There is no stock record for {sku} in that warehouse, so none of it can be " +
+                "promised. The part may never have been activated in the catalogue.");
+
         /// <summary>The quantity cannot drop below what has already gone.</summary>
         public static readonly Error QuantityBelowDispatched =
             Error.DomainRule(
