@@ -2,7 +2,8 @@
 
 An integrated ERP for **automotive parts distribution**, built as a modular monolith on .NET 8.
 
-Six modules are in place and talking to each other:
+Six modules are in place and talking to each other, with a seventh — the one Portuguese law
+cares about — half built:
 
 | Module | Schema | Order | What it owns |
 |---|---|---|---|
@@ -12,9 +13,10 @@ Six modules are in place and talking to each other:
 | **Pricing** | `pricing` | 12 | Price lists, quantity breaks, customer agreements, price resolution |
 | **Purchasing** | `purchasing` | 15 | Purchase orders, goods receipt, replenishment suggestions |
 | **Sales** | `sales` | 20 | Customer accounts, sales orders, dispatch, credit control |
+| **Invoicing** | — | — | Registered series, ATCUD, the signature chain, the QR code. Domain only so far — see the roadmap. |
 
 They share no code beyond two contract assemblies, and no module references another module's
-projects. 324 tests, all green.
+projects. 396 tests, all green.
 
 ---
 
@@ -100,9 +102,14 @@ GET /api/inventory/stock/parts/{partId}/movements
 ### What this customer pays for ten of these, and why
 GET /api/pricing/quote?partId={partId}&quantity=10&customerId={customerId}
 
-### Raise a sales order line. Part and quantity only - the rest is looked up.
+### Raise a sales order line. Part and quantity only - the catalogue names it,
+### Pricing prices it, and the line records which price list answered.
 POST /api/sales/orders/{salesOrderId}/lines
-{ "partId": "...", "quantity": 4, "unitPrice": 30.00 }
+{ "partId": "...", "quantity": 4 }
+
+### The same line with the price set by hand, which records no price list behind it
+POST /api/sales/orders/{salesOrderId}/lines
+{ "partId": "...", "quantity": 4, "unitPrice": 18.00 }
 
 ### Confirm it. Checks stock first, then the credit hold, then claims the stock.
 POST /api/sales/orders/{salesOrderId}/confirm
@@ -386,6 +393,43 @@ sale — those are goods leaving now.
 **Line arithmetic is fixed and rounded at each step.** Extend, discount, net, VAT, each rounded as
 it is computed, because that is the order a customer can check with a calculator.
 
+### Invoicing
+
+The part of Portuguese invoicing that is law rather than design. Domain only for now: no schema,
+no endpoints, not wired into the host.
+
+**A series is a registered run of gapless numbers**, for one document type and one year. It has
+to be declared to the tax authority before anything is issued in it, and what comes back is a
+validation code that becomes half of every ATCUD the series produces. Without that code the
+series refuses to go live, rather than letting somebody find out at the first audit.
+
+**Numbers come out one at a time.** No reserve, no batch, no peek at the next one. A number taken
+and not used is a gap, and a gap is the thing the whole mechanism exists to prevent — so taking
+one mutates the series, and a caller that fails afterwards must roll the whole transaction back.
+
+**A document is built in two moves.** Lines while it is a draft; then issuing takes the number,
+computes the totals, signs the result and freezes everything. That shape is forced by the law
+rather than chosen: the number cannot be taken until the document is complete, and the signature
+covers the total, so the total cannot move afterwards.
+
+**Each document signs onto the one before it** in the same series — the last field of the signed
+string is the previous document's signature. Altering document 35 invalidates 36 and everything
+after it, which is the entire point.
+
+**Voiding keeps everything**: the number, the figures, the signature, the place in the chain.
+Only the status changes and a reason is added. A missing number is worse than a cancelled one.
+
+**Nothing here was written from memory.** Every prescribed detail — the exact string that gets
+signed, the four characters taken from positions 1, 11, 21 and 31 of the base64 signature, the
+ATCUD's hyphen, the QR code's field list — was checked against a primary source and is tested
+against the worked examples those sources publish. The two signature examples from the DGCI
+specification are in the suite character for character.
+
+**This is not certified software and nothing here makes it certified.** Issuing real invoices in
+Portugal also needs a certification number from the tax authority, a private key registered under
+it, each series declared, and the monthly communication of documents. The first three are
+paperwork; the fourth is code that does not exist yet.
+
 ---
 
 ## Layout
@@ -406,7 +450,8 @@ AutoPartsErp.sln
 │       ├── Catalog
 │       ├── Pricing
 │       ├── Purchasing
-│       └── Sales
+│       ├── Sales
+│       └── Invoicing                     (domain only so far)
 │           ├── ....Domain
 │           ├── ....Application
 │           ├── ....Infrastructure
@@ -432,6 +477,8 @@ AutoPartsErp.sln
 | `StockItem` | `Inventory.Domain` | The consistency boundary for every stock change |
 | `PriceResolution` | `Pricing.Domain` | Which price wins. A pure function over data somebody else fetched |
 | `ReservationSweeper` | `Inventory.Infrastructure` | Returns lapsed reservations to available |
+| `DocumentSeries` | `Invoicing.Domain` | The only thing that hands out a document number, one at a time |
+| `SignatureSource` | `Invoicing.Domain` | Builds the exact string the tax authority prescribes for signing |
 
 ---
 
@@ -466,31 +513,42 @@ works: who we trade with, what we stock, what we sell, what it costs, what we bu
 ## Roadmap
 
 **Done:** Partners, Inventory, Catalog, Pricing, Purchasing, Sales. Transactional outbox and
-consumer inbox. Four module query contracts.
+consumer inbox. Four module query contracts. The Invoicing domain.
 
 **Next, in rough dependency order:**
 
-1. **Invoicing and Portuguese tax compliance** — ATCUD, the QR code, the document hash chain and
-   SAF-T export. Gapless sequential numbering per document type is a legal requirement here, and
-   the current max-plus-one numbering will not satisfy it.
-2. **Finance** — AR/AP, general ledger, VAT returns, period close.
-3. **Stock valuation and costing** — FIFO or weighted average over the movement ledger, which
+1. **Invoicing, the rest of it.** The domain is done and tested; what is missing is everything
+   that makes it run:
+   - the RSA signer (PKCS#1 v1.5 with a SHA-1 digest — not a choice anyone would make today, and
+     not ours to make), reading a key registered with the tax authority;
+   - a repository that takes a row lock while a document draws its number, so two tills queue
+     rather than one of them failing on a concurrency token;
+   - the `invoicing` schema, the endpoints, and the handler that turns a confirmed sales order
+     into a draft invoice.
+2. **SAF-T (PT) export**, schema 1.04_01. Header, MasterFiles, SourceDocuments. Without it the
+   documents are correct and unreportable.
+3. **Finance** — AR/AP, general ledger, VAT returns, period close.
+4. **Stock valuation and costing** — FIFO or weighted average over the movement ledger, which
    already carries a unit cost column for it. Also what a margin floor in Pricing would need.
-4. **Returns and core credits** — the other half of a parts business, and the reason
+5. **Returns and core credits** — the other half of a parts business, and the reason
    `RequiresCoreReturn` exists on a part already.
 
 **Known issues:**
 
 - A malformed `warehouseId` in a request body returns 500 rather than 400. Bad client input
   should never surface as a server error.
-- Order numbering is max-plus-one and will collide under genuine concurrency. A sequence table is
-  the real answer, and the ATCUD work needs it anyway.
+- Sales and purchase order numbering is still max-plus-one and will collide under genuine
+  concurrency. Invoicing does it properly, through a series aggregate that hands out one number at
+  a time under a row lock; the other two modules should borrow that shape rather than keep their
+  own.
 - Purchase order lines have no concurrency token of their own, so two people editing different
   lines of the same order can still conflict at the aggregate level.
 - The outbox assumes a single instance. Two hosts sweeping the same table would deliver some
   messages twice — safe, because consumers are idempotent, but wasteful. `FOR UPDATE SKIP LOCKED`
   is the fix.
 - Nothing prunes delivered outbox and inbox rows. They grow forever until a retention job exists.
+- `ChangeSalesOrderLinePricing` does not clear the line's `PriceSource`, so a line quoted from a
+  price list and then overridden by hand still claims that list. Two lines in the aggregate.
 
 **Foundation work wanted along the way:**
 
@@ -521,6 +579,10 @@ consumer inbox. Four module query contracts.
 - Raw SQL in an index filter (`HasFilter("is_deleted = false")`) is correct only because of the
   snake_case convention. Renaming the property without renaming the string gives a migration that
   builds and an index that silently never applies.
+- `GenerateDocumentationFile` is on, so a `<see cref="..."/>` that does not resolve is a build
+  error like any other. The trap is a nested type that shadows a namespace of the same name —
+  `InvoicingErrors.Series` hides the `Series` namespace, and the cref inside it has to be
+  qualified.
 
 ### Notes for Windows
 
