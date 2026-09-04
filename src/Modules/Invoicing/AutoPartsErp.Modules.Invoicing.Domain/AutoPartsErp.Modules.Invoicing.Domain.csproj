@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Invoicing.Domain</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Invoicing.Domain</AssemblyName>
+    <Description>
+      Invoices, and everything Portuguese law requires one to carry: a gapless number within a
+      registered series, an ATCUD, a signature chained to the document before it, and the QR code
+      that puts all of it on the page.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.SharedKernel\AutoPartsErp.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>

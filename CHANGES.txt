@@ -1,136 +1,179 @@
-Pricing — pass 3: Sales stops asking for the price
-==================================================
+Invoicing — pass 1: the domain
+==============================
 
 Extract over the project root, forcing overwrite, then rebuild without incremental:
 
-    Expand-Archive -Path "$env:USERPROFILE\Downloads\pricing-pass3.zip" -DestinationPath . -Force
+    Expand-Archive -Path "$env:USERPROFILE\Downloads\invoicing-pass1.zip" -DestinationPath . -Force
     dotnet build --no-incremental
 
-No new projects. One migration, on Sales.
+Two new projects. No migration, no schema, nothing wired into the host yet.
 
 
-CHANGED
--------
+ADDED
+-----
 
-Sales domain:
-    Orders\SalesOrderLine.cs        new PriceSource property
-    Orders\SalesOrder.cs            AddLine takes it
-    SalesErrors.cs                  NoPrice, PriceCurrencyMismatch
+src\Modules\Invoicing\AutoPartsErp.Modules.Invoicing.Domain\
+    Identifiers.cs
+    InvoicingErrors.cs
+    Repositories.cs
+    Series\DocumentSeries.cs              the numbering authority, and DocumentNumber
+    Series\DocumentType.cs                FT / FS / FR / NC / ND, with the SAF-T codes
+    Series\SeriesStatus.cs
+    Series\Events\DocumentSeriesEvents.cs
+    Invoices\Invoice.cs                   the aggregate
+    Invoices\InvoiceLine.cs
+    Invoices\InvoiceStatus.cs             N / A / F
+    Invoices\VatRate.cs                   ISE / RED / INT / NOR, with exemption reasons
+    Invoices\TaxSummary.cs                totals split by category, and TaxRegion
+    Invoices\Atcud.cs
+    Invoices\DocumentSignature.cs
+    Invoices\QrCodePayload.cs
+    Invoices\Events\InvoiceEvents.cs
+    Signing\SignatureSource.cs            builds the exact string that gets signed
+    Signing\IDocumentSigner.cs            the port; RSA lives in Infrastructure, in pass 2
 
-Sales application:
-    Orders\Commands\SalesOrderCommands.cs   AddSalesOrderLineCommand: UnitPrice and
-                                            DiscountPercent are now optional overrides
-    Contracts\SalesContracts.cs             line DTO carries PriceSource
-
-Sales infrastructure:
-    Persistence\Configurations\SalesOrderConfiguration.cs   maps price_source
-    Persistence\ReadStore\SalesReadStore.cs                 projects it
-
-Sales presentation:
-    Endpoints\SalesOrderEndpoints.cs        AddSalesLineRequest matches the command
-
-tests\AutoPartsErp.Modules.Sales.Tests\AddSalesOrderLineTests.cs   five new tests
-requests.http
+tests\AutoPartsErp.Modules.Invoicing.Tests\   five files, 67 cases
 
 
 AFTER EXTRACTING
 ----------------
 
+    dotnet sln add src\Modules\Invoicing\AutoPartsErp.Modules.Invoicing.Domain\AutoPartsErp.Modules.Invoicing.Domain.csproj --solution-folder src\Modules\Invoicing
+    dotnet sln add tests\AutoPartsErp.Modules.Invoicing.Tests\AutoPartsErp.Modules.Invoicing.Tests.csproj --solution-folder tests
+
     dotnet build --no-incremental
-    dotnet ef migrations add SalesLinePriceSource --context SalesDbContext --project src\Modules\Sales\AutoPartsErp.Modules.Sales.Infrastructure --startup-project src\Api\AutoPartsErp.Api
-    dotnet build
     dotnet test --arch x64
 
-Test count should go from 324 to 329.
+Test count should go from 329 to 396.
 
-The migration adds one nullable column, `sales.sales_order_lines.price_source`. Existing lines
-get null, which is exactly right: nothing recorded where their price came from, and pretending
-otherwise would be inventing history.
+Nothing existing is touched by this pass, so a failure anywhere outside src\Modules\Invoicing and
+tests\AutoPartsErp.Modules.Invoicing.Tests is not from this zip.
 
 
 WHAT THIS IS
-
-A sales line now says which part and how many, and nothing else:
-
-    POST /api/sales/orders/{id}/lines
-    { "partId": "...", "quantity": 10 }
-
-The catalogue names the part and gives its stocking unit. Pricing gives the price — the
-customer's list, the right quantity break, their agreed discount. The line records which price
-list answered.
-
-That completes what the four contracts were for. A year ago this call took a part id, a SKU, a
-description, a unit, a price and a discount, and six of those seven were the caller repeating
-something a module already knew.
-
-
-THE OVERRIDE STAYS
-------------------
-
-    { "partId": "...", "quantity": 10, "unitPrice": 18.00 }
-
-A manager knocking a tenner off at the counter happens several times a day, and a system that
-cannot express it is a system where somebody edits the database instead. Supplying a price skips
-Pricing entirely and the line records no price list — which is the honest answer to "why that
-figure?", and a different answer from "the trade list said so".
-
-Supplying only a discount keeps the quoted price and replaces the customer's agreed discount.
-
-
-WHY PriceSource EXISTS
-----------------------
-
-Three weeks after the invoice, somebody asks why a figure was what it was. The two honest answers
-are "the trade list said so" and "Miguel overrode it". Both are fine; not knowing which is not.
-
-Re-deriving it later means re-running rules that have since moved — the list may have been
-repriced, the promotion may have expired, the customer may have been renegotiated. So the
-document records it at the moment it is decided, alongside the SKU and the description, which are
-snapshotted for the same reason.
-
-It is the price list's CODE, not its id: a document that says "TRADE" explains itself to a person
-reading it, and a document that says a GUID does not.
-
-
-TWO REFUSALS
 ------------
 
-    sales.line.no_price                  404, and it names the SKU
-    sales.line.price_currency_mismatch   422
+The part of Portuguese invoicing that is law rather than design. Four things:
 
-`IPriceProvider` returns null when nothing prices a part, rather than an error, because a contract
-cannot say anything useful about it — Sales knows the SKU and the order number, so Sales writes
-the refusal. Pricing's own /quote endpoint distinguishes the several reasons (no list, expired
-agreement, below the smallest pack) when somebody needs to know which.
+  DocumentSeries    a registered run of gapless numbers for one document type and year
+  Atcud             the document's unique code: the series' AT validation code, a hyphen, the number
+  DocumentSignature the RSA signature, and the four characters of it printed on the page
+  QrCodePayload     the string inside the QR square
 
-The currency check is a second copy of one Pricing already does, deliberately. The contract has no
-opinion about what currency the caller's document is in, so the caller has to have one — and the
-alternative is a line quietly converted at whatever rate somebody configured last year.
+Plus the Invoice aggregate that ties them together, and SignatureSource, which builds the exact
+string the signature is computed over.
 
 
-VERIFIED HERE / NOT VERIFIED HERE
+I DID NOT WRITE THESE FROM MEMORY
 ---------------------------------
 
-Compiled clean: Sales Domain and Application. Ran the nine handler tests plus the Purchasing ones
-through a shim against the real handlers — 17 checks, all green, including the four new pricing
-paths and the override.
+Every prescribed detail here was checked against a primary source before it was implemented, and
+then tested against the worked examples those sources publish. Two things I had wrong from memory
+and would have shipped:
 
-Not compiled: Sales Infrastructure and Presentation. That covers the one-line EF mapping, the read
-store projection and the request record.
+  - The ATCUD in the 2020 QR specification's example has no hyphen (CSDF7T5H0035). The current AT
+    guidance is validationCode-number with a hyphen, and that is what this produces. The old
+    example is stale, not an alternative format.
+
+  - I had the four printed characters at positions 1, 11, 21, 31 but had not confirmed the
+    indexing. Portaria 363/2010 article 6 states "a 1.a, 11.a, 21.a e 31.a posicoes", which is
+    1-based. Off by one would have put four plausible characters on every document that verify
+    against nothing.
+
+The two signature examples from the DGCI specification are in the test suite character for
+character:
+
+    2008-03-10;2008-03-10T15:58:00;FT 1/1;28.07;
+    2008-09-16;2008-09-16T15:58:00;FT 1/2;235.15;F8952fjEClltx2tF9m6/...
+
+And the QR field list is checked against the published worked example, field by field.
 
 
-WHAT IS LEFT
+THE RULES WORTH KNOWING
+-----------------------
+
+A series cannot issue before the AT has validated it. The validation code is half of every ATCUD
+the series produces, so Activate() refuses without one rather than letting somebody find out at
+the first audit. It is recorded once and never changed, because it is already baked into every
+document the series has issued.
+
+A series code is letters and digits only. It goes straight into "FT SERIE2026/35", and a space or
+a slash there breaks the field that separates the series from the number.
+
+Numbers come out one at a time. There is no reserve, no batch, no peek — a number taken and not
+used is a gap, and a gap is the thing the whole mechanism exists to prevent. TakeNextNumber
+mutates the series, so a caller that fails afterwards must roll the whole transaction back. Pass 2
+gives the repository a GetForIssuingAsync that takes a row lock, so two tills at once queue rather
+than one of them failing.
+
+A document is built in two moves: lines while it is a draft, then Issue() takes the number,
+computes the totals, signs the result and freezes everything. That shape is forced by the law, not
+chosen — the number cannot be taken until the document is complete, and the signature covers the
+total, so the total cannot move afterwards.
+
+Voiding keeps everything. The number, the figures, the signature, the place in the chain. Only
+the status changes and a reason is added. A missing number is worse than a cancelled one.
+
+The QR code is fixed at issue and never regenerated — not even when the document is voided. It is
+a record of what was printed and handed over; the status an inspector acts on comes from the
+SAF-T export, where it is a field in its own right.
+
+An exempt line cannot exist without its legal basis. A rated category at zero percent is refused
+too, because it is somebody meaning "exempt" and reaching for the wrong constructor — it would
+pass every arithmetic check and land in the wrong pair of QR fields, where nothing would notice.
+
+An invoice identifies its customer; a simplified invoice need not. A sale to somebody unidentified
+is a different document type, not an invoice with a blank field.
+
+
+VERIFIED HERE
+-------------
+
+Compiled clean. Ran two independent passes against the real domain: a behaviour harness written
+before the tests (114 checks) and then the xunit tests themselves (67 cases). Both green.
+
+Three of the harness's first failures were my expectations being wrong, not the code — including
+an arithmetic slip in a QR total and a test fixture whose fake signature did not have its known
+characters at the positions the law reads. Worth saying because the second one would have made a
+broken implementation look correct.
+
+
+WHAT THIS IS NOT
+----------------
+
+This is not certified software, and nothing here makes it certified. Issuing real invoices in
+Portugal needs:
+
+  - a software certification number from the AT, which is what field R of the QR code carries.
+    It is "0" until then, and 0 is a legal value for software in development and a very illegal
+    one for software issuing real documents;
+  - a private key registered with the AT under that number;
+  - each series declared to the AT, which returns the validation code this module needs;
+  - the SAF-T export and the monthly communication of documents.
+
+The first three are paperwork. The fourth is pass 3.
+
+
+PASS 2 AND PASS 3
+-----------------
+
+Pass 2: Application, Infrastructure, Presentation. The RSA signer (PKCS#1 v1.5, SHA-1 — not a
+choice anyone would make today and not ours to make), the row-locking repository that makes
+numbering safe under two tills, the schema, and the endpoints. Plus the handler that turns a
+confirmed sales order into a draft invoice.
+
+Pass 3: SAF-T (PT) export, schema 1.04_01. Header, MasterFiles, SourceDocuments.
+
+
+KNOWN LIMITS
 ------------
 
-1. `ChangeSalesOrderLinePricing` still takes a price and a discount and does not touch Pricing.
-   That is correct for what it is — an explicit repricing of an existing line — but it does not
-   clear PriceSource, so a line quoted from TRADE and then overridden still claims TRADE. Worth
-   fixing next; it is a two-line change to the aggregate and a test.
+1. One tax region per document. The QR's J and K blocks exist for a document mixing mainland and
+   island rates on one page, which needs establishments in both. Nothing here produces them.
 
-2. Nothing re-quotes an order. A draft raised on Monday and confirmed on Friday keeps Monday's
-   prices, which is usually what a customer expects and occasionally is not. A "reprice this
-   order" command would be the honest way to offer the alternative.
+2. Withholding tax (field P) and stamp duty (field M) are not modelled. Neither applies to parts
+   distribution, and inventing fields nothing fills would be inventing requirements.
 
-3. Purchasing still takes its price by hand. Supplier price files are their own problem — they
-   arrive as spreadsheets, per supplier, in whatever shape that supplier feels like — and are a
-   module rather than a contract call.
+3. The series year must match the document date's year. That is a convention rather than a rule
+   of the law — a series may legally span years — but it is the only shape an accountant can
+   reconcile against a year's VAT returns without counting backwards.
