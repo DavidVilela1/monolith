@@ -1,5 +1,6 @@
 using AutoPartsErp.ModuleContracts.Catalog;
 using AutoPartsErp.ModuleContracts.Inventory;
+using AutoPartsErp.ModuleContracts.Pricing;
 using AutoPartsErp.Modules.Sales.Domain;
 using AutoPartsErp.Modules.Sales.Domain.Customers;
 using AutoPartsErp.Modules.Sales.Domain.Orders;
@@ -150,21 +151,32 @@ public sealed class CreateSalesOrderCommandHandler : ICommandHandler<CreateSales
 /// <param name="SalesOrderId">The order.</param>
 /// <param name="PartId">The part to sell.</param>
 /// <param name="Quantity">How much to sell, in the part's stocking unit.</param>
-/// <param name="UnitPrice">The list price per unit, in the order's currency.</param>
-/// <param name="DiscountPercent">The discount given, 0 to 100.</param>
+/// <param name="UnitPrice">
+/// The price per unit, when somebody is deliberately setting it. Leave it out and Pricing is
+/// asked instead — which is the normal path, and the only one that applies the customer's
+/// agreement and the quantity breaks.
+/// </param>
+/// <param name="DiscountPercent">
+/// The discount, when somebody is deliberately setting it. Leave it out and the customer's
+/// agreed discount is used; supply it and it replaces theirs, quoted price or not.
+/// </param>
 /// <param name="VatRatePercent">The VAT rate, 0 to 100. Portugal's normal rate is 23.</param>
 /// <remarks>
-/// This command used to carry the SKU, the description and the unit as well. It no longer does:
-/// the caller says which part it means and the catalogue is asked what that part is called and
-/// how it is counted. Three fewer chances to disagree with the catalogue on every line, on a
-/// document that is kept for years.
+/// This command has now given up the SKU, the description, the unit and the price. All a caller
+/// says is which part and how many; the catalogue names it, Pricing prices it, and the line
+/// records which price list answered.
+/// <para>
+/// The override survives on purpose. A manager knocking a tenner off at the counter is a real
+/// thing that happens several times a day, and a system that cannot express it is a system where
+/// somebody edits the database instead.
+/// </para>
 /// </remarks>
 public sealed record AddSalesOrderLineCommand(
     Guid SalesOrderId,
     Guid PartId,
     decimal Quantity,
-    decimal UnitPrice,
-    decimal DiscountPercent = 0m,
+    decimal? UnitPrice = null,
+    decimal? DiscountPercent = null,
     decimal VatRatePercent = 23m) : ICommand<Guid>;
 
 /// <summary>Checks the shape of an <see cref="AddSalesOrderLineCommand"/>.</summary>
@@ -190,7 +202,7 @@ public sealed class AddSalesOrderLineCommandValidator : IValidator<AddSalesOrder
                 nameof(instance.Quantity), "not_positive", "A quantity must be above zero."));
         }
 
-        if (instance.UnitPrice < 0m)
+        if (instance.UnitPrice is < 0m)
         {
             failures.Add(new ValidationFailure(
                 nameof(instance.UnitPrice), "negative", "A unit price cannot be negative."));
@@ -217,16 +229,19 @@ public sealed class AddSalesOrderLineCommandHandler : ICommandHandler<AddSalesOr
 {
     private readonly ISalesOrderRepository _orders;
     private readonly ICatalogDirectory _catalogue;
+    private readonly IPriceProvider _prices;
     private readonly ISalesUnitOfWork _unitOfWork;
 
     /// <summary>Initializes the handler.</summary>
     public AddSalesOrderLineCommandHandler(
         ISalesOrderRepository orders,
         ICatalogDirectory catalogue,
+        IPriceProvider prices,
         ISalesUnitOfWork unitOfWork)
     {
         _orders = orders;
         _catalogue = catalogue;
+        _prices = prices;
         _unitOfWork = unitOfWork;
     }
 
@@ -282,14 +297,56 @@ public sealed class AddSalesOrderLineCommandHandler : ICommandHandler<AddSalesOr
             return Result.Failure<Guid>(quantity.Error);
         }
 
+        // The price, unless somebody is deliberately setting one. Asked after the part is known,
+        // because the quantity breaks and the customer's agreement both need a real part id, and
+        // because refusing a draft part before asking Pricing about it saves a round trip.
+        decimal unitPrice;
+        decimal discountPercent;
+        string? priceSource;
+
+        if (request.UnitPrice is { } typedPrice)
+        {
+            unitPrice = typedPrice;
+            discountPercent = request.DiscountPercent ?? 0m;
+            priceSource = null;
+        }
+        else
+        {
+            PartPrice? quoted = await _prices
+                .GetAsync(part.PartId, request.Quantity, order.CustomerId.Value, null, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (quoted is null)
+            {
+                return Result.Failure<Guid>(SalesErrors.Line.NoPrice(part.Sku));
+            }
+
+            // Refused rather than converted, the same way Pricing refuses it. A sales line that
+            // quietly turns dollars into euros at whatever rate somebody configured last year is
+            // where exchange-rate losses go to hide.
+            if (!string.Equals(quoted.CurrencyCode, order.CurrencyCode, StringComparison.OrdinalIgnoreCase))
+            {
+                return Result.Failure<Guid>(SalesErrors.Line.PriceCurrencyMismatch(
+                    part.Sku, order.CurrencyCode, quoted.CurrencyCode));
+            }
+
+            // The gross price and the discount separately, not the net. The line recomputes the
+            // same figure, and an invoice that shows "24.50 less 5%" is one a customer can check;
+            // one that shows 23.28 with no working is one they ring up about.
+            unitPrice = quoted.GrossUnitPrice;
+            discountPercent = request.DiscountPercent ?? quoted.DiscountPercent;
+            priceSource = quoted.PriceListCode;
+        }
+
         Result<SalesOrderLineId> line = order.AddLine(
             new PartRef(part.PartId),
             part.Sku,
             part.Name,
             quantity.Value,
-            Money.Of(request.UnitPrice, order.Currency),
-            request.DiscountPercent,
-            request.VatRatePercent);
+            Money.Of(unitPrice, order.Currency),
+            discountPercent,
+            request.VatRatePercent,
+            priceSource);
 
         if (line.IsFailure)
         {

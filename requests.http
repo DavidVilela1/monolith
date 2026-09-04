@@ -338,11 +338,36 @@ X-Tenant-Id: {{tenant}}
 
 {
   "partId": "REPLACE-WITH-A-PART-ID",
-  "quantity": 10,
-  "unitPrice": 24.50,
-  "discountPercent": 10,
-  "vatRatePercent": 23
+  "quantity": 10
 }
+
+### Same line with the price set by hand. The line records that no price list was behind it.
+POST {{host}}/api/sales/orders/{{salesOrderId}}/lines
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "partId": "REPLACE-WITH-A-PART-ID",
+  "quantity": 10,
+  "unitPrice": 18.00
+}
+
+### Keeping the quoted price but overriding the discount
+POST {{host}}/api/sales/orders/{{salesOrderId}}/lines
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "partId": "REPLACE-WITH-A-PART-ID",
+  "quantity": 10,
+  "discountPercent": 12
+}
+
+### A part no price list mentions -> 404 sales.line.no_price
+### Pricing's own /quote endpoint says which of the several reasons it is.
+
+### A part priced in another currency -> 422 sales.line.price_currency_mismatch.
+### Refused, never converted.
 
 ### 3. Confirm. Checks stock, then the hold and the credit, then claims the stock.
 POST {{host}}/api/sales/orders/{{salesOrderId}}/confirm

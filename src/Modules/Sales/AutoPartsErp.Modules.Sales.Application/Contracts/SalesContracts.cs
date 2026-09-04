@@ -113,6 +113,10 @@ public sealed record SalesOrderDetail
 /// <param name="VatAmount">The VAT on the line.</param>
 /// <param name="GrossTotal">What the line adds to the invoice.</param>
 /// <param name="IsFullyDispatched">True once everything sold has gone out.</param>
+/// <param name="PriceSource">
+/// The price list the price came from, or null when it was typed by hand. This is the answer to
+/// "why did we charge that?" three weeks later.
+/// </param>
 public sealed record SalesOrderLineDto(
     Guid Id,
     Guid PartId,
@@ -128,7 +132,8 @@ public sealed record SalesOrderLineDto(
     decimal VatRatePercent,
     decimal VatAmount,
     decimal GrossTotal,
-    bool IsFullyDispatched);
+    bool IsFullyDispatched,
+    string? PriceSource);
 
 /// <summary>What Sales knows about a customer.</summary>
 /// <param name="Id">The customer, which is also their partner id.</param>

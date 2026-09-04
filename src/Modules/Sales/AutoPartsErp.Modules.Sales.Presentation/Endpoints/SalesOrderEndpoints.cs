@@ -266,14 +266,19 @@ public sealed class SalesOrderEndpoints : IEndpointGroup
 /// <summary>Body of an add-line request.</summary>
 /// <param name="PartId">The part to sell.</param>
 /// <param name="Quantity">How much to sell, in the part's stocking unit.</param>
-/// <param name="UnitPrice">The list price per unit, in the order's currency.</param>
-/// <param name="DiscountPercent">The discount given, 0 to 100.</param>
+/// <param name="UnitPrice">
+/// Omit it and Pricing is asked. Supply it to set the price by hand, which the line records as
+/// having no price list behind it.
+/// </param>
+/// <param name="DiscountPercent">
+/// Omit it and the customer's agreed discount applies. Supply it to replace theirs.
+/// </param>
 /// <param name="VatRatePercent">The VAT rate, 0 to 100. Portugal's normal rate is 23.</param>
 public sealed record AddSalesLineRequest(
     Guid PartId,
     decimal Quantity,
-    decimal UnitPrice,
-    decimal DiscountPercent = 0m,
+    decimal? UnitPrice = null,
+    decimal? DiscountPercent = null,
     decimal VatRatePercent = 23m);
 
 /// <summary>

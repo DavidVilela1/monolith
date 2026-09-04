@@ -185,6 +185,28 @@ public static class SalesErrors
                 $"{sku} is sold on this line in {lineUnit} but stocked in {stockUnit}. " +
                 "Raise the line in the stocking unit.");
 
+        /// <summary>
+        /// Nothing prices this part for this customer today.
+        /// <para>
+        /// Not the same as a part that is missing or withdrawn — the catalogue is happy to sell
+        /// it and no price list mentions it, or the quantity is below the smallest pack. Pricing's
+        /// own endpoint says which; from here the useful thing is to name the part and let
+        /// somebody either price it or type a figure deliberately.
+        /// </para>
+        /// </summary>
+        public static Error NoPrice(string sku) =>
+            Error.NotFound(
+                "sales.line.no_price",
+                $"Nothing prices {sku} for this customer at that quantity. Add it to their price " +
+                "list, or set the price on the line by hand.");
+
+        /// <summary>The price came back in a currency the order is not in.</summary>
+        public static Error PriceCurrencyMismatch(string sku, string orderCurrency, string priceCurrency) =>
+            Error.DomainRule(
+                "sales.line.price_currency_mismatch",
+                $"{sku} is priced in {priceCurrency} and this order is in {orderCurrency}. " +
+                "Converting quietly on a sales line is how exchange-rate losses go missing.");
+
         /// <summary>Inventory has never heard of this part in this warehouse.</summary>
         public static Error NoStockRecord(string sku) =>
             Error.DomainRule(

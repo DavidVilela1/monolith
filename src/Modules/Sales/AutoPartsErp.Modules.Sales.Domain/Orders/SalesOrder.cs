@@ -222,6 +222,9 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
     /// <param name="unitPrice">The list price per unit, in the order's currency.</param>
     /// <param name="discountPercent">The discount given, 0 to 100.</param>
     /// <param name="vatRatePercent">The VAT rate, 0 to 100.</param>
+    /// <param name="priceSource">
+    /// The code of the price list the price came from, or null when it was typed by hand.
+    /// </param>
     public Result<SalesOrderLineId> AddLine(
         PartRef partId,
         string? sku,
@@ -229,7 +232,8 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
         Quantity quantity,
         Money unitPrice,
         decimal discountPercent = 0m,
-        decimal vatRatePercent = 0m)
+        decimal vatRatePercent = 0m,
+        string? priceSource = null)
     {
         ArgumentNullException.ThrowIfNull(quantity);
         ArgumentNullException.ThrowIfNull(unitPrice);
@@ -250,7 +254,8 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
         }
 
         Result<SalesOrderLine> line = SalesOrderLine.Create(
-            partId, sku, description, quantity, unitPrice, discountPercent, vatRatePercent);
+            partId, sku, description, quantity, unitPrice, discountPercent, vatRatePercent,
+            priceSource);
 
         if (line.IsFailure)
         {

@@ -287,6 +287,7 @@ public sealed class SalesReadStore : ISalesReadStore
             line.VatRatePercent,
             line.VatAmount.Amount,
             line.GrossTotal.Amount,
-            line.IsFullyDispatched))],
+            line.IsFullyDispatched,
+            line.PriceSource))],
     };
 }

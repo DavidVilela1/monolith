@@ -168,6 +168,12 @@ public sealed class SalesOrderConfiguration : IEntityTypeConfiguration<SalesOrde
             line.Property(l => l.DiscountPercent).HasPrecision(9, 4).IsRequired();
             line.Property(l => l.VatRatePercent).HasPrecision(9, 4).IsRequired();
 
+            // Nullable on purpose. Null means "somebody typed this figure", which is a different
+            // fact from any price list code and should not be dressed up as one.
+            line.Property(l => l.PriceSource)
+                .HasColumnName("price_source")
+                .HasMaxLength(SalesOrderLine.MaxPriceSourceLength);
+
             line.Property(l => l.TenantId).IsRequired();
             line.Property(l => l.CreatedAtUtc).IsRequired();
             line.Property(l => l.CreatedBy).HasMaxLength(120).IsRequired();

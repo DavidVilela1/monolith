@@ -1,4 +1,5 @@
 using AutoPartsErp.ModuleContracts.Catalog;
+using AutoPartsErp.ModuleContracts.Pricing;
 using AutoPartsErp.Modules.Sales.Application.Orders.Commands;
 using AutoPartsErp.Modules.Sales.Domain;
 using AutoPartsErp.Modules.Sales.Domain.Orders;
@@ -28,7 +29,7 @@ public sealed class AddSalesOrderLineTests
         var handler = NewHandler(order, Describe(sellable: true));
 
         Result<Guid> result = await handler.HandleAsync(
-            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m, UnitPrice: 30m));
+            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m));
 
         result.IsSuccess.Should().BeTrue();
 
@@ -38,6 +39,111 @@ public sealed class AddSalesOrderLineTests
         line.Quantity.Unit.Should().Be(UnitOfMeasure.Set);
     }
 
+    /// <summary>
+    /// The gross price and the discount go onto the line separately, not the net. An invoice that
+    /// shows "24.50 less 5%" is one a customer can check; one that shows 23.28 with no working is
+    /// one they ring up about.
+    /// </summary>
+    [Fact]
+    public async Task The_price_and_the_discount_come_from_pricing_and_the_list_is_recorded()
+    {
+        SalesOrder order = NewOrder();
+        var handler = NewHandler(order, Describe(sellable: true), Quote(24.50m, 5m));
+
+        Result<Guid> result = await handler.HandleAsync(
+            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m));
+
+        result.IsSuccess.Should().BeTrue();
+
+        SalesOrderLine line = order.Lines.Single();
+        line.UnitPrice.Amount.Should().Be(24.50m);
+        line.DiscountPercent.Should().Be(5m);
+        line.NetTotal.Amount.Should().Be(93.10m);
+        line.PriceSource.Should().Be("TRADE");
+    }
+
+    /// <summary>
+    /// A manager knocking a tenner off is a real thing that happens several times a day. The line
+    /// records that no price list was behind it, which is the honest answer to "why that figure?".
+    /// </summary>
+    [Fact]
+    public async Task A_typed_price_overrides_pricing_and_is_recorded_as_having_no_list()
+    {
+        SalesOrder order = NewOrder();
+        var pricing = new FakePricing(Quote(24.50m, 5m));
+        var handler = new AddSalesOrderLineCommandHandler(
+            new FakeOrders(order), new FakeCatalogue(Describe(sellable: true)), pricing, new FakeUnitOfWork());
+
+        Result<Guid> result = await handler.HandleAsync(
+            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m, UnitPrice: 18m));
+
+        result.IsSuccess.Should().BeTrue();
+
+        SalesOrderLine line = order.Lines.Single();
+        line.UnitPrice.Amount.Should().Be(18m);
+        line.DiscountPercent.Should().Be(0m);
+        line.PriceSource.Should().BeNull();
+        pricing.WasAsked.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_typed_discount_replaces_the_customers_agreed_one()
+    {
+        SalesOrder order = NewOrder();
+        var handler = NewHandler(order, Describe(sellable: true), Quote(24.50m, 5m));
+
+        Result<Guid> result = await handler.HandleAsync(
+            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m, DiscountPercent: 12m));
+
+        result.IsSuccess.Should().BeTrue();
+
+        SalesOrderLine line = order.Lines.Single();
+        line.UnitPrice.Amount.Should().Be(24.50m);
+        line.DiscountPercent.Should().Be(12m);
+        line.PriceSource.Should().Be("TRADE");
+    }
+
+    [Fact]
+    public async Task A_part_nothing_prices_is_refused_by_name()
+    {
+        SalesOrder order = NewOrder();
+
+        // Built by hand rather than through NewHandler, because "no quote at all" and "the
+        // default quote" are different things and a nullable parameter with a fallback cannot
+        // express the first.
+        var handler = new AddSalesOrderLineCommandHandler(
+            new FakeOrders(order),
+            new FakeCatalogue(Describe(sellable: true)),
+            new FakePricing(null),
+            new FakeUnitOfWork());
+
+        Result<Guid> result = await handler.HandleAsync(
+            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m));
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Code.Should().Be("sales.line.no_price");
+        result.Error.Description.Should().Contain("BP-1188");
+        order.Lines.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// Refused, never converted. A sales line that quietly turns dollars into euros at whatever
+    /// rate somebody configured last year is where exchange-rate losses go to hide.
+    /// </summary>
+    [Fact]
+    public async Task A_price_in_another_currency_is_refused_rather_than_converted()
+    {
+        SalesOrder order = NewOrder();
+        var handler = NewHandler(order, Describe(sellable: true), Quote(24.50m, 0m, currency: "USD"));
+
+        Result<Guid> result = await handler.HandleAsync(
+            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m));
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Code.Should().Be("sales.line.price_currency_mismatch");
+        order.Lines.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task A_part_the_catalogue_has_never_heard_of_is_refused()
     {
@@ -45,7 +151,7 @@ public sealed class AddSalesOrderLineTests
         var handler = NewHandler(order, descriptor: null);
 
         Result<Guid> result = await handler.HandleAsync(
-            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m, UnitPrice: 30m));
+            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m));
 
         result.IsFailure.Should().BeTrue();
         result.Error.Code.Should().Be("sales.line.part_not_in_catalogue");
@@ -59,7 +165,7 @@ public sealed class AddSalesOrderLineTests
         var handler = NewHandler(order, Describe(sellable: false, supersededBy: replacement));
 
         Result<Guid> result = await handler.HandleAsync(
-            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m, UnitPrice: 30m));
+            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m));
 
         result.IsFailure.Should().BeTrue();
         result.Error.Code.Should().Be("sales.line.part_not_sellable");
@@ -86,10 +192,10 @@ public sealed class AddSalesOrderLineTests
 
         var catalogue = new FakeCatalogue(Describe(sellable: false));
         var handler = new AddSalesOrderLineCommandHandler(
-            new FakeOrders(order), catalogue, new FakeUnitOfWork());
+            new FakeOrders(order), catalogue, new FakePricing(null), new FakeUnitOfWork());
 
         Result<Guid> result = await handler.HandleAsync(
-            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m, UnitPrice: 30m));
+            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m));
 
         result.IsFailure.Should().BeTrue();
         result.Error.Code.Should().Be("sales.order.not_editable");
@@ -98,8 +204,25 @@ public sealed class AddSalesOrderLineTests
 
     private static AddSalesOrderLineCommandHandler NewHandler(
         SalesOrder order,
-        PartDescriptor? descriptor) =>
-        new(new FakeOrders(order), new FakeCatalogue(descriptor), new FakeUnitOfWork());
+        PartDescriptor? descriptor,
+        PartPrice? quote = null) =>
+        new(
+            new FakeOrders(order),
+            new FakeCatalogue(descriptor),
+            new FakePricing(quote ?? Quote(30m, 0m)),
+            new FakeUnitOfWork());
+
+    private static PartPrice Quote(decimal gross, decimal discountPercent, string currency = "EUR") =>
+        new(
+            PartId,
+            4m,
+            currency,
+            gross,
+            discountPercent,
+            gross - (gross * discountPercent / 100m),
+            Guid.NewGuid(),
+            "TRADE",
+            1m);
 
     private static PartDescriptor Describe(bool sellable, Guid? supersededBy = null) =>
         new(
@@ -156,6 +279,29 @@ public sealed class AddSalesOrderLineTests
         {
             WasAsked = true;
             return Task.FromResult(_descriptor);
+        }
+    }
+
+    private sealed class FakePricing : IPriceProvider
+    {
+        private readonly PartPrice? _quote;
+
+        public FakePricing(PartPrice? quote)
+        {
+            _quote = quote;
+        }
+
+        public bool WasAsked { get; private set; }
+
+        public Task<PartPrice?> GetAsync(
+            Guid partId,
+            decimal quantity,
+            Guid? customerId = null,
+            DateOnly? on = null,
+            CancellationToken cancellationToken = default)
+        {
+            WasAsked = true;
+            return Task.FromResult(_quote);
         }
     }
 

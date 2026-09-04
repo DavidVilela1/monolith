@@ -21,6 +21,9 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
     /// <summary>Longest permitted description.</summary>
     public const int MaxDescriptionLength = 200;
 
+    /// <summary>Longest permitted price-source label.</summary>
+    public const int MaxPriceSourceLength = 30;
+
     private SalesOrderLine(
         SalesOrderLineId id,
         PartRef partId,
@@ -29,7 +32,8 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
         Quantity quantity,
         Money unitPrice,
         decimal discountPercent,
-        decimal vatRatePercent)
+        decimal vatRatePercent,
+        string? priceSource)
         : base(id)
     {
         PartId = partId;
@@ -39,6 +43,7 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
         UnitPrice = unitPrice;
         DiscountPercent = discountPercent;
         VatRatePercent = vatRatePercent;
+        PriceSource = priceSource;
         DispatchedQuantity = Quantity.Zero(quantity.Unit);
         CreatedBy = string.Empty;
     }
@@ -73,6 +78,18 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
 
     /// <summary>The VAT rate applied, snapshotted so a reprint matches the original.</summary>
     public decimal VatRatePercent { get; private set; }
+
+    /// <summary>
+    /// Where the price came from: the code of the price list that quoted it, or null when
+    /// somebody typed it.
+    /// <para>
+    /// Three weeks after the invoice, "why did we charge that?" is a question somebody asks out
+    /// loud, and the honest answers are "the trade list said so" and "Miguel overrode it". Both
+    /// are fine; not knowing which is not. Re-deriving it later means re-running rules that have
+    /// since moved, so the document records it at the moment it is decided.
+    /// </para>
+    /// </summary>
+    public string? PriceSource { get; private set; }
 
     /// <inheritdoc />
     public Guid TenantId { get; set; }
@@ -121,6 +138,9 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
     /// <param name="unitPrice">The list price per unit.</param>
     /// <param name="discountPercent">The discount given, 0 to 100.</param>
     /// <param name="vatRatePercent">The VAT rate, 0 to 100.</param>
+    /// <param name="priceSource">
+    /// The code of the price list the price came from, or null when it was typed by hand.
+    /// </param>
     internal static Result<SalesOrderLine> Create(
         PartRef partId,
         string? sku,
@@ -128,7 +148,8 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
         Quantity quantity,
         Money unitPrice,
         decimal discountPercent,
-        decimal vatRatePercent)
+        decimal vatRatePercent,
+        string? priceSource = null)
     {
         ArgumentNullException.ThrowIfNull(quantity);
         ArgumentNullException.ThrowIfNull(unitPrice);
@@ -166,7 +187,8 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
             quantity,
             unitPrice,
             discountPercent,
-            vatRatePercent);
+            vatRatePercent,
+            Trim(priceSource, MaxPriceSourceLength) is { Length: > 0 } source ? source : null);
     }
 
     /// <summary>Changes how much is being sold.</summary>

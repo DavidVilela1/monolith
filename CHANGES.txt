@@ -1,0 +1,136 @@
+Pricing — pass 3: Sales stops asking for the price
+==================================================
+
+Extract over the project root, forcing overwrite, then rebuild without incremental:
+
+    Expand-Archive -Path "$env:USERPROFILE\Downloads\pricing-pass3.zip" -DestinationPath . -Force
+    dotnet build --no-incremental
+
+No new projects. One migration, on Sales.
+
+
+CHANGED
+-------
+
+Sales domain:
+    Orders\SalesOrderLine.cs        new PriceSource property
+    Orders\SalesOrder.cs            AddLine takes it
+    SalesErrors.cs                  NoPrice, PriceCurrencyMismatch
+
+Sales application:
+    Orders\Commands\SalesOrderCommands.cs   AddSalesOrderLineCommand: UnitPrice and
+                                            DiscountPercent are now optional overrides
+    Contracts\SalesContracts.cs             line DTO carries PriceSource
+
+Sales infrastructure:
+    Persistence\Configurations\SalesOrderConfiguration.cs   maps price_source
+    Persistence\ReadStore\SalesReadStore.cs                 projects it
+
+Sales presentation:
+    Endpoints\SalesOrderEndpoints.cs        AddSalesLineRequest matches the command
+
+tests\AutoPartsErp.Modules.Sales.Tests\AddSalesOrderLineTests.cs   five new tests
+requests.http
+
+
+AFTER EXTRACTING
+----------------
+
+    dotnet build --no-incremental
+    dotnet ef migrations add SalesLinePriceSource --context SalesDbContext --project src\Modules\Sales\AutoPartsErp.Modules.Sales.Infrastructure --startup-project src\Api\AutoPartsErp.Api
+    dotnet build
+    dotnet test --arch x64
+
+Test count should go from 324 to 329.
+
+The migration adds one nullable column, `sales.sales_order_lines.price_source`. Existing lines
+get null, which is exactly right: nothing recorded where their price came from, and pretending
+otherwise would be inventing history.
+
+
+WHAT THIS IS
+
+A sales line now says which part and how many, and nothing else:
+
+    POST /api/sales/orders/{id}/lines
+    { "partId": "...", "quantity": 10 }
+
+The catalogue names the part and gives its stocking unit. Pricing gives the price — the
+customer's list, the right quantity break, their agreed discount. The line records which price
+list answered.
+
+That completes what the four contracts were for. A year ago this call took a part id, a SKU, a
+description, a unit, a price and a discount, and six of those seven were the caller repeating
+something a module already knew.
+
+
+THE OVERRIDE STAYS
+------------------
+
+    { "partId": "...", "quantity": 10, "unitPrice": 18.00 }
+
+A manager knocking a tenner off at the counter happens several times a day, and a system that
+cannot express it is a system where somebody edits the database instead. Supplying a price skips
+Pricing entirely and the line records no price list — which is the honest answer to "why that
+figure?", and a different answer from "the trade list said so".
+
+Supplying only a discount keeps the quoted price and replaces the customer's agreed discount.
+
+
+WHY PriceSource EXISTS
+----------------------
+
+Three weeks after the invoice, somebody asks why a figure was what it was. The two honest answers
+are "the trade list said so" and "Miguel overrode it". Both are fine; not knowing which is not.
+
+Re-deriving it later means re-running rules that have since moved — the list may have been
+repriced, the promotion may have expired, the customer may have been renegotiated. So the
+document records it at the moment it is decided, alongside the SKU and the description, which are
+snapshotted for the same reason.
+
+It is the price list's CODE, not its id: a document that says "TRADE" explains itself to a person
+reading it, and a document that says a GUID does not.
+
+
+TWO REFUSALS
+------------
+
+    sales.line.no_price                  404, and it names the SKU
+    sales.line.price_currency_mismatch   422
+
+`IPriceProvider` returns null when nothing prices a part, rather than an error, because a contract
+cannot say anything useful about it — Sales knows the SKU and the order number, so Sales writes
+the refusal. Pricing's own /quote endpoint distinguishes the several reasons (no list, expired
+agreement, below the smallest pack) when somebody needs to know which.
+
+The currency check is a second copy of one Pricing already does, deliberately. The contract has no
+opinion about what currency the caller's document is in, so the caller has to have one — and the
+alternative is a line quietly converted at whatever rate somebody configured last year.
+
+
+VERIFIED HERE / NOT VERIFIED HERE
+---------------------------------
+
+Compiled clean: Sales Domain and Application. Ran the nine handler tests plus the Purchasing ones
+through a shim against the real handlers — 17 checks, all green, including the four new pricing
+paths and the override.
+
+Not compiled: Sales Infrastructure and Presentation. That covers the one-line EF mapping, the read
+store projection and the request record.
+
+
+WHAT IS LEFT
+------------
+
+1. `ChangeSalesOrderLinePricing` still takes a price and a discount and does not touch Pricing.
+   That is correct for what it is — an explicit repricing of an existing line — but it does not
+   clear PriceSource, so a line quoted from TRADE and then overridden still claims TRADE. Worth
+   fixing next; it is a two-line change to the aggregate and a test.
+
+2. Nothing re-quotes an order. A draft raised on Monday and confirmed on Friday keeps Monday's
+   prices, which is usually what a customer expects and occasionally is not. A "reprice this
+   order" command would be the honest way to offer the alternative.
+
+3. Purchasing still takes its price by hand. Supplier price files are their own problem — they
+   arrive as spreadsheets, per supplier, in whatever shape that supplier feels like — and are a
+   module rather than a contract call.
