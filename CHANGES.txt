@@ -1,131 +1,145 @@
-Catalog directory contract
-==========================
+Pricing module — pass 2: the module
+===================================
 
 Extract over the project root, forcing overwrite:
 
-    Expand-Archive -Path "$env:USERPROFILE\Downloads\catalog-directory.zip" -DestinationPath . -Force
+    Expand-Archive -Path "$env:USERPROFILE\Downloads\pricing-pass2.zip" -DestinationPath . -Force
 
-No new project, no migration, no schema change.
+Three new projects, one new schema, one migration. Pass 1 must already be in.
 
 
 ADDED
 -----
 
-src\Shared\AutoPartsErp.ModuleContracts\Catalog\ICatalogDirectory.cs      + PartDescriptor
-src\Modules\Catalog\...Infrastructure\Contracts\CatalogDirectory.cs
-tests\AutoPartsErp.Modules.Sales.Tests\AddSalesOrderLineTests.cs          4 tests
-tests\AutoPartsErp.Modules.Purchasing.Tests\AddPurchaseOrderLineTests.cs  4 tests
+src\Modules\Pricing\AutoPartsErp.Modules.Pricing.Application\
+    Contracts\PricingContracts.cs
+    Abstractions\IPricingReadStore.cs
+    PriceLists\Commands\PriceListCommands.cs     open, amend, activate, archive, make default
+    PriceLists\Commands\PriceCommands.cs         set a price, remove a break, remove a price
+    PriceLists\Queries\PricingQueries.cs
+    Customers\Commands\CustomerPricingCommands.cs
+    Quotes\QuotePriceQuery.cs                    the one the rest of the system will call
+    EventHandlers\PublishPricingEvents.cs
+
+src\Modules\Pricing\AutoPartsErp.Modules.Pricing.Infrastructure\
+    Persistence\PricingDbContext.cs
+    Persistence\Configurations\PricingConfigurations.cs
+    Persistence\Repositories\PricingRepositories.cs   + PriceCandidateSource
+    Persistence\ReadStore\PricingReadStore.cs
+    Contracts\PriceProvider.cs
+
+src\Modules\Pricing\AutoPartsErp.Modules.Pricing.Presentation\
+    PricingModule.cs
+    Endpoints\PriceListEndpoints.cs
+    Endpoints\QuoteEndpoints.cs
+
+src\Shared\AutoPartsErp.ModuleContracts\Pricing\IPriceProvider.cs        + PartPrice
+src\Shared\AutoPartsErp.IntegrationEvents\Pricing\PricingIntegrationEvents.cs
 
 
 CHANGED
 -------
 
-Catalog:     Part.cs (new PurchasableStatuses; the two Is... rules now read the lists)
-             CatalogModule.cs (registers the adapter)
-             AutoPartsErp.Modules.Catalog.Infrastructure.csproj (references ModuleContracts)
-Sales:       SalesErrors.cs, SalesOrderCommands.cs, SalesOrderEndpoints.cs
-Purchasing:  PurchasingErrors.cs, PurchaseOrderCommands.cs, PurchaseOrderEndpoints.cs,
-             ReplenishmentUseCases.cs, ReplenishmentEndpoints.cs
-Tests:       PartTests.cs (PurchasableStatusTests, 5 tests)
-requests.http
+src\Modules\Pricing\...Domain\PriceLists\PriceListEntry.cs   see "one fix to pass 1" below
+src\Api\AutoPartsErp.Api\Program.cs                          registers PricingModule, migrates
+src\Api\AutoPartsErp.Api\AutoPartsErp.Api.csproj             references Pricing.Presentation
+requests.http                                                a full worked pricing session
 
 
 AFTER EXTRACTING
 ----------------
 
+    dotnet sln add src\Modules\Pricing\AutoPartsErp.Modules.Pricing.Application\AutoPartsErp.Modules.Pricing.Application.csproj --solution-folder src\Modules\Pricing
+    dotnet sln add src\Modules\Pricing\AutoPartsErp.Modules.Pricing.Infrastructure\AutoPartsErp.Modules.Pricing.Infrastructure.csproj --solution-folder src\Modules\Pricing
+    dotnet sln add src\Modules\Pricing\AutoPartsErp.Modules.Pricing.Presentation\AutoPartsErp.Modules.Pricing.Presentation.csproj --solution-folder src\Modules\Pricing
+
+    dotnet build
+    dotnet ef migrations add InitialPricing --context PricingDbContext --project src\Modules\Pricing\AutoPartsErp.Modules.Pricing.Infrastructure --startup-project src\Api\AutoPartsErp.Api
     dotnet build
     dotnet test --arch x64
     dotnet run --project src\Api\AutoPartsErp.Api
 
-Test count should go from 260 to 273.
+Test count stays at 324 — nothing new is testable without a database, and the domain rules were
+already covered in pass 1.
 
->>> No dotnet sln add this time - nothing new to add. But your .sln was missing five
->>> projects until this morning, so if the numbers look wrong, check dotnet sln list first.
+The migration creates the `pricing` schema: price_lists, price_list_entries, price_breaks,
+customer_agreements, outbox_messages, inbox_messages. It runs on startup like the others.
+
+Then work through the Pricing section at the bottom of requests.http, in order. It opens a list,
+prices a part at three quantities, activates it, makes it the default, and quotes it — including
+the cases that are supposed to fail.
 
 
 WHAT THIS IS
 ------------
 
-The third module query contract, after IInventoryAvailability and IPartnerDirectory.
+Pass 1 was the rules. This is the module: commands, a read side, a schema, an HTTP surface, and
+the contract Sales will use in pass 3.
 
-Until now, putting a part on a document meant sending the part id AND typing its SKU, its
-description and its unit alongside. Three chances to disagree with the catalogue on every
-line, on a document that is kept for years. The caller already knows which part it means -
-it is sending the id - so it should not also have to say what that part is called.
+The interesting file is Persistence\Repositories\PricingRepositories.cs — specifically
+PriceCandidateSource, which is one join that fetches every live list pricing a part today. That
+runs once per line on every counter sale, and it is written as one round trip rather than a
+lookup per list for the same reason everything else here is: the difference between a screen that
+feels instant and one that does not.
 
-    ICatalogDirectory   what is this part, and may we still trade it
+It deliberately does not filter by customer. Doing that in SQL would mean fetching the agreement
+first and turning one query into two, and the resolver has to apply that rule anyway — it is a
+domain rule, not an index. So the query stays index-shaped and hands back slightly more than is
+needed.
 
-Three questions: by id, by several ids at once, and by SKU - because nobody at a trade
-counter types a GUID, they read the code off the bin label.
-
-The values are still snapshotted onto the document. A part renamed in 2027 must not silently
-rewrite an order confirmed in 2026. This is where the snapshot is TAKEN, not a replacement
-for taking one.
-
-PartDescriptor carries no money. Whether a core deposit is owed is a fact about the part and
-it is in there; what it costs is not, because an amount would drag a currency and a rounding
-policy across the boundary and the contract would stop being flat.
+IPriceProvider is the fourth module query contract, after IInventoryAvailability,
+IPartnerDirectory and ICatalogDirectory. It returns null when nothing prices a part, rather than
+an error — Sales knows the SKU and the order number and can say something useful; a contract
+cannot. Pricing's own /quote endpoint answers with the reason, and that is what a person calls.
 
 
-WHAT IT CLOSES
---------------
+ONE FIX TO PASS 1
+-----------------
 
-1. Three commands lost their SKU, description and unit parameters:
+PriceListEntry.Breaks used to return the backing list as-is and MinimumSaleQuantity read
+_breaks[0]. Both were right in memory, because the aggregate sorts when a break is added, and
+both would have been wrong the moment a row came back from PostgreSQL — an owned collection
+materializes in whatever order the rows arrive, and there is no mapping-level ORDER BY to lean
+on.
 
-       AddSalesOrderLineCommand
-       AddPurchaseOrderLineCommand
-       AddSuggestionToPurchaseOrderCommand
-
-   All three now send only the part, the quantity and the price. An old client still sending
-   the other three gets them silently ignored - worth knowing if you have anything scripted.
-
-2. The unit is now always the part's stocking unit.
-   Not a unit the caller chose. Every quantity ever recorded against a part is in that unit,
-   so a line raised in another one was a reservation that could not be filled and an invoice
-   that could not be reconciled. That whole class of mismatch is now unreachable through
-   these three paths.
-
-3. Sales refuses a part that is not sellable; Purchasing refuses one that is not purchasable.
-   Deliberately different rules: a discontinued part is still sold down off the shelf, but
-   ordering more of it is how dead stock gets bought on purpose. Where the catalogue knows
-   what replaces a part, the refusal says so.
-
-4. The reorder-point path goes through the same gate.
-   A suggestion raised weeks ago against a part since withdrawn from purchasing used to roll
-   straight onto an order. Two ways onto the same document that describe a part differently
-   is how the same part ends up as "Brake pad set" on one order and "brk pads frt" on the next.
+Breaks now sorts on the way out and MinimumSaleQuantity takes the minimum. BreakFor was already
+order-independent, which is why the 88-check harness and the 51 tests all still passed with the
+bug in place. That is the shape of this class of bug: nothing fails until there is a database.
 
 
 VERIFIED HERE / NOT VERIFIED HERE
 ---------------------------------
 
-Compiled clean: ModuleContracts, and the Catalog, Sales and Purchasing Domain and Application
-projects. Ran the eight new handler tests plus the status-list checks against the real domain
-and handlers here - 12 checks, all passing.
+Compiled clean: the Pricing Domain and Application projects, the new contract, and the new
+integration events. Re-ran the pass-1 harness (88 checks) and the xunit tests (51 cases) against
+the changed domain — both still green.
 
-Not compiled here: Catalog.Infrastructure, the Presentation projects, the Api, and the test
-projects (no NuGet in the sandbox).
-
-Checked by hand across the whole repo: no caller, test or sample still passes SKU, description
-or unit to any of the three commands; no duplicate error codes; no module references another
-module; every command handler is Scoped and the outbox creates its own scope, so the new
-dependency cannot be resolved outside one; the by-SKU and Contains query shapes match ones
-already running in your build.
-
-The EF projection was rewritten to project into an anonymous type and map afterwards, which is
-the shape CatalogReadStore and InventoryAvailability already use. It was briefly projecting
-straight into a named record via its constructor - probably fine, but not a thing I could test
-here, and not worth being clever about in the one place another module reaches into this one.
+Not compiled: Infrastructure, Presentation, and the Api, because there is no NuGet in the
+sandbox. That covers the EF mappings, the candidate query, the read store, the endpoints and the
+DI wiring. The EF projections were written the careful way after the Catalog pass: the read store
+projects columns and maps to DTOs in memory, because reaching for .Value on a converted
+identifier or .ToString() on a stored enum inside a Select is how a query stops translating.
 
 
 KNOWN LIMITS
 ------------
 
-1. The lookup reads, it does not lock. A part discontinued between the lookup and the save is
-   still added. Milliseconds wide, and the same trade-off as the other two contracts.
+1. No margin floor. "Never below cost plus 8%" needs the cost, which is Inventory's, and that is a
+   fifth contract rather than a guess.
 
-2. Prices are still typed by hand, on all three paths. Pricing is its own module and does not
-   exist yet.
+2. Cross-currency is refused, not converted, on both the quote endpoint and the contract.
 
-3. FindBySkuAsync is on the contract but nothing calls it yet. It is there because the counter
-   screen will need it and the alternative is Sales holding its own SKU index.
+3. Prices are per part. Category-wide rules ("15% off all Bosch filters") would be a second kind
+   of entry and a second resolution step, and the resolver is deliberately simple enough to
+   reason about today.
+
+4. Nothing consumes PriceChangedIntegrationEvent yet. It is published so the outbox has the fact;
+   the first consumer will be whatever screen holds a quote.
+
+
+PASS 3
+------
+
+Sales' AddSalesOrderLineCommand stops taking UnitPrice and DiscountPercent, and asks
+IPriceProvider instead — with an explicit override for the counter, because a manager knocking a
+tenner off is a real thing and pretending otherwise just means somebody edits the database.

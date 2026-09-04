@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Pricing.Domain</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Pricing.Domain</AssemblyName>
+    <Description>
+      What a part costs a particular customer at a particular quantity on a particular day.
+      Price lists, quantity breaks and customer agreements, and the resolution rules that turn
+      the three of them into one number a counter can quote.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.SharedKernel\AutoPartsErp.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Pricing.Application</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Pricing.Application</AssemblyName>
+    <Description>The Pricing module's use cases.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoPartsErp.Modules.Pricing.Domain\AutoPartsErp.Modules.Pricing.Domain.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.IntegrationEvents\AutoPartsErp.IntegrationEvents.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.ModuleContracts\AutoPartsErp.ModuleContracts.csproj" />
+  </ItemGroup>
+
+</Project>

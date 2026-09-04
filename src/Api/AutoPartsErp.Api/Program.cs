@@ -13,6 +13,8 @@ using AutoPartsErp.Modules.Inventory.Presentation;
 using AutoPartsErp.Modules.Partners.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Partners.Infrastructure.Persistence.Seed;
 using AutoPartsErp.Modules.Partners.Presentation;
+using AutoPartsErp.Modules.Pricing.Infrastructure.Persistence;
+using AutoPartsErp.Modules.Pricing.Presentation;
 using AutoPartsErp.Modules.Purchasing.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Purchasing.Presentation;
 using AutoPartsErp.Modules.Sales.Infrastructure.Persistence;
@@ -81,6 +83,7 @@ try
         .AddDbContextCheck<CatalogDbContext>("catalog-database")
         .AddDbContextCheck<InventoryDbContext>("inventory-database")
         .AddDbContextCheck<PartnersDbContext>("partners-database")
+        .AddDbContextCheck<PricingDbContext>("pricing-database")
         .AddDbContextCheck<PurchasingDbContext>("purchasing-database")
         .AddDbContextCheck<SalesDbContext>("sales-database");
 
@@ -95,6 +98,7 @@ try
         new PartnersModule(),
         new InventoryModule(),
         new CatalogModule(),
+        new PricingModule(),
         new PurchasingModule(),
         new SalesModule());
 
@@ -182,6 +186,12 @@ static async Task MigrateAndSeedAsync(WebApplication app)
     // Purchasing last, and with no seeder. Its two tables start empty on purpose: purchase
     // orders are raised by people, and replenishment suggestions arrive on their own the first
     // time a seeded part is picked below its reorder point.
+    // Pricing has no seeder. A price list is a commercial decision, and inventing a default one
+    // would be inventing what the company charges - somebody opens the first list and makes it
+    // the default, and until they do, the quote endpoint says so in as many words.
+    var pricing = scope.ServiceProvider.GetRequiredService<PricingDbContext>();
+    await pricing.Database.MigrateAsync();
+
     var purchasing = scope.ServiceProvider.GetRequiredService<PurchasingDbContext>();
     await purchasing.Database.MigrateAsync();
 

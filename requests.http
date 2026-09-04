@@ -472,3 +472,164 @@ Content-Type: application/json
 X-Tenant-Id: {{tenant}}
 
 { "reason": "Quality dispute on the last three deliveries." }
+
+
+###############################################################################
+# Pricing
+#
+# The order matters here: a list opens in draft, gets prices, then goes live.
+# Quoting from a draft list gets you nothing, deliberately.
+###############################################################################
+
+### 1. Open the standard list. This is what a walk-in customer pays.
+POST {{host}}/api/pricing/lists
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "code": "TRADE",
+  "name": "Trade list 2026",
+  "currencyCode": "EUR",
+  "kind": "Standard"
+}
+
+### Same code twice -> 409 pricing.list.code_exists
+POST {{host}}/api/pricing/lists
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "code": "trade",
+  "name": "Duplicate",
+  "currencyCode": "EUR",
+  "kind": "Standard"
+}
+
+### A promotion with no last day -> 422 pricing.list.promotion_needs_end
+POST {{host}}/api/pricing/lists
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "code": "FOREVER",
+  "name": "Permanent sale",
+  "currencyCode": "EUR",
+  "kind": "Promotion"
+}
+
+### 2. Price a part. One unit is EUR 24.50.
+PUT {{host}}/api/pricing/lists/{{priceListId}}/prices/{{partId}}
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{ "minimumQuantity": 1, "unitPrice": 24.50 }
+
+### 3. Ten or more is EUR 22.00. Same endpoint - it adds the break.
+PUT {{host}}/api/pricing/lists/{{priceListId}}/prices/{{partId}}
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{ "minimumQuantity": 10, "unitPrice": 22.00 }
+
+### 4. Fifty or more is EUR 20.00.
+PUT {{host}}/api/pricing/lists/{{priceListId}}/prices/{{partId}}
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{ "minimumQuantity": 50, "unitPrice": 20.00 }
+
+### Correcting the ten-up price. Same call again - not a conflict.
+PUT {{host}}/api/pricing/lists/{{priceListId}}/prices/{{partId}}
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{ "minimumQuantity": 10, "unitPrice": 21.50 }
+
+### What the list now says about that part
+GET {{host}}/api/pricing/lists/{{priceListId}}/prices/{{partId}}
+X-Tenant-Id: {{tenant}}
+
+### 5. Put the list into service.
+POST {{host}}/api/pricing/lists/{{priceListId}}/activate
+X-Tenant-Id: {{tenant}}
+
+### 6. Make it the fallback for customers with no agreement.
+POST {{host}}/api/pricing/lists/{{priceListId}}/make-default
+X-Tenant-Id: {{tenant}}
+
+### Quote one. Walk-in, no account -> 24.50
+GET {{host}}/api/pricing/quote?partId={{partId}}&quantity=1
+X-Tenant-Id: {{tenant}}
+
+### Quote ten -> 21.50, appliedBreakQuantity 10
+GET {{host}}/api/pricing/quote?partId={{partId}}&quantity=10
+X-Tenant-Id: {{tenant}}
+
+### Quote fifty -> 20.00, appliedBreakQuantity 50
+GET {{host}}/api/pricing/quote?partId={{partId}}&quantity=50
+X-Tenant-Id: {{tenant}}
+
+### 7. A customer on 5%. Quote fifty for them -> gross 20.00, net 19.00.
+### The discount comes off AFTER the break, which is what everybody assumes.
+POST {{host}}/api/pricing/agreements
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "customerId": "REPLACE-WITH-A-CUSTOMER-ID",
+  "priceListId": "{{priceListId}}",
+  "discountPercent": 5,
+  "note": "Loyal since 2019."
+}
+
+GET {{host}}/api/pricing/quote?partId={{partId}}&quantity=50&customerId={{customerId}}
+X-Tenant-Id: {{tenant}}
+
+### Same customer twice -> 409 pricing.agreement.already_agreed
+POST {{host}}/api/pricing/agreements
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{ "customerId": "{{customerId}}", "priceListId": "{{priceListId}}", "discountPercent": 10 }
+
+### Who would a change to this list reach?
+GET {{host}}/api/pricing/lists/{{priceListId}}/agreements
+X-Tenant-Id: {{tenant}}
+
+### End their terms. They go back to the default list at full price.
+POST {{host}}/api/pricing/agreements/{{customerId}}/end
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{}
+
+### 8. A promotion that beats everything while it runs.
+POST {{host}}/api/pricing/lists
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "code": "SEP26",
+  "name": "September brakes campaign",
+  "currencyCode": "EUR",
+  "kind": "Promotion",
+  "effectiveFrom": "2026-09-01",
+  "effectiveTo": "2026-09-30"
+}
+
+### Price the same part on it, activate it, and quote again.
+### The promotion wins because it is a promotion - not because it is cheaper.
+
+### Asking for a currency the list does not price in
+### -> 422 pricing.quote.currency_mismatch. Refused, never converted.
+GET {{host}}/api/pricing/quote?partId={{partId}}&quantity=1&currencyCode=USD
+X-Tenant-Id: {{tenant}}
+
+### A part nobody has priced -> 404 pricing.quote.no_price
+GET {{host}}/api/pricing/quote?partId=00000000-0000-0000-0000-000000000099&quantity=1
+X-Tenant-Id: {{tenant}}
+
+### The default list cannot be withdrawn while it is the default
+### -> 422 pricing.list.cannot_archive_default
+POST {{host}}/api/pricing/lists/{{priceListId}}/archive
+X-Tenant-Id: {{tenant}}
