@@ -60,5 +60,40 @@ public interface IInvoiceRepository : IRepository<Invoice, InvoiceId>
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>The Invoicing module's unit of work.</summary>
-public interface IInvoicingUnitOfWork : IUnitOfWork;
+/// <summary>
+/// The Invoicing module's unit of work.
+/// <para>
+/// The only one in this system that can start a transaction explicitly, because it is the only
+/// one that has to hold a lock across two operations: taking a number from a series and writing
+/// the document that uses it. Everywhere else, the implicit transaction around
+/// <c>SaveChangesAsync</c> is enough.
+/// </para>
+/// </summary>
+public interface IInvoicingUnitOfWork : IUnitOfWork
+{
+    /// <summary>
+    /// Starts a transaction that a row lock can live inside.
+    /// <para>
+    /// A lock taken by a bare <c>SELECT ... FOR UPDATE</c> is released the moment that statement's
+    /// own implicit transaction ends, which is before the document is written — so the lock has to
+    /// be held by something wider, and this is it.
+    /// </para>
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<IInvoicingTransaction> BeginAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// A transaction wide enough to hold a series lock and the document that number went onto.
+/// <para>
+/// Disposing without committing rolls back, which is exactly what should happen when anything
+/// between taking a number and saving the document fails: the number goes back and there is no
+/// gap.
+/// </para>
+/// </summary>
+public interface IInvoicingTransaction : IAsyncDisposable
+{
+    /// <summary>Commits everything done inside it.</summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task CommitAsync(CancellationToken cancellationToken = default);
+}

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Invoicing.Presentation</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Invoicing.Presentation</AssemblyName>
+    <Description>The Invoicing module's HTTP surface and its IModule entry point.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoPartsErp.Modules.Invoicing.Infrastructure\AutoPartsErp.Modules.Invoicing.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

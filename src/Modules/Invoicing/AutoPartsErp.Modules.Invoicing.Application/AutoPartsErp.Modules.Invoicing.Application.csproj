@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Invoicing.Application</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Invoicing.Application</AssemblyName>
+    <Description>The Invoicing module's use cases.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoPartsErp.Modules.Invoicing.Domain\AutoPartsErp.Modules.Invoicing.Domain.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.IntegrationEvents\AutoPartsErp.IntegrationEvents.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.ModuleContracts\AutoPartsErp.ModuleContracts.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -108,6 +108,18 @@ public sealed class Invoice : AggregateRoot<InvoiceId>, IAuditable, ITenantScope
     /// <summary>Its number, e.g. <c>FT SERIE2026/35</c>. Empty while it is still a draft.</summary>
     public string DocumentNumber { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// Its position in the series, from 1. Zero while it is still a draft.
+    /// <para>
+    /// Redundant with <see cref="DocumentNumber"/>, and stored anyway, because it is the only
+    /// thing that answers "which document came last in this series" correctly. Sorted as text,
+    /// <c>FT SERIE2026/9</c> comes after <c>FT SERIE2026/10</c> — and the document that comes last
+    /// is the one the next signature chains onto, so getting that ordering wrong would break the
+    /// chain at every tenth document and nowhere else.
+    /// </para>
+    /// </summary>
+    public int SeriesNumber { get; private set; }
+
     /// <summary>Its unique code. Null while it is still a draft.</summary>
     public Atcud? Atcud { get; private set; }
 
@@ -376,6 +388,7 @@ public sealed class Invoice : AggregateRoot<InvoiceId>, IAuditable, ITenantScope
 
         SeriesId = series.Id;
         DocumentNumber = number.Value.Formatted;
+        SeriesNumber = number.Value.Number;
         Atcud = atcud.Value;
         Signature = signature.Value;
         SystemEntryDateUtc = systemEntryDateUtc;

@@ -658,3 +658,156 @@ X-Tenant-Id: {{tenant}}
 ### -> 422 pricing.list.cannot_archive_default
 POST {{host}}/api/pricing/lists/{{priceListId}}/archive
 X-Tenant-Id: {{tenant}}
+
+###############################################################################
+# INVOICING
+#
+# The order below is the only order that works, and each step refuses until the
+# one before it has happened. That is the law rather than a design choice: a
+# series has to be declared to the tax authority and given a validation code
+# before it can number anything, and a document has to be complete before it
+# can take a number, because a number taken and not used is a gap in a sequence
+# that is required to have none.
+###############################################################################
+
+@seriesId = 00000000-0000-0000-0000-000000000000
+@invoiceId = 00000000-0000-0000-0000-000000000000
+
+### 1. Open a series. It exists, and it can issue nothing.
+POST {{host}}/api/invoicing/series
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "type": "FT",
+  "code": "SERIE2026",
+  "year": 2026
+}
+
+### Try to issue in it now -> 422 invoicing.series.not_validated.
+### Worth doing once, to see the refusal before the code is recorded.
+
+### 2. Record the code the AT returned. Once, and never again.
+POST {{host}}/api/invoicing/series/{{seriesId}}/validation-code
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "validationCode": "CSDF7T5H"
+}
+
+### Sending a second code -> 422 invoicing.series.already_validated.
+### It is in every ATCUD the series has produced, so it cannot move.
+
+### 3. Put it into service.
+POST {{host}}/api/invoicing/series/{{seriesId}}/activate
+X-Tenant-Id: {{tenant}}
+
+### 4. See where it stands: status, next number, how many it has issued.
+GET {{host}}/api/invoicing/series/{{seriesId}}
+X-Tenant-Id: {{tenant}}
+
+### 5. Start a document. A draft: no number, no ATCUD, no legal standing.
+POST {{host}}/api/invoicing/documents
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "type": "FT",
+  "customerId": "{{customerId}}",
+  "customerName": "Oficina Central, Lda.",
+  "customerTaxNumber": "501234567",
+  "customerCountry": "PT",
+  "currencyCode": "EUR",
+  "documentDate": "2026-09-04"
+}
+
+### An FT without a customer NIF -> 422 invoicing.document.invoice_needs_tax_number.
+### An FS is allowed one without, which is most of a trade counter's morning.
+
+### 6. Add a line. The SKU and description are copied from the catalogue as they
+### are today and never refreshed - the document says what the customer was told.
+POST {{host}}/api/invoicing/documents/{{invoiceId}}/lines
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "partId": "{{partId}}",
+  "quantity": 4,
+  "unitPrice": 18.40,
+  "discountPercent": 5,
+  "vatCategory": "NOR",
+  "vatPercent": 23
+}
+
+### An exempt line without its legal basis -> 422 invoicing.vat.exempt_needs_reason.
+POST {{host}}/api/invoicing/documents/{{invoiceId}}/lines
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "partId": "{{partId}}",
+  "quantity": 1,
+  "unitPrice": 10.00,
+  "vatCategory": "ISE"
+}
+
+### The same line, done properly.
+POST {{host}}/api/invoicing/documents/{{invoiceId}}/lines
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "partId": "{{partId}}",
+  "quantity": 1,
+  "unitPrice": 10.00,
+  "vatCategory": "ISE",
+  "exemptionCode": "M07",
+  "exemptionReason": "Isento artigo 9.o do CIVA"
+}
+
+### 7. Issue it. Number, ATCUD, signature and QR code, all at once, inside one
+### transaction holding a lock on the series. Nothing here can be undone.
+POST {{host}}/api/invoicing/documents/{{invoiceId}}/issue
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{}
+
+### 8. Read it back. This is everything a printed page needs: the four printed
+### characters of the signature, the QR payload, and the tax split by category.
+GET {{host}}/api/invoicing/documents/{{invoiceId}}
+X-Tenant-Id: {{tenant}}
+
+### Add a line to it now -> 422 invoicing.document.already_issued.
+### Issue it again -> the same. The signature covers the total.
+
+### 9. Find it the way a customer quotes it down the phone.
+GET {{host}}/api/invoicing/documents/by-number/FT%20SERIE2026/1
+X-Tenant-Id: {{tenant}}
+
+### 10. The day's documents.
+GET {{host}}/api/invoicing/documents?from=2026-09-04&to=2026-09-04
+X-Tenant-Id: {{tenant}}
+
+### The drafts nobody has issued yet - the work in progress, not the record.
+GET {{host}}/api/invoicing/documents?draftsOnly=true
+X-Tenant-Id: {{tenant}}
+
+### 11. Void it. It keeps its number, its figures, its signature and its place
+### in the chain. Nothing is deleted, because the number was reported the moment
+### it was issued and a missing number is worse than a cancelled one.
+POST {{host}}/api/invoicing/documents/{{invoiceId}}/void
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "reason": "Raised against the wrong customer account"
+}
+
+### Voiding without a reason -> 422 invoicing.document.void_reason_required.
+### The reason goes into the SAF-T export, so there is no blank version of it.
+
+### 12. Close the series at year end. One-way, and the AT has to be told.
+POST {{host}}/api/invoicing/series/{{seriesId}}/close
+X-Tenant-Id: {{tenant}}

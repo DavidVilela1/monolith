@@ -10,6 +10,8 @@ using AutoPartsErp.Modules.Catalog.Presentation;
 using AutoPartsErp.Modules.Inventory.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Inventory.Infrastructure.Persistence.Seed;
 using AutoPartsErp.Modules.Inventory.Presentation;
+using AutoPartsErp.Modules.Invoicing.Infrastructure.Persistence;
+using AutoPartsErp.Modules.Invoicing.Presentation;
 using AutoPartsErp.Modules.Partners.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Partners.Infrastructure.Persistence.Seed;
 using AutoPartsErp.Modules.Partners.Presentation;
@@ -85,7 +87,8 @@ try
         .AddDbContextCheck<PartnersDbContext>("partners-database")
         .AddDbContextCheck<PricingDbContext>("pricing-database")
         .AddDbContextCheck<PurchasingDbContext>("purchasing-database")
-        .AddDbContextCheck<SalesDbContext>("sales-database");
+        .AddDbContextCheck<SalesDbContext>("sales-database")
+        .AddDbContextCheck<InvoicingDbContext>("invoicing-database");
 
     // ---------------------------------------------------------------------------------
     // Modules
@@ -100,7 +103,8 @@ try
         new CatalogModule(),
         new PricingModule(),
         new PurchasingModule(),
-        new SalesModule());
+        new SalesModule(),
+        new InvoicingModule());
 
     WebApplication app = builder.Build();
 
@@ -200,6 +204,13 @@ static async Task MigrateAndSeedAsync(WebApplication app)
     // the seeded partners populate them on the first run through the outbox.
     var sales = scope.ServiceProvider.GetRequiredService<SalesDbContext>();
     await sales.Database.MigrateAsync();
+
+    // Invoicing last, and emphatically with no seeder. A document series has to be declared to
+    // the tax authority and given a validation code before it can issue anything, so a seeded
+    // one would be a series that exists here and nowhere in the AT's records - which is worse
+    // than no series at all, because it looks ready.
+    var invoicing = scope.ServiceProvider.GetRequiredService<InvoicingDbContext>();
+    await invoicing.Database.MigrateAsync();
 }
 
 /// <summary>Exposed so integration tests can reference the host with <c>WebApplicationFactory</c>.</summary>

@@ -187,6 +187,51 @@ public sealed class InvoiceTests
     }
 
     /// <summary>
+    /// The series number exists so that "the last document in this series" — the link the next
+    /// signature chains onto — can be found by an ordering that is actually the sequence. Sorted
+    /// as text, FT SERIE2026/9 comes after FT SERIE2026/10, so a chain built on the document
+    /// number would break at every tenth document and nowhere else.
+    /// </summary>
+    [Fact]
+    public void The_series_number_is_recorded_and_orders_the_way_the_number_does_not()
+    {
+        DocumentSeries series = ActiveSeries();
+        var signer = new RecordingSigner();
+
+        Invoice draft = Draft();
+        AddLine(draft);
+        draft.SeriesNumber.Should().Be(0);
+
+        var issued = new List<Invoice>();
+
+        for (int index = 0; index < 10; index++)
+        {
+            Invoice invoice = index == 0 ? draft : Draft();
+
+            if (index > 0)
+            {
+                AddLine(invoice);
+            }
+
+            invoice.Issue(series, signer, null, "501234567", EntryUtc).IsSuccess.Should().BeTrue();
+            issued.Add(invoice);
+        }
+
+        issued[8].DocumentNumber.Should().Be("FT SERIE2026/9");
+        issued[9].DocumentNumber.Should().Be("FT SERIE2026/10");
+
+        issued[8].SeriesNumber.Should().Be(9);
+        issued[9].SeriesNumber.Should().Be(10);
+
+        // The point of the whole field: by number the ninth wins, by sequence the tenth does.
+        issued.OrderByDescending(invoice => invoice.DocumentNumber, StringComparer.Ordinal)
+            .First().SeriesNumber.Should().Be(9);
+
+        issued.OrderByDescending(invoice => invoice.SeriesNumber)
+            .First().SeriesNumber.Should().Be(10);
+    }
+
+    /// <summary>
     /// A series is declared to the tax authority for one document type. Issuing the wrong kind
     /// into it would be reporting a document that does not exist in the series it claims.
     /// </summary>

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Invoicing.Infrastructure</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Invoicing.Infrastructure</AssemblyName>
+    <Description>
+      The Invoicing module's persistence and its signer: its own PostgreSQL schema, the row lock
+      that keeps document numbering gapless under two tills, and the RSA signature the tax
+      authority prescribes.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="EFCore.NamingConventions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoPartsErp.Modules.Invoicing.Application\AutoPartsErp.Modules.Invoicing.Application.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.Modules.Abstractions\AutoPartsErp.Modules.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.Persistence\AutoPartsErp.Persistence.csproj" />
+  </ItemGroup>
+
+</Project>
