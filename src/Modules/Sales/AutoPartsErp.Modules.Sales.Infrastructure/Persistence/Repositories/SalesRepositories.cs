@@ -2,7 +2,6 @@ using System.Globalization;
 using AutoPartsErp.Modules.Sales.Domain;
 using AutoPartsErp.Modules.Sales.Domain.Customers;
 using AutoPartsErp.Modules.Sales.Domain.Orders;
-using AutoPartsErp.SharedKernel.Abstractions;
 using Microsoft.EntityFrameworkCore;
 
 namespace AutoPartsErp.Modules.Sales.Infrastructure.Persistence.Repositories;
@@ -12,14 +11,15 @@ public sealed class SalesOrderRepository : ISalesOrderRepository
 {
     private const string NumberPrefix = "SO";
 
+    /// <summary>Identifies this run of numbers in the module's counter table.</summary>
+    private const string NumberKey = "sales-order";
+
     private readonly SalesDbContext _context;
-    private readonly ITenantContext _tenantContext;
 
     /// <summary>Initializes the repository.</summary>
-    public SalesOrderRepository(SalesDbContext context, ITenantContext tenantContext)
+    public SalesOrderRepository(SalesDbContext context)
     {
         _context = context;
-        _tenantContext = tenantContext;
     }
 
     /// <inheritdoc />
@@ -44,32 +44,18 @@ public sealed class SalesOrderRepository : ISalesOrderRepository
     /// <inheritdoc />
     public async Task<string> NextOrderNumberAsync(int year, CancellationToken cancellationToken = default)
     {
-        string prefix = string.Create(CultureInfo.InvariantCulture, $"{NumberPrefix}-{year}-");
-
-        // Query filters ignored and the tenant applied by hand: a soft-deleted order still owns
-        // its number. Numbers are zero-padded, so ordering as text orders numerically and this
-        // reads one row rather than every order taken this year.
-        string? last = await _context.SalesOrders
-            .IgnoreQueryFilters()
-            .Where(order => order.TenantId == _tenantContext.TenantId)
-            .Where(order => EF.Functions.Like(order.OrderNumber, prefix + "%"))
-            .OrderByDescending(order => order.OrderNumber)
-            .Select(order => order.OrderNumber)
-            .FirstOrDefaultAsync(cancellationToken)
+        // This used to read the highest number already taken and add one. Two people creating an
+        // order in the same moment both read the same highest number, both got the same next one,
+        // and nothing anywhere complained - the number was only unique because of the order the
+        // reads happened to fall in, and under load they stop falling in that order.
+        //
+        // The counter increments in the database, in one statement, so the second caller cannot
+        // read what the first one has not yet written.
+        int next = await _context
+            .TakeNextNumberAsync(NumberKey, year, cancellationToken)
             .ConfigureAwait(false);
 
-        int next = 1;
-
-        if (last is not null && last.Length > prefix.Length)
-        {
-            string suffix = last[prefix.Length..];
-            if (int.TryParse(suffix, NumberStyles.None, CultureInfo.InvariantCulture, out int parsed))
-            {
-                next = parsed + 1;
-            }
-        }
-
-        return string.Create(CultureInfo.InvariantCulture, $"{prefix}{next:D5}");
+        return string.Create(CultureInfo.InvariantCulture, $"{NumberPrefix}-{year}-{next:D5}");
     }
 
     /// <inheritdoc />

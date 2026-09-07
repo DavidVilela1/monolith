@@ -2,7 +2,6 @@ using System.Globalization;
 using AutoPartsErp.Modules.Purchasing.Domain;
 using AutoPartsErp.Modules.Purchasing.Domain.Orders;
 using AutoPartsErp.Modules.Purchasing.Domain.Replenishment;
-using AutoPartsErp.SharedKernel.Abstractions;
 using Microsoft.EntityFrameworkCore;
 
 namespace AutoPartsErp.Modules.Purchasing.Infrastructure.Persistence.Repositories;
@@ -19,14 +18,15 @@ public sealed class PurchaseOrderRepository : IPurchaseOrderRepository
 {
     private const string NumberPrefix = "PO";
 
+    /// <summary>Identifies this run of numbers in the module's counter table.</summary>
+    private const string NumberKey = "purchase-order";
+
     private readonly PurchasingDbContext _context;
-    private readonly ITenantContext _tenantContext;
 
     /// <summary>Initializes the repository.</summary>
-    public PurchaseOrderRepository(PurchasingDbContext context, ITenantContext tenantContext)
+    public PurchaseOrderRepository(PurchasingDbContext context)
     {
         _context = context;
-        _tenantContext = tenantContext;
     }
 
     /// <inheritdoc />
@@ -53,35 +53,17 @@ public sealed class PurchaseOrderRepository : IPurchaseOrderRepository
     /// <inheritdoc />
     public async Task<string> NextOrderNumberAsync(int year, CancellationToken cancellationToken = default)
     {
-        string prefix = string.Create(CultureInfo.InvariantCulture, $"{NumberPrefix}-{year}-");
-
-        // Query filters are ignored on purpose and the tenant is applied by hand: a soft-deleted
-        // order still owns its number, and reissuing it would put two different documents in the
-        // supplier's inbox with the same reference.
+        // This used to read the highest number already taken and add one, which is unique only
+        // while no two people raise an order at the same moment. When they do, both read the same
+        // highest number and the supplier receives two different orders quoting one reference.
         //
-        // Numbers are zero-padded, so ordering them as text orders them numerically - which is
-        // what lets this read one row instead of every order raised this year.
-        string? last = await _context.PurchaseOrders
-            .IgnoreQueryFilters()
-            .Where(order => order.TenantId == _tenantContext.TenantId)
-            .Where(order => EF.Functions.Like(order.OrderNumber, prefix + "%"))
-            .OrderByDescending(order => order.OrderNumber)
-            .Select(order => order.OrderNumber)
-            .FirstOrDefaultAsync(cancellationToken)
+        // The counter increments in the database, in one statement, so there is no window between
+        // a read and a write for the second caller to arrive in.
+        int next = await _context
+            .TakeNextNumberAsync(NumberKey, year, cancellationToken)
             .ConfigureAwait(false);
 
-        int next = 1;
-
-        if (last is not null && last.Length > prefix.Length)
-        {
-            string suffix = last[prefix.Length..];
-            if (int.TryParse(suffix, NumberStyles.None, CultureInfo.InvariantCulture, out int parsed))
-            {
-                next = parsed + 1;
-            }
-        }
-
-        return string.Create(CultureInfo.InvariantCulture, $"{prefix}{next:D5}");
+        return string.Create(CultureInfo.InvariantCulture, $"{NumberPrefix}-{year}-{next:D5}");
     }
 
     /// <inheritdoc />
