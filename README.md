@@ -16,7 +16,8 @@ about:
 | **Invoicing** | `invoicing` | 25 | Registered series, ATCUD, the signature chain, the QR code, the SAF-T (PT) export |
 
 They share no code beyond two contract assemblies, and no module references another module's
-projects. 443 tests, all green.
+projects. 459 tests, all green — 438 that need nothing but the compiler, and 21 that need a real
+PostgreSQL because what they check does not exist until there is one.
 
 ---
 
@@ -26,7 +27,7 @@ You need PostgreSQL 16 and the .NET 8 SDK.
 
 ### PostgreSQL
 
-Either install it natively:
+Install it natively:
 
 ```powershell
 winget install -e --id PostgreSQL.PostgreSQL.16     # Windows
@@ -38,16 +39,21 @@ database and user the app expects (`psql` lives in `C:\Program Files\PostgreSQL\
 ```sql
 CREATE USER erp WITH PASSWORD 'erp_dev_password';
 CREATE DATABASE autoparts_erp OWNER erp;
+ALTER ROLE erp CREATEDB;
 ```
 
-Or run it in a container, if Docker is available to you:
+**That third line is not optional, and it is not for the application.** The integration suite
+creates a database of its own for each run and drops it at the end, which is what keeps it from
+ever touching `autoparts_erp`. Without `CREATEDB` the whole suite fails at the first line of the
+fixture with `42501: permission denied to create database` — twenty-one failures that all look
+like broken tests and are one missing grant. The application itself never creates anything and
+does not need the attribute.
 
-```bash
-docker compose up -d
-```
+Point `ConnectionStrings:Erp` in `src/Api/AutoPartsErp.Api/appsettings.json` at any PostgreSQL 16
+instance you like.
 
-Docker is not required and nothing in the project assumes it. Point `ConnectionStrings:Erp` in
-`src/Api/AutoPartsErp.Api/appsettings.json` at any PostgreSQL 16 instance you like.
+There is no container anywhere in this project and nothing in it assumes Docker. The development
+database is a service on the machine; so is the one the tests use.
 
 ### Build and run
 
@@ -324,6 +330,35 @@ retrofit into a system that already has data, and free to include now.
 
 Deletes are archival. A part referenced by ten years of invoices is never physically removed.
 
+### Document numbers are handed out by the database, never computed in C#
+
+Every number a person will quote down a telephone — `SO-2026-00042`, `PO-2026-00017`, `FT 2026/1` —
+comes from a counter that PostgreSQL increments, not from reading the highest one taken and adding
+one.
+
+The reason is that reading and adding one is correct exactly until two people do it at the same
+moment, and then it fails in the worst available way. Both read the same highest number, both get
+the same next one, both succeed, and nothing anywhere complains: the number was only unique
+because of the order the reads happened to fall in. Nobody notices until somebody looks up an
+order and finds two.
+
+There are two mechanisms, and the difference between them is the difference between untidy and
+illegal:
+
+- **Sales and Purchasing** use `number_sequences`, a table in each module's own schema, driven by
+  a single `INSERT ... ON CONFLICT DO UPDATE ... RETURNING`. One statement creates the run, or
+  increments it, and returns the number taken. There is no window between a read and a write
+  because there is no read. If the operation that took the number then fails outside a
+  transaction, the number is spent and the sequence has a gap — which for a commercial document is
+  untidy and nothing more.
+- **Invoicing** cannot accept a gap, because a missing invoice number is a question from the tax
+  authority. It holds a `FOR UPDATE` lock on the series row for the whole issue, inside a
+  transaction it opens itself, so a document that fails after taking a number puts the number
+  back. That is also why it is the one place in the system that opens a transaction by hand.
+
+`ModuleDbContext.TakeNextNumberAsync` is the first; `DocumentSeriesRepository.GetForIssuingAsync`
+is the second. Both are exercised under real concurrency by the integration suite.
+
 ---
 
 ## The domain
@@ -567,7 +602,8 @@ AutoPartsErp.sln
 │           └── ....Presentation
 └── tests
     ├── AutoPartsErp.SharedKernel.Tests
-    └── AutoPartsErp.Modules.<Module>.Tests   one per module
+    ├── AutoPartsErp.Modules.<Module>.Tests   one per module, no database
+    └── AutoPartsErp.IntegrationTests         the real application on real PostgreSQL
 ```
 
 ### The pieces worth knowing about
@@ -622,7 +658,9 @@ works: who we trade with, what we stock, what we sell, what it costs, what we bu
 ## Roadmap
 
 **Done:** all seven modules. Transactional outbox and consumer inbox. Six module query
-contracts. Invoicing end to end, including the Sales bridge and the SAF-T (PT) export.
+contracts. Invoicing end to end, including the Sales bridge and the SAF-T (PT) export. An
+integration suite against real PostgreSQL. Document numbering that survives concurrency in all
+three modules that hand out numbers.
 
 **Next, in rough dependency order:**
 
@@ -646,10 +684,11 @@ contracts. Invoicing end to end, including the Sales bridge and the SAF-T (PT) e
 
 - A malformed `warehouseId` in a request body returns 500 rather than 400. Bad client input
   should never surface as a server error.
-- Sales and purchase order numbering is still max-plus-one and will collide under genuine
-  concurrency. Invoicing does it properly, through a series aggregate that hands out one number at
-  a time under a row lock; the other two modules should borrow that shape rather than keep their
-  own.
+- Nothing in the automated suite puts two sales or purchase orders in flight at once. The counter
+  behind them was verified by hand against PostgreSQL — ten concurrent sessions, ten distinct
+  numbers, where max-plus-one gave nine — but the equivalent of `DocumentNumberingTests` for the
+  other two modules has not been written, so the guarantee is currently a paragraph rather than a
+  test.
 - Purchase order lines have no concurrency token of their own, so two people editing different
   lines of the same order can still conflict at the aggregate level.
 - The outbox assumes a single instance. Two hosts sweeping the same table would deliver some
@@ -673,9 +712,61 @@ contracts. Invoicing end to end, including the Sales bridge and the SAF-T (PT) e
 - A proper vehicle taxonomy. Fitment is deliberately flat for now; the industry shapes are
   **TecDoc** in Europe and **ACES/PIES** in North America.
 - Full-text and fuzzy part search using PostgreSQL `pg_trgm`, for partial and mistyped numbers.
-- Integration tests against a real PostgreSQL container (Testcontainers). Everything currently
-  tested runs without a database, which is fast and leaves the EF mappings unverified until
-  startup.
+
+---
+
+## Integration tests
+
+21 tests in `tests/AutoPartsErp.IntegrationTests`, against the PostgreSQL 16 this project already
+requires. No container, no second service, nothing to start first.
+
+```bash
+dotnet test tests/AutoPartsErp.IntegrationTests
+```
+
+It connects to the same server as the application, creates a database named after a fresh Guid,
+applies every module's migrations to it, runs everything there, and drops it at the end — so it
+cannot touch `autoparts_erp`, and two runs at once cannot collide. That is what the `CREATEDB`
+grant in **Getting started** is for; without it every test fails with `42501` before reaching any
+code worth testing. Point it at a different server with `ERP_TEST_CONNECTION`:
+
+```powershell
+$env:ERP_TEST_CONNECTION = "Host=localhost;Port=5433;Username=erp;Password=erp_dev_password"
+```
+
+If the server is not reachable the suite fails rather than skipping. That is deliberate: a green
+run that silently tested nothing is worse than a red one.
+
+**It does not start the web host.** `ErpFixture` builds the service graph from the same three
+calls `Program.cs` makes — `AddErpCore`, `AddErpPersistence`, `AddErpModules` — and applies the
+migrations itself. Serilog, Swagger, CORS, health checks and the HTTP pipeline are absent, because
+none of them can make a value converter or a row lock behave differently, and reaching them would
+mean a `WebApplicationFactory`, a testing package, and a catch block in `Program.cs` for an
+exception type that is internal and cannot be named. The one thing this gives up is that the
+module list is written down twice; `SchemaTests` asserts on the seven schemas by name so that a
+module added to the host and forgotten here does not quietly go untested.
+
+One fixture for the whole suite. Applying seven modules' migrations takes a few seconds and paying
+that per test class would make the suite slow enough that nobody runs it. The price is that tests
+share a database and none of them may assume it is empty — each creates its own tenant and its own
+identifiers.
+
+It exists because of what the unit tests structurally cannot reach. Every mapping in this system
+is written against a provider that only has an opinion at runtime: a value converter, an owned
+collection, a filtered index predicate that is a raw SQL string EF passes through without reading.
+None of it can fail at compile time.
+
+What it checks, and why each one is there rather than in a unit test:
+
+| Test | What only a database can tell you |
+|---|---|
+| Migrations applied, none pending | The migration files and the model have not drifted apart |
+| Filtered index predicates | The predicate still names columns that exist — rename the property, forget the string, and the index is created and never matches |
+| `xmin` present | Optimistic concurrency is mapped; if it stopped working, two writers would overwrite each other in silence |
+| Eight tills issuing at once | The row lock. Without it all eight read the same number, all eight succeed, and the series counter still lands in the right place |
+| A refused issue leaves no gap | The number goes back when the transaction rolls back |
+| An invoice round-trips | Two owned values on the document, three per line, a unit through a converter with a hand-written comparer |
+| Two tenants cannot see each other | The global query filter, which is invisible at every call site by design |
 
 ---
 
