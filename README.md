@@ -16,7 +16,7 @@ about:
 | **Invoicing** | `invoicing` | 25 | Registered series, ATCUD, the signature chain, the QR code, the SAF-T (PT) export |
 
 They share no code beyond two contract assemblies, and no module references another module's
-projects. 464 tests, all green — 438 that need nothing but the compiler, and 26 that need a real
+projects. 485 tests, all green — 459 that need nothing but the compiler, and 26 that need a real
 PostgreSQL because what they check does not exist until there is one.
 
 ---
@@ -779,6 +779,13 @@ What it checks, and why each one is there rather than in a unit test:
   pleasant to query directly, because finance staff and integrations will.
 - Package versions live in `Directory.Packages.props` only. Never put a `Version` on a
   `PackageReference`.
+- **A new project has to be added to `AutoPartsErp.sln`.** Nothing enforces this and nothing
+  complains: the `Api` project references every module's `Presentation`, so the whole source tree
+  builds through that graph whether or not the solution lists it. A test project has no such
+  parent, and the integration suite sat outside the solution long enough for `dotnet test` to
+  report a confidently green number that did not include a single one of its tests.
+  `dotnet sln add (Get-ChildItem -Recurse -Filter *.csproj).FullName` re-adds everything missing
+  and skips what is already there.
 - One aggregate per repository. Read paths never go through repositories — they project columns.
 - Raw SQL in an index filter (`HasFilter("is_deleted = false")`) is correct only because of the
   snake_case convention. Renaming the property without renaming the string gives a migration that
