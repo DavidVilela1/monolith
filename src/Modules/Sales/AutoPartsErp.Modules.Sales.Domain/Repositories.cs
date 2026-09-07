@@ -11,12 +11,18 @@ public interface ISalesOrderRepository : IRepository<SalesOrder, SalesOrderId>
     Task<SalesOrder?> GetByNumberAsync(string orderNumber, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Reserves the next order number for the given year, e.g. "SO-2026-01188".
+    /// Takes the next order number for the given year, e.g. "SO-2026-01188".
     /// <para>
-    /// Same max-plus-one as Purchasing, and the same caveat: it will collide under genuine
-    /// concurrency, and a sequence table is the real answer. Sales needs that answer sooner,
-    /// because a Portuguese invoice number has to be gapless and sequential by law — which is
-    /// the ATCUD work, and is why this is deliberately not being papered over here.
+    /// The number comes from a counter the database increments in one statement, not from reading
+    /// the highest one already taken and adding to it. Two people creating an order in the same
+    /// moment therefore get two numbers, which was not true before and failed silently when it
+    /// was not.
+    /// </para>
+    /// <para>
+    /// The number is spent as soon as it is taken. Nothing wraps creating an order in a
+    /// transaction, so an order that fails after this point leaves a gap in the run — untidy for a
+    /// commercial document and nothing worse. Invoicing is the one place where a gap is not
+    /// allowed, and it pays for that with a lock held across the whole issue.
     /// </para>
     /// </summary>
     /// <param name="year">The year to number within.</param>

@@ -11,13 +11,17 @@ public interface IPurchaseOrderRepository : IRepository<PurchaseOrder, PurchaseO
     Task<PurchaseOrder?> GetByNumberAsync(string orderNumber, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Reserves the next order number for the given year, e.g. "PO-2026-00042".
+    /// Takes the next order number for the given year, e.g. "PO-2026-00042".
     /// <para>
     /// On the repository rather than in the aggregate because the number has to be unique across
     /// every order in the tenant, which is a fact about the database and not about this document.
-    /// The current implementation is a max-plus-one and will collide under genuine concurrency;
-    /// a proper sequence table with its own transaction is on the list, alongside the other
-    /// document numbering the Portuguese ATCUD rules will need.
+    /// A counter in that database hands it out, one statement per number, so two buyers raising an
+    /// order at once cannot send the supplier two documents quoting one reference.
+    /// </para>
+    /// <para>
+    /// The number is spent as soon as it is taken, so an order that fails after this point leaves
+    /// a gap in the run. That is acceptable here and is not acceptable in Invoicing, which is why
+    /// the two are numbered by different mechanisms.
     /// </para>
     /// </summary>
     /// <param name="year">The year to number within.</param>

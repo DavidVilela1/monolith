@@ -16,7 +16,7 @@ about:
 | **Invoicing** | `invoicing` | 25 | Registered series, ATCUD, the signature chain, the QR code, the SAF-T (PT) export |
 
 They share no code beyond two contract assemblies, and no module references another module's
-projects. 459 tests, all green — 438 that need nothing but the compiler, and 21 that need a real
+projects. 464 tests, all green — 438 that need nothing but the compiler, and 26 that need a real
 PostgreSQL because what they check does not exist until there is one.
 
 ---
@@ -684,11 +684,6 @@ three modules that hand out numbers.
 
 - A malformed `warehouseId` in a request body returns 500 rather than 400. Bad client input
   should never surface as a server error.
-- Nothing in the automated suite puts two sales or purchase orders in flight at once. The counter
-  behind them was verified by hand against PostgreSQL — ten concurrent sessions, ten distinct
-  numbers, where max-plus-one gave nine — but the equivalent of `DocumentNumberingTests` for the
-  other two modules has not been written, so the guarantee is currently a paragraph rather than a
-  test.
 - Purchase order lines have no concurrency token of their own, so two people editing different
   lines of the same order can still conflict at the aggregate level.
 - The outbox assumes a single instance. Two hosts sweeping the same table would deliver some
@@ -717,7 +712,7 @@ three modules that hand out numbers.
 
 ## Integration tests
 
-21 tests in `tests/AutoPartsErp.IntegrationTests`, against the PostgreSQL 16 this project already
+26 tests in `tests/AutoPartsErp.IntegrationTests`, against the PostgreSQL 16 this project already
 requires. No container, no second service, nothing to start first.
 
 ```bash
@@ -765,6 +760,8 @@ What it checks, and why each one is there rather than in a unit test:
 | `xmin` present | Optimistic concurrency is mapped; if it stopped working, two writers would overwrite each other in silence |
 | Eight tills issuing at once | The row lock. Without it all eight read the same number, all eight succeed, and the series counter still lands in the right place |
 | A refused issue leaves no gap | The number goes back when the transaction rolls back |
+| Sixteen clerks numbering orders at once | The other numbering mechanism, in Sales and in Purchasing. Sixteen because two collide often enough to prove the point and rarely enough to pass a few times first |
+| Each year, tenant and module numbers apart | The counter's composite key is the key it was declared to be — one company's trading cannot advance another's numbering |
 | An invoice round-trips | Two owned values on the document, three per line, a unit through a converter with a hand-written comparer |
 | Two tenants cannot see each other | The global query filter, which is invisible at every call site by design |
 
