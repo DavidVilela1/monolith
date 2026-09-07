@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.IntegrationTests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <AnalysisLevel>latest-minimum</AnalysisLevel>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+
+  <!--
+    Deliberately no PackageReference for Npgsql, and no new entry in Directory.Packages.props.
+
+    This project uses NpgsqlConnection directly to create and drop its own database. Npgsql
+    already arrives here transitively, through every module's Infrastructure project, at whatever
+    version Npgsql.EntityFrameworkCore.PostgreSQL pulls in. Naming it here would mean writing that
+    version down a second time, and writing it down wrong is a NU1109 downgrade error that stops
+    the restore - a self-inflicted failure with nothing to gain from it.
+  -->
+
+  <ItemGroup>
+    <!--
+      The composition root, referenced for one reason: it is the project that references all seven
+      module Presentation projects, so one reference here brings in every IModule, every DbContext
+      and every repository the tests need.
+
+      Note what this does NOT do: it does not start the web application. The fixture builds the
+      service graph directly from the same AddErpCore / AddErpPersistence / AddErpModules calls
+      Program.cs makes. Serilog, Swagger, CORS, health checks and the HTTP pipeline are not
+      involved, because none of them can make a value converter or a row lock behave differently.
+    -->
+    <ProjectReference Include="..\..\src\Api\AutoPartsErp.Api\AutoPartsErp.Api.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="FluentAssertions" />
+  </ItemGroup>
+
+</Project>
