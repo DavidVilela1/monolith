@@ -257,6 +257,8 @@ public sealed class InvoicingReadStore : IInvoicingReadStore
                 line.Quantity.Unit.Code,
                 line.UnitPrice.Amount,
                 invoice.DocumentDate,
+                invoice.CreditedDocumentNumber,
+                invoice.CreditReason,
                 line.NetAmount.Amount,
                 invoice.TaxRegion.Code(),
                 line.VatRate.TaxCode,

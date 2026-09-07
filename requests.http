@@ -970,3 +970,92 @@ X-Tenant-Id: {{tenant}}
 ### snapshot stands in - a line references that identifier, and a file missing a
 ### customer it references is rejected as inconsistent. Missing address fields
 ### become "Desconhecido", which is the AT's own instruction rather than a shrug.
+
+###############################################################################
+# CREDIT NOTES
+#
+# The only correct way to reverse an invoice. The original stands exactly as it
+# was - numbered, signed, and reported to the tax authority, none of which can
+# be unsaid - and a new document cancels some or all of its effect.
+#
+# Voiding is the other remedy and a narrower one: for a document raised in error
+# and caught before the customer acted on it. It leaves no record of money given
+# back, which is why it is not what you reach for when they have already paid.
+###############################################################################
+
+@creditNoteId = 00000000-0000-0000-0000-000000000000
+
+### 0. A credit note needs its own series, registered for NC.
+POST {{host}}/api/invoicing/series
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "type": "NC",
+  "code": "NC2026",
+  "year": 2026
+}
+
+### ... then its validation code and activation, exactly as for the FT series.
+
+### 1. Credit the whole invoice. Omitting "lines" means everything still
+### creditable, which is the common case: the lot came back, or it went to the
+### wrong company.
+POST {{host}}/api/invoicing/documents/{{invoiceId}}/credit-note
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "reason": "Raised against the wrong customer account"
+}
+
+### 2. Or credit part of one line. The unit comes from the invoiced line - there
+### is exactly one unit a line can be credited in, and asking for it again is
+### only an opportunity to disagree.
+POST {{host}}/api/invoicing/documents/{{invoiceId}}/credit-note
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "reason": "Four came back damaged",
+  "lines": [
+    { "lineId": "...", "quantity": 4 }
+  ]
+}
+
+### 3. It is a draft like any other. Read it, then issue it into the NC series.
+GET {{host}}/api/invoicing/documents/{{creditNoteId}}
+X-Tenant-Id: {{tenant}}
+
+POST {{host}}/api/invoicing/documents/{{creditNoteId}}/issue
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{}
+
+### Issuing it into the FT series -> 422 invoicing.document.series_type_mismatch.
+### A series is declared to the AT for one document type; putting a credit in the
+### invoice series reports it as an invoice.
+
+### 4. Crediting six more of a line where only four are left
+### -> 422 invoicing.credit.exceeds_invoiced, and the message says how many.
+### Crediting more than was charged is giving away money nobody ever paid.
+
+### 5. The rest of a partly credited invoice can still be credited: omitting
+### "lines" now means the four that are left, not the original ten.
+
+### THE REFUSALS
+###
+### A draft                -> 422 invoicing.credit.original_not_issued
+###                           Nobody has been given it, so there is nothing to
+###                           credit back. Change the draft instead.
+###
+### A voided document      -> 422 invoicing.credit.original_voided
+###                           It bills nobody. Crediting it would give money back
+###                           against a demand already withdrawn.
+###
+### A credit note          -> 422 invoicing.credit.original_is_credit_note
+###                           A credit raised in error is corrected with a debit
+###                           note, which is the opposite instrument.
+###
+### Fully credited already -> 422 invoicing.credit.nothing_left

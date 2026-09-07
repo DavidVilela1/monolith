@@ -225,6 +225,12 @@ public sealed record SaftInvoice
 /// <param name="UnitOfMeasure">The unit.</param>
 /// <param name="UnitPrice">The price per unit, before discount.</param>
 /// <param name="TaxPointDate">The date the tax became due, which is the document date.</param>
+/// <param name="Reference">
+/// The document this line reverses, on a credit note. Null on everything else. The schema puts it
+/// between the tax point date and the description, and a credit note without it is a credit
+/// against nothing in particular as far as an auditor is concerned.
+/// </param>
+/// <param name="ReferenceReason">Why the credit was raised, alongside the reference.</param>
 /// <param name="NetAmount">What the line is worth before VAT, after discount.</param>
 /// <param name="TaxCountryRegion">PT, PT-AC or PT-MA.</param>
 /// <param name="TaxCode">ISE, RED, INT or NOR.</param>
@@ -239,6 +245,8 @@ public sealed record SaftInvoiceLine(
     string UnitOfMeasure,
     decimal UnitPrice,
     DateOnly TaxPointDate,
+    string? Reference,
+    string? ReferenceReason,
     decimal NetAmount,
     string TaxCountryRegion,
     string TaxCode,

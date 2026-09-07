@@ -350,10 +350,41 @@ public sealed class IssueDocumentCommandHandler : ICommandHandler<IssueDocumentC
             return issued;
         }
 
+        // A credit note consumes what it credits at the moment it is issued, never when it is
+        // drafted: a draft can be abandoned, and an abandoned draft must not leave a line
+        // uncreditable without anybody having been given money back. It happens inside this
+        // transaction, alongside the number the note has just taken, so the credited quantities
+        // and the document that caused them cannot end up disagreeing.
+        Result applied = await ApplyCreditAsync(invoice, cancellationToken).ConfigureAwait(false);
+
+        if (applied.IsFailure)
+        {
+            return applied;
+        }
+
         await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
 
         return Result.Success();
+    }
+
+    private async Task<Result> ApplyCreditAsync(Invoice invoice, CancellationToken cancellationToken)
+    {
+        if (invoice.CreditedInvoiceId is not { } creditedId)
+        {
+            return Result.Success();
+        }
+
+        Invoice? original = await _invoices
+            .GetByIdAsync(creditedId, cancellationToken)
+            .ConfigureAwait(false);
+
+        // The document it credits has gone. Refused rather than shrugged at: the note names it on
+        // every line of the SAF-T export, and issuing one against nothing would produce a file
+        // referencing a document that is not in it.
+        return original is null
+            ? InvoicingErrors.Document.NotFound(creditedId.ToString())
+            : original.ApplyCredit(invoice);
     }
 
     private async Task<DocumentSeries?> FindActiveAsync(Invoice invoice, CancellationToken cancellationToken)

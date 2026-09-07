@@ -75,6 +75,18 @@ public sealed class DocumentEndpoints : IEndpointGroup
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
+        group.MapPost("/documents/{invoiceId:guid}/credit-note", DraftCreditNoteAsync)
+            .WithName("DraftCreditNote")
+            .WithSummary(
+                "Draft a credit note against an issued document. The only correct way to reverse "
+                + "one: the original stands, and this cancels some or all of its effect. Omit the "
+                + "lines to credit everything still creditable.")
+            .Produces<Guid>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
         group.MapPost("/documents/{invoiceId:guid}/issue", IssueAsync)
             .WithName("IssueDocument")
             .WithSummary(
@@ -189,6 +201,21 @@ public sealed class DocumentEndpoints : IEndpointGroup
         return result.ToCreated(lineId => $"/api/invoicing/documents/{invoiceId}/lines/{lineId}");
     }
 
+    private static async Task<IResult> DraftCreditNoteAsync(
+        IDispatcher dispatcher,
+        Guid invoiceId,
+        CreditNoteRequest body,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+
+        Result<Guid> result = await dispatcher.SendAsync(
+            new DraftCreditNoteCommand(invoiceId, body.Reason, body.Lines, body.DocumentDate),
+            cancellationToken);
+
+        return result.ToCreated(id => $"/api/invoicing/documents/{id}");
+    }
+
     private static async Task<IResult> IssueAsync(
         IDispatcher dispatcher,
         Guid invoiceId,
@@ -244,6 +271,18 @@ public sealed record AddDocumentLineRequest(
 /// The series to issue in, or null to use the live one for this document type and year.
 /// </param>
 public sealed record IssueRequest(Guid? SeriesId);
+
+/// <summary>Body of a credit-note request.</summary>
+/// <param name="Reason">Why the credit is being raised. It goes on every line in the SAF-T file.</param>
+/// <param name="Lines">
+/// Which lines to credit and how much of each. Omit entirely to credit everything still
+/// creditable, which is the common case.
+/// </param>
+/// <param name="DocumentDate">The date on the credit note. Defaults to today.</param>
+public sealed record CreditNoteRequest(
+    string Reason,
+    IReadOnlyList<CreditLine>? Lines = null,
+    DateOnly? DocumentDate = null);
 
 /// <summary>Body of a void request.</summary>
 /// <param name="Reason">Why the document is being voided.</param>

@@ -145,6 +145,21 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
                 order => order.Value, value => new SalesOrderRef(value)))
             .HasColumnName("sales_order_id");
 
+        // The document this one credits, when it is a credit note. Same converter shape as the
+        // sales order reference above, for the same reason.
+        builder.Property(invoice => invoice.CreditedInvoiceId)
+            .HasConversion(new ValueConverter<InvoiceId, Guid>(
+                id => id.Value, value => new InvoiceId(value)))
+            .HasColumnName("credited_invoice_id");
+
+        builder.Property(invoice => invoice.CreditedDocumentNumber)
+            .HasColumnName("credited_document_number")
+            .HasMaxLength(60);
+
+        builder.Property(invoice => invoice.CreditReason)
+            .HasColumnName("credit_reason")
+            .HasMaxLength(Invoice.MaxVoidReasonLength);
+
         builder.Property(invoice => invoice.SeriesId)
             .HasConversion(new ValueConverter<DocumentSeriesId, Guid>(
                 series => series.Value, value => new DocumentSeriesId(value)))
@@ -274,6 +289,36 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
 
             line.Navigation(item => item.UnitPrice).IsRequired();
 
+            line.Property(item => item.CreditsLineId)
+                .HasConversion(new ValueConverter<InvoiceLineId, Guid>(
+                    id => id.Value, value => new InvoiceLineId(value)))
+                .HasColumnName("credits_line_id");
+
+            // The running total of what has been credited back off this line. Not derived from
+            // the credit notes pointing at it, because the answer has to be right under two people
+            // drafting at once and this one is protected by the invoice's own concurrency token.
+            line.OwnsOne(item => item.CreditedQuantity, quantity =>
+            {
+                quantity.Property(value => value.Value)
+                    .HasColumnName("credited_quantity")
+                    .HasPrecision(18, 4)
+                    .IsRequired();
+
+                quantity.Property(value => value.Unit)
+                    .HasColumnName("credited_quantity_unit")
+                    .HasConversion(
+                        unit => unit.Code,
+                        code => UnitOfMeasure.FromCode(code),
+                        new ValueComparer<UnitOfMeasure>(
+                            (left, right) => left!.Code == right!.Code,
+                            unit => unit.Code.GetHashCode(StringComparison.Ordinal),
+                            unit => UnitOfMeasure.FromCode(unit.Code)))
+                    .HasMaxLength(10)
+                    .IsRequired();
+            });
+
+            line.Navigation(item => item.CreditedQuantity).IsRequired();
+
             line.Property(item => item.DiscountPercent)
                 .HasColumnName("discount_percent")
                 .HasPrecision(9, 4)
@@ -325,5 +370,12 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
 
         builder.HasIndex(invoice => new { invoice.TenantId, invoice.DocumentDate })
             .HasDatabaseName("ix_invoices_tenant_date");
+
+        // "What has been credited against this invoice?" - asked by anybody looking at a document
+        // that does not tally with what the customer paid. Filtered, because the vast majority of
+        // documents credit nothing.
+        builder.HasIndex(invoice => new { invoice.TenantId, invoice.CreditedInvoiceId })
+            .HasFilter("credited_invoice_id IS NOT NULL")
+            .HasDatabaseName("ix_invoices_tenant_credited");
     }
 }

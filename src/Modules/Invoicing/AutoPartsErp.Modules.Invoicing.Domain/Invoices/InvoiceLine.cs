@@ -36,9 +36,11 @@ public sealed class InvoiceLine : Entity<InvoiceLineId>, ITenantScoped
         Quantity quantity,
         Money unitPrice,
         decimal discountPercent,
-        VatRate vatRate)
+        VatRate vatRate,
+        InvoiceLineId? creditsLineId)
         : base(id)
     {
+        CreditsLineId = creditsLineId;
         Number = number;
         PartId = partId;
         Sku = sku;
@@ -47,6 +49,7 @@ public sealed class InvoiceLine : Entity<InvoiceLineId>, ITenantScoped
         UnitPrice = unitPrice;
         DiscountPercent = discountPercent;
         VatRate = vatRate;
+        CreditedQuantity = Quantity.Zero(quantity.Unit);
     }
 
     /// <summary>Required by EF Core materialization.</summary>
@@ -87,6 +90,29 @@ public sealed class InvoiceLine : Entity<InvoiceLineId>, ITenantScoped
     /// <summary>The VAT rate applied, with its exemption reason where there is one.</summary>
     public VatRate VatRate { get; private set; } = null!;
 
+    /// <summary>
+    /// The line of the original invoice that this one credits. Null on anything but a credit note.
+    /// <para>
+    /// Carried rather than matched on the part, because nothing stops a document listing the same
+    /// part twice — a customer who bought ten now and four later, on one invoice — and a credit
+    /// against "the brake pads" would then have two lines it could mean.
+    /// </para>
+    /// </summary>
+    public InvoiceLineId? CreditsLineId { get; private set; }
+
+    /// <summary>
+    /// How much of this line has already been credited back.
+    /// <para>
+    /// Lives on the original invoice's line rather than being counted from the credit notes that
+    /// point at it, and that is a deliberate departure from deriving what can be derived. The
+    /// alternative is a query across documents every time somebody drafts a credit note, and the
+    /// answer has to be right under two people drafting at once — this is a number on an
+    /// aggregate protected by its own concurrency token, which is the only version of it that
+    /// cannot be raced.
+    /// </para>
+    /// </summary>
+    public Quantity CreditedQuantity { get; private set; } = null!;
+
     /// <inheritdoc />
     public Guid TenantId { get; set; }
 
@@ -105,6 +131,12 @@ public sealed class InvoiceLine : Entity<InvoiceLineId>, ITenantScoped
     /// <summary>What the line adds to the document total.</summary>
     public Money GrossAmount => NetAmount + VatAmount;
 
+    /// <summary>How much of this line can still be credited.</summary>
+    public Quantity CreditableQuantity => Quantity - CreditedQuantity;
+
+    /// <summary>True once the whole line has been credited back.</summary>
+    public bool IsFullyCredited => CreditedQuantity >= Quantity;
+
     /// <summary>Creates a line. Called by <see cref="Invoice"/>, not directly.</summary>
     /// <param name="number">Its position on the document, from 1.</param>
     /// <param name="partId">The part sold.</param>
@@ -114,6 +146,7 @@ public sealed class InvoiceLine : Entity<InvoiceLineId>, ITenantScoped
     /// <param name="unitPrice">The price per unit, before discount.</param>
     /// <param name="discountPercent">The discount given, 0 to 100.</param>
     /// <param name="vatRate">The VAT rate applied.</param>
+    /// <param name="creditsLineId">The original line this one credits, on a credit note.</param>
     internal static Result<InvoiceLine> Create(
         int number,
         PartRef partId,
@@ -122,7 +155,8 @@ public sealed class InvoiceLine : Entity<InvoiceLineId>, ITenantScoped
         Quantity quantity,
         Money unitPrice,
         decimal discountPercent,
-        VatRate vatRate)
+        VatRate vatRate,
+        InvoiceLineId? creditsLineId = null)
     {
         ArgumentNullException.ThrowIfNull(quantity);
         ArgumentNullException.ThrowIfNull(unitPrice);
@@ -167,7 +201,43 @@ public sealed class InvoiceLine : Entity<InvoiceLineId>, ITenantScoped
             quantity,
             unitPrice,
             discountPercent,
-            vatRate);
+            vatRate,
+            creditsLineId);
+    }
+
+    /// <summary>
+    /// Records that some of this line has been credited back.
+    /// <para>
+    /// Called when a credit note is issued, never when one is drafted. A draft can be abandoned,
+    /// and a line that counted abandoned drafts against itself would become uncreditable without
+    /// anybody ever having been given money back.
+    /// </para>
+    /// </summary>
+    /// <param name="credited">How much is being credited, in the unit the line was sold in.</param>
+    internal Result Credit(Quantity credited)
+    {
+        ArgumentNullException.ThrowIfNull(credited);
+
+        if (credited.Unit != Quantity.Unit)
+        {
+            return InvoicingErrors.Credit.UnitMismatch;
+        }
+
+        if (credited.Value <= 0m)
+        {
+            return InvoicingErrors.Credit.QuantityNotPositive;
+        }
+
+        Quantity remaining = CreditableQuantity;
+
+        if (credited > remaining)
+        {
+            return InvoicingErrors.Credit.ExceedsInvoiced(Sku, remaining.Value);
+        }
+
+        CreditedQuantity += credited;
+
+        return Result.Success();
     }
 
     private static string Trim(string? value, int maxLength)

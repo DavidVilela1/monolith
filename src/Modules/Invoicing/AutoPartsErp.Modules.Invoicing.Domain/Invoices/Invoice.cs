@@ -102,6 +102,26 @@ public sealed class Invoice : AggregateRoot<InvoiceId>, IAuditable, ITenantScope
     /// <summary>The order it was raised against, when there was one.</summary>
     public SalesOrderRef? SalesOrderId { get; private set; }
 
+    /// <summary>The document this one credits. Null on anything that is not a credit note.</summary>
+    public InvoiceId? CreditedInvoiceId { get; private set; }
+
+    /// <summary>
+    /// That document's number, e.g. <c>FT SERIE2026/35</c>.
+    /// <para>
+    /// Stored rather than resolved, because it goes on every line of the credit note in the SAF-T
+    /// export and on the printed page, and because a document is a record of what it said on the
+    /// day. Looking it up later would work today and would be a join to the other document every
+    /// time the file is produced.
+    /// </para>
+    /// </summary>
+    public string? CreditedDocumentNumber { get; private set; }
+
+    /// <summary>
+    /// Why the credit was raised. Required on a credit note, and it is not politeness: the reason
+    /// goes in the SAF-T <c>References</c> block against every line.
+    /// </summary>
+    public string? CreditReason { get; private set; }
+
     /// <summary>The series it was issued in. Null while it is still a draft.</summary>
     public DocumentSeriesId? SeriesId { get; private set; }
 
@@ -174,6 +194,12 @@ public sealed class Invoice : AggregateRoot<InvoiceId>, IAuditable, ITenantScope
 
     /// <summary>True once it has a number, a code and a signature.</summary>
     public bool IsIssued => !IsDraft;
+
+    /// <summary>True when this document gives money back rather than asks for it.</summary>
+    public bool IsCreditNote => Type == DocumentType.CreditNote;
+
+    /// <summary>True while any line still has something that could be credited.</summary>
+    public bool HasCreditableLines => _lines.Exists(line => !line.IsFullyCredited);
 
     /// <summary>The totals, split by VAT category.</summary>
     public TaxSummary Taxes
@@ -267,6 +293,199 @@ public sealed class Invoice : AggregateRoot<InvoiceId>, IAuditable, ITenantScope
                 salesOrderId);
     }
 
+    /// <summary>
+    /// Drafts a credit note against an issued document.
+    /// <para>
+    /// The only correct way to reverse an invoice. The original stands exactly as it was — it was
+    /// numbered, signed, and reported to the tax authority, and none of that can be unsaid — and
+    /// this new document cancels some or all of its effect. Voiding is the other remedy and a
+    /// narrower one: it is for a document raised in error and caught before the customer acted on
+    /// it, and it leaves no record of money given back.
+    /// </para>
+    /// <para>
+    /// Every figure is copied from the original rather than recomputed, and the VAT rate above
+    /// all. Rates move; a credit issued after they move must reverse at the rate that was
+    /// actually charged, or the VAT return is out by the difference and the customer is refunded
+    /// the wrong amount.
+    /// </para>
+    /// </summary>
+    /// <param name="original">The document being credited. Not modified here.</param>
+    /// <param name="quantities">
+    /// How much of each of the original's lines to credit, keyed by line. An empty dictionary
+    /// credits everything still creditable, which is the common case: the customer sends the lot
+    /// back, or the invoice went to the wrong company.
+    /// </param>
+    /// <param name="reason">Why. Required, and it goes on every line of the SAF-T export.</param>
+    /// <param name="documentDate">The date on the credit note.</param>
+    public static Result<Invoice> DraftCreditNote(
+        Invoice original,
+        IReadOnlyDictionary<InvoiceLineId, Quantity> quantities,
+        string? reason,
+        DateOnly documentDate)
+    {
+        ArgumentNullException.ThrowIfNull(original);
+        ArgumentNullException.ThrowIfNull(quantities);
+
+        if (original.IsDraft)
+        {
+            return InvoicingErrors.Credit.OriginalNotIssued;
+        }
+
+        // A voided document bills nobody. Crediting it would give money back against a demand
+        // that was already withdrawn, which is a second error rather than a correction.
+        if (original.Status == InvoiceStatus.Voided)
+        {
+            return InvoicingErrors.Credit.OriginalVoided;
+        }
+
+        // Credit notes are not themselves creditable. A credit issued in error is corrected with
+        // a debit note, which is the opposite instrument and not this one.
+        if (original.IsCreditNote)
+        {
+            return InvoicingErrors.Credit.OriginalIsCreditNote;
+        }
+
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            return InvoicingErrors.Credit.ReasonRequired;
+        }
+
+        string trimmedReason = reason.Trim();
+
+        if (trimmedReason.Length > MaxVoidReasonLength)
+        {
+            return InvoicingErrors.Credit.ReasonTooLong;
+        }
+
+        var note = new Invoice(
+            InvoiceId.New(),
+            DocumentType.CreditNote,
+            original.CustomerId,
+            original.CustomerName,
+            original.CustomerTaxNumber,
+            original.CustomerCountry,
+            original.Currency,
+            original.TaxRegion,
+            documentDate,
+            original.SalesOrderId)
+        {
+            CreditedInvoiceId = original.Id,
+            CreditedDocumentNumber = original.DocumentNumber,
+            CreditReason = trimmedReason,
+        };
+
+        foreach (InvoiceLine line in original.Lines)
+        {
+            Result<Quantity> wanted = Wanted(line, quantities);
+
+            if (wanted.IsFailure)
+            {
+                return Result.Failure<Invoice>(wanted.Error);
+            }
+
+            // Nothing left to credit on this line, and nothing asked for. Skipped rather than
+            // refused, so that crediting the rest of a partly credited invoice still works.
+            if (wanted.Value.Value == 0m)
+            {
+                continue;
+            }
+
+            Result<InvoiceLineId> added = note.AddLine(
+                line.PartId,
+                line.Sku,
+                line.Description,
+                wanted.Value,
+                line.UnitPrice,
+                line.DiscountPercent,
+                line.VatRate,
+                line.Id);
+
+            if (added.IsFailure)
+            {
+                return Result.Failure<Invoice>(added.Error);
+            }
+        }
+
+        return note.Lines.Count == 0
+            ? InvoicingErrors.Credit.NothingLeftToCredit
+            : note;
+    }
+
+    private static Result<Quantity> Wanted(
+        InvoiceLine line,
+        IReadOnlyDictionary<InvoiceLineId, Quantity> quantities)
+    {
+        // No selection at all means the whole remaining balance of every line.
+        if (quantities.Count == 0)
+        {
+            return line.CreditableQuantity;
+        }
+
+        if (!quantities.TryGetValue(line.Id, out Quantity? asked))
+        {
+            return Quantity.Zero(line.Quantity.Unit);
+        }
+
+        if (asked.Unit != line.Quantity.Unit)
+        {
+            return InvoicingErrors.Credit.UnitMismatch;
+        }
+
+        if (asked.Value <= 0m)
+        {
+            return InvoicingErrors.Credit.QuantityNotPositive;
+        }
+
+        // Checked at draft as well as at issue. The check at issue is the one that guarantees the
+        // invariant; this one exists so that somebody finds out now rather than after building a
+        // document they cannot use.
+        return asked > line.CreditableQuantity
+            ? InvoicingErrors.Credit.ExceedsInvoiced(line.Sku, line.CreditableQuantity.Value)
+            : asked;
+    }
+
+    /// <summary>
+    /// Records against this document that a credit note has been issued for part or all of it.
+    /// <para>
+    /// Applied when the note is issued rather than when it is drafted, because a draft can be
+    /// abandoned and an abandoned draft must not make a line uncreditable. Both documents are
+    /// saved in the same transaction as the number the note takes, so the credited quantities and
+    /// the document that caused them cannot disagree.
+    /// </para>
+    /// </summary>
+    /// <param name="creditNote">The note being issued against this document.</param>
+    public Result ApplyCredit(Invoice creditNote)
+    {
+        ArgumentNullException.ThrowIfNull(creditNote);
+
+        if (creditNote.CreditedInvoiceId != Id)
+        {
+            return InvoicingErrors.Credit.NotAgainstThisDocument;
+        }
+
+        // Matched on the line the note says it credits, not on the part. Nothing stops a document
+        // listing the same part twice, so the part is not a key here and treating it as one would
+        // credit the wrong half of an invoice in exactly the case somebody would never check.
+        foreach (InvoiceLine noteLine in creditNote.Lines)
+        {
+            InvoiceLine? original = _lines.Find(line => line.Id == noteLine.CreditsLineId);
+
+            if (original is null)
+            {
+                return InvoicingErrors.Credit.LineNotOnOriginal(noteLine.Sku);
+            }
+
+            Result credited = original.Credit(noteLine.Quantity);
+
+            if (credited.IsFailure)
+            {
+                return credited;
+            }
+        }
+
+        return Result.Success();
+    }
+
     /// <summary>Adds a line to a draft.</summary>
     /// <param name="partId">The part sold.</param>
     /// <param name="sku">Its SKU.</param>
@@ -275,6 +494,7 @@ public sealed class Invoice : AggregateRoot<InvoiceId>, IAuditable, ITenantScope
     /// <param name="unitPrice">The price per unit, before discount.</param>
     /// <param name="discountPercent">The discount given, 0 to 100.</param>
     /// <param name="vatRate">The VAT rate applied.</param>
+    /// <param name="creditsLineId">The original line this one credits, on a credit note.</param>
     public Result<InvoiceLineId> AddLine(
         PartRef partId,
         string? sku,
@@ -282,7 +502,8 @@ public sealed class Invoice : AggregateRoot<InvoiceId>, IAuditable, ITenantScope
         Quantity quantity,
         Money unitPrice,
         decimal discountPercent,
-        VatRate vatRate)
+        VatRate vatRate,
+        InvoiceLineId? creditsLineId = null)
     {
         ArgumentNullException.ThrowIfNull(quantity);
         ArgumentNullException.ThrowIfNull(unitPrice);
@@ -299,7 +520,8 @@ public sealed class Invoice : AggregateRoot<InvoiceId>, IAuditable, ITenantScope
         }
 
         Result<InvoiceLine> line = InvoiceLine.Create(
-            _lines.Count + 1, partId, sku, description, quantity, unitPrice, discountPercent, vatRate);
+            _lines.Count + 1, partId, sku, description, quantity, unitPrice, discountPercent,
+            vatRate, creditsLineId);
 
         if (line.IsFailure)
         {

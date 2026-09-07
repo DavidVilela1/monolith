@@ -366,6 +366,89 @@ public static class InvoicingErrors
                 "file. Record their NIF in Partners, or issue a simplified invoice instead.");
     }
 
+    /// <summary>
+    /// Failures raised while crediting a document.
+    /// <para>
+    /// Their own group because every one of them is about the relationship between two documents
+    /// rather than about either one alone, and because "you cannot credit that" and "you cannot
+    /// credit that much" are questions people ask out loud and deserve answers that say which.
+    /// </para>
+    /// </summary>
+    public static class Credit
+    {
+        /// <summary>The document being credited was never issued.</summary>
+        public static readonly Error OriginalNotIssued =
+            Error.DomainRule(
+                "invoicing.credit.original_not_issued",
+                "A draft has not been given to anybody, so there is nothing to credit back. " +
+                "Change the draft, or abandon it.");
+
+        /// <summary>The document being credited was voided.</summary>
+        public static readonly Error OriginalVoided =
+            Error.DomainRule(
+                "invoicing.credit.original_voided",
+                "That document was voided, so it bills nobody. Crediting it would give money " +
+                "back against a demand that was already withdrawn.");
+
+        /// <summary>Credit notes are not themselves creditable.</summary>
+        public static readonly Error OriginalIsCreditNote =
+            Error.DomainRule(
+                "invoicing.credit.original_is_credit_note",
+                "A credit note cannot be credited. A credit raised in error is corrected with a " +
+                "debit note, which is the opposite instrument.");
+
+        /// <summary>A credit note needs a reason.</summary>
+        public static readonly Error ReasonRequired =
+            Error.Validation(
+                "invoicing.credit.reason_required",
+                "Say why the credit is being raised. It goes against every line in the SAF-T " +
+                "export, so there is no blank version of it.");
+
+        /// <summary>The reason is too long.</summary>
+        public static readonly Error ReasonTooLong =
+            Error.Validation(
+                "invoicing.credit.reason_too_long",
+                "That reason is longer than the document can carry.");
+
+        /// <summary>The quantity is not positive.</summary>
+        public static readonly Error QuantityNotPositive =
+            Error.Validation(
+                "invoicing.credit.quantity_not_positive",
+                "Credit a positive quantity, or leave the line out entirely.");
+
+        /// <summary>The quantity is in the wrong unit.</summary>
+        public static readonly Error UnitMismatch =
+            Error.Validation(
+                "invoicing.credit.unit_mismatch",
+                "Credit in the unit the line was invoiced in.");
+
+        /// <summary>More was asked for than remains on the line.</summary>
+        public static Error ExceedsInvoiced(string sku, decimal remaining) =>
+            Error.DomainRule(
+                "invoicing.credit.exceeds_invoiced",
+                $"Only {remaining} of {sku} is left to credit on that invoice. Crediting more " +
+                "than was charged is giving away money the customer never paid.");
+
+        /// <summary>Every line has already been credited in full.</summary>
+        public static readonly Error NothingLeftToCredit =
+            Error.DomainRule(
+                "invoicing.credit.nothing_left",
+                "That invoice has already been credited in full.");
+
+        /// <summary>The note names a different document.</summary>
+        public static readonly Error NotAgainstThisDocument =
+            Error.Conflict(
+                "invoicing.credit.wrong_document",
+                "That credit note was raised against a different document.");
+
+        /// <summary>A line on the note points at nothing on the original.</summary>
+        public static Error LineNotOnOriginal(string sku) =>
+            Error.Conflict(
+                "invoicing.credit.line_not_on_original",
+                $"The credit note has a line for {sku} that does not match any line on the " +
+                "document it credits.");
+    }
+
     /// <summary>Failures raised while producing a SAF-T (PT) file.</summary>
     public static class Saft
     {

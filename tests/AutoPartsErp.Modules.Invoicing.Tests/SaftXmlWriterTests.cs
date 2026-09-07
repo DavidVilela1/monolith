@@ -148,6 +148,46 @@ public sealed class SaftXmlWriterTests
         sales.Element(Ns + "TotalCredit")!.Value.Should().Be("0.00");
     }
 
+    /// <summary>
+    /// What ties the reversal to the document being reversed. Without it an auditor sees a credit
+    /// against nothing in particular.
+    /// </summary>
+    [Fact]
+    public void A_credit_notes_lines_reference_the_document_they_reverse()
+    {
+        SaftAuditFile file = Sample(
+            type: "NC",
+            line: RatedLine(220.50m, 24.50m, 10m, "FT SERIE2026/35", "Goods returned"));
+
+        XElement line = FirstInvoice(file).Element(Ns + "Line")!;
+
+        // Between the tax point date and the description, which is where the schema puts it.
+        Names(line).Should().Equal(
+            "LineNumber",
+            "ProductCode",
+            "ProductDescription",
+            "Quantity",
+            "UnitOfMeasure",
+            "UnitPrice",
+            "TaxPointDate",
+            "References",
+            "Description",
+            "DebitAmount",
+            "Tax");
+
+        XElement references = line.Element(Ns + "References")!;
+        Names(references).Should().Equal("Reference", "Reason");
+        references.Element(Ns + "Reference")!.Value.Should().Be("FT SERIE2026/35");
+        references.Element(Ns + "Reason")!.Value.Should().Be("Goods returned");
+    }
+
+    [Fact]
+    public void An_invoice_carries_no_references_block()
+    {
+        FirstInvoice(Sample()).Element(Ns + "Line")!
+            .Element(Ns + "References").Should().BeNull();
+    }
+
     [Fact]
     public void An_invoices_lines_total_as_credits()
     {
@@ -361,7 +401,12 @@ public sealed class SaftXmlWriterTests
         ProductVersion = "1.0",
     };
 
-    private static SaftInvoiceLine RatedLine(decimal net, decimal unitPrice, decimal quantity) => new(
+    private static SaftInvoiceLine RatedLine(
+        decimal net,
+        decimal unitPrice,
+        decimal quantity,
+        string? reference = null,
+        string? reason = null) => new(
         1,
         "BP-1188",
         "Brake pad set, front axle",
@@ -369,6 +414,8 @@ public sealed class SaftXmlWriterTests
         "UN",
         unitPrice,
         new DateOnly(2026, 9, 7),
+        reference,
+        reason,
         net,
         "PT",
         "NOR",
@@ -384,6 +431,8 @@ public sealed class SaftXmlWriterTests
         "UN",
         220.50m,
         new DateOnly(2026, 9, 7),
+        null,
+        null,
         220.50m,
         "PT",
         "ISE",

@@ -231,6 +231,16 @@ public static class SaftXmlWriter
             new XElement(ns + "UnitOfMeasure", line.UnitOfMeasure),
             new XElement(ns + "UnitPrice", Amount(line.UnitPrice)),
             new XElement(ns + "TaxPointDate", Date(line.TaxPointDate)),
+
+            // Between the tax point date and the description, which is where the schema puts it.
+            // Only a credit note has one, and it is what ties the reversal to the document being
+            // reversed - without it an auditor sees a credit against nothing in particular.
+            line.Reference is { Length: > 0 } reference
+                ? new XElement(
+                    ns + "References",
+                    new XElement(ns + "Reference", reference),
+                    new XElement(ns + "Reason", Text(line.ReferenceReason)))
+                : null,
             new XElement(ns + "Description", line.ProductDescription),
 
             // A credit note's lines are debits and everything else's are credits. One letter, and
