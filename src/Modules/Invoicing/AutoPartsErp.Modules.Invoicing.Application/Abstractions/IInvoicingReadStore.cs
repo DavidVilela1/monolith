@@ -1,4 +1,5 @@
 using AutoPartsErp.Modules.Invoicing.Application.Contracts;
+using AutoPartsErp.Modules.Invoicing.Application.Saft;
 using AutoPartsErp.SharedKernel.Paging;
 
 namespace AutoPartsErp.Modules.Invoicing.Application.Abstractions;
@@ -35,5 +36,28 @@ public interface IInvoicingReadStore
     Task<PagedResult<InvoiceSummary>> SearchDocumentsAsync(
         InvoiceSearchCriteria criteria,
         PageRequest page,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every issued document in a period, in the shape a SAF-T file wants, oldest first.
+    /// <para>
+    /// Not paged, deliberately, unlike everything else on this interface. A SAF-T file is one
+    /// file: a caller that received half of it would have produced a document claiming to be a
+    /// complete record of a month while being nothing of the sort, and the number of entries in
+    /// its own header would say so. A busy month is tens of thousands of lines and a few tens of
+    /// megabytes, which is large for a response and small for a machine.
+    /// </para>
+    /// <para>
+    /// Drafts are excluded and voided documents are included. A draft has no number and does not
+    /// exist as far as the tax authority is concerned; a voided one has a number that was
+    /// reported, and leaving it out would put a gap in the sequence.
+    /// </para>
+    /// </summary>
+    /// <param name="from">The first document date to include.</param>
+    /// <param name="to">The last document date to include.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<IReadOnlyList<SaftDocument>> GetSaftDocumentsAsync(
+        DateOnly from,
+        DateOnly to,
         CancellationToken cancellationToken = default);
 }

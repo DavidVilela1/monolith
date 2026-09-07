@@ -47,6 +47,11 @@ public sealed record InvoiceIssuedIntegrationEvent(
 /// <param name="Type">What kind it is.</param>
 /// <param name="DocumentNumber">Its number, which it keeps.</param>
 /// <param name="CustomerId">Who it was addressed to.</param>
+/// <param name="SalesOrderId">
+/// The order it was raised against, when there was one. Carried for the same reason the issued
+/// event carries it, and needed more urgently: without it Sales cannot tell which of its orders
+/// has just become billable again.
+/// </param>
 /// <param name="GrossTotal">What it was for.</param>
 /// <param name="Reason">Why it was voided.</param>
 /// <param name="TenantId">The owning tenant.</param>
@@ -55,6 +60,7 @@ public sealed record InvoiceVoidedIntegrationEvent(
     string Type,
     string DocumentNumber,
     Guid CustomerId,
+    Guid? SalesOrderId,
     decimal GrossTotal,
     string Reason,
     Guid TenantId) : IntegrationEvent;

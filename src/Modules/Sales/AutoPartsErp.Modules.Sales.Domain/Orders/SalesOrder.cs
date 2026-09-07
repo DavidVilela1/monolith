@@ -107,6 +107,22 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
     /// <summary>Why it was cancelled.</summary>
     public string? ClosureReason { get; private set; }
 
+    /// <summary>The document drawn from this order, or null while none has been.</summary>
+    public InvoiceRef? InvoiceId { get; private set; }
+
+    /// <summary>
+    /// That document's number, e.g. <c>FT SERIE2026/35</c>. Null while none has been drawn.
+    /// <para>
+    /// Kept alongside the identifier rather than looked up, because the only thing Sales ever does
+    /// with it is show it to somebody asking "was this invoiced, and as what?". A join across a
+    /// module boundary to answer that would be the boundary existing in name only.
+    /// </para>
+    /// </summary>
+    public string? InvoiceDocumentNumber { get; private set; }
+
+    /// <summary>The date on that document.</summary>
+    public DateOnly? InvoicedOn { get; private set; }
+
     /// <summary>The lines on the order.</summary>
     public IReadOnlyCollection<SalesOrderLine> Lines => _lines.AsReadOnly();
 
@@ -149,6 +165,26 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
 
     /// <summary>True while at least one line still owes the customer something.</summary>
     public bool HasOutstandingLines => _lines.Exists(line => line.IsOutstanding);
+
+    /// <summary>True once a document has been drawn from this order.</summary>
+    public bool IsInvoiced => InvoiceId is not null;
+
+    /// <summary>
+    /// True when a document may be drawn from this order.
+    /// <para>
+    /// Everything on it has to have gone out first. Invoicing goods that have not shipped is a
+    /// promise, and a promise with a document number on it is a problem — the number is reported
+    /// to the tax authority, the VAT falls due, and the only way back is a credit note for goods
+    /// that never moved.
+    /// </para>
+    /// <para>
+    /// So: fully dispatched, and not yet invoiced. Partial invoicing of a partly dispatched order
+    /// is a real thing distributors do and is deliberately not this — it needs an invoiced
+    /// quantity per line and more than one document per order, which is a bigger change than a
+    /// looser condition here.
+    /// </para>
+    /// </summary>
+    public bool CanInvoice => Status == SalesOrderStatus.Dispatched && !IsInvoiced;
 
     /// <summary>
     /// True when the order puts credit at risk. A counter sale is paid before the goods leave,
@@ -495,6 +531,74 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
         ClosureReason = Clean(reason, MaxNotesLength);
 
         Raise(new SalesOrderCancelledDomainEvent(Id, OrderNumber, CustomerId, ClosureReason!));
+
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Records that a document has been drawn from this order.
+    /// <para>
+    /// Called from an event handler, not from a person: Invoicing issues the document and says so,
+    /// and Sales writes it down. Which means this arrives after the fact and cannot refuse on the
+    /// grounds that the order was not ready — the document already exists and has a number the tax
+    /// authority has been told about. Refusing here would leave the two modules disagreeing about
+    /// something that has already happened, so the only thing it guards is being told twice about
+    /// two different documents, which is a genuine contradiction rather than a late arrival.
+    /// </para>
+    /// </summary>
+    /// <param name="invoiceId">The document.</param>
+    /// <param name="documentNumber">Its number, as printed.</param>
+    /// <param name="on">The date on it.</param>
+    public Result MarkInvoiced(InvoiceRef invoiceId, string? documentNumber, DateOnly on)
+    {
+        if (invoiceId.IsEmpty)
+        {
+            return SalesErrors.Order.InvoiceReferenceRequired;
+        }
+
+        if (string.IsNullOrWhiteSpace(documentNumber))
+        {
+            return SalesErrors.Order.InvoiceNumberRequired;
+        }
+
+        // Being told the same thing twice is the ordinary case, not an error: the inbox
+        // guarantees at-least-once, so a redelivered event has to land on its feet.
+        if (InvoiceId is { } existing && existing != invoiceId)
+        {
+            return SalesErrors.Order.AlreadyInvoiced(InvoiceDocumentNumber ?? existing.ToString());
+        }
+
+        InvoiceId = invoiceId;
+        InvoiceDocumentNumber = Clip(documentNumber, MaxOrderNumberLength * 2);
+        InvoicedOn = on;
+
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Forgets the document, because it was voided.
+    /// <para>
+    /// A voided invoice keeps its number and its place in the chain forever, but it no longer
+    /// bills anybody — so the order goes back to being one that has not been invoiced, and can be
+    /// invoiced again. Without this, voiding a document raised against the wrong customer would
+    /// leave the order permanently unbillable, and the only remedy would be re-keying it.
+    /// </para>
+    /// </summary>
+    /// <param name="invoiceId">
+    /// The document being voided. A void for some other document is ignored rather than obeyed:
+    /// by the time it arrives the order may already have been re-invoiced, and clearing the new
+    /// reference because the old one was cancelled is how an order ends up billed twice.
+    /// </param>
+    public Result ClearInvoice(InvoiceRef invoiceId)
+    {
+        if (InvoiceId != invoiceId)
+        {
+            return Result.Success();
+        }
+
+        InvoiceId = null;
+        InvoiceDocumentNumber = null;
+        InvoicedOn = null;
 
         return Result.Success();
     }

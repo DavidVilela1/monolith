@@ -811,3 +811,162 @@ X-Tenant-Id: {{tenant}}
 ### 12. Close the series at year end. One-way, and the AT has to be told.
 POST {{host}}/api/invoicing/series/{{seriesId}}/close
 X-Tenant-Id: {{tenant}}
+
+###############################################################################
+# SALES -> INVOICING
+#
+# The bridge runs in both directions and by two different mechanisms, which is
+# the interesting part.
+#
+# Invoicing asks Sales a synchronous question, because it cannot draw a document
+# without knowing what is on the order and whether the order is ready. Sales
+# learns the answer by event, because it is only being told that something has
+# already happened - and putting a second module inside the transaction that
+# takes a document number is the one thing that transaction must not do.
+###############################################################################
+
+@orderId = 00000000-0000-0000-0000-000000000000
+
+### 1. The order has to have gone out first. Confirm it and dispatch every line.
+###    Drawing from a confirmed-but-undispatched order
+###    -> 422 invoicing.from_order.not_dispatched
+POST {{host}}/api/invoicing/documents/from-sales-order
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "salesOrderId": "{{orderId}}"
+}
+
+### 2. Once it is fully dispatched, the same call produces a DRAFT - not an
+###    issued document. Somebody should see what is about to go to the customer.
+###    The type comes from the order: an account order is an FT, a counter sale
+###    is an FR, because a counter sale is paid as it is handed over.
+POST {{host}}/api/invoicing/documents/from-sales-order
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "salesOrderId": "{{orderId}}",
+  "documentDate": "2026-09-07"
+}
+
+### 3. Read the draft. The SKUs and descriptions are the ones the ORDER recorded,
+###    not the catalogue as it stands today: a part renamed between the sale and
+###    the invoice keeps the name it was sold under.
+GET {{host}}/api/invoicing/documents/{{invoiceId}}
+X-Tenant-Id: {{tenant}}
+
+### 4. Issue it as normal. Sales finds out through the outbox a moment later.
+POST {{host}}/api/invoicing/documents/{{invoiceId}}/issue
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{}
+
+### 5. The order now knows. invoiceDocumentNumber and invoicedOn are populated.
+GET {{host}}/api/sales/orders/{{orderId}}
+X-Tenant-Id: {{tenant}}
+
+### 6. Drawing a second document from it -> 409 invoicing.from_order.already_invoiced,
+###    and the message names the document that already exists.
+POST {{host}}/api/invoicing/documents/from-sales-order
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "salesOrderId": "{{orderId}}"
+}
+
+### 7. Void the document. The order becomes billable again - the invoice keeps
+###    its number and its place in the signature chain forever, but it no longer
+###    bills anybody. Without this, an invoice raised against the wrong customer
+###    would leave the order permanently unbillable.
+POST {{host}}/api/invoicing/documents/{{invoiceId}}/void
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "reason": "Raised against the wrong customer account"
+}
+
+### And now step 2 works again.
+
+###############################################################################
+# THE REFUSALS WORTH SEEING
+###############################################################################
+
+### An FT for a customer with no NIF on file
+### -> 422 invoicing.from_order.customer_has_no_tax_number
+### The law requires an invoice to identify its customer. Record their NIF in
+### Partners, or sell it as a simplified invoice instead.
+
+### A line priced at a rate this region does not use - say 21% on the mainland
+### -> 422 invoicing.vat.percent_not_in_region
+### The total would be right and the SAF-T heading would be wrong, which
+### reconciles perfectly until somebody compares the VAT return with the file.
+
+### A line at 0% -> 422 invoicing.vat.exempt_needs_reason
+### Zero is not a rate, it is an exemption, and an exemption needs its M-code.
+### That is the one thing an order genuinely cannot tell us, so the line has to
+### be added by hand:
+POST {{host}}/api/invoicing/documents/{{invoiceId}}/lines
+Content-Type: application/json
+X-Tenant-Id: {{tenant}}
+
+{
+  "partId": "{{partId}}",
+  "quantity": 1,
+  "unitPrice": 10.00,
+  "vatCategory": "ISE",
+  "exemptionCode": "M07",
+  "exemptionReason": "Isento artigo 9.o do CIVA"
+}
+
+###############################################################################
+# SAF-T (PT)
+#
+# The monthly filing. A rendering of documents that already exist, so it is a
+# GET and asking for it twice gives the same bytes - which matters, because the
+# first thing anybody does with a rejected file is fix something and ask again.
+#
+# Configure Erp:Invoicing:Company and Erp:Invoicing:Product first. Nothing else
+# in the module needs them, so the application starts happily without them and
+# only this refuses, naming the setting that is missing.
+###############################################################################
+
+### The month, which is the period the filing actually wants.
+GET {{host}}/api/invoicing/saft/2026/9
+X-Tenant-Id: {{tenant}}
+
+### An arbitrary period, for a check or a partial re-export.
+GET {{host}}/api/invoicing/saft?from=2026-09-01&to=2026-09-30
+X-Tenant-Id: {{tenant}}
+
+### A period crossing new year -> 422 invoicing.saft.period_spans_years.
+### One file carries one fiscal year in its header; reporting December under the
+### wrong year quietly is worse than refusing loudly.
+GET {{host}}/api/invoicing/saft?from=2026-12-01&to=2027-01-31
+X-Tenant-Id: {{tenant}}
+
+### WHAT IS IN THE FILE, AND WHY
+###
+### TaxAccountingBasis is F - billing software, documents and no accounts. The
+### ledger, the suppliers and the purchase documents are absent because they
+### belong to modules this one cannot see, which is the same reason they are
+### absent from the obligation.
+###
+### Drafts are excluded: no number, so they do not exist as far as the AT is
+### concerned. Voided documents ARE included, with status A and their reason -
+### the number was reported the moment it was issued, and leaving it out would
+### put a gap in a sequence that is required to have none.
+###
+### Products are built from the document lines rather than from the catalogue.
+### A part withdrawn or renamed since it was sold still has to appear exactly as
+### the document names it, or the file references a product it never declares.
+###
+### Customers come from Partners, because the SAF-T customer table is explicitly
+### a master file. Where Partners no longer knows somebody, the document's own
+### snapshot stands in - a line references that identifier, and a file missing a
+### customer it references is rejected as inconsistent. Missing address fields
+### become "Desconhecido", which is the AT's own instruction rather than a shrug.

@@ -19,6 +19,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Modules\Invoicing\AutoPartsErp.Modules.Invoicing.Domain\AutoPartsErp.Modules.Invoicing.Domain.csproj" />
+
+    <!--
+      Added for the SAF-T writer tests. The writer is a pure function that lives in Application
+      because that is where the shape of the file is decided, and it is the part of the export
+      most worth testing exhaustively - so the test project has to be able to see it.
+    -->
+    <ProjectReference Include="..\..\src\Modules\Invoicing\AutoPartsErp.Modules.Invoicing.Application\AutoPartsErp.Modules.Invoicing.Application.csproj" />
   </ItemGroup>
 
   <ItemGroup>

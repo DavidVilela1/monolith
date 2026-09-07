@@ -69,6 +69,24 @@ public static class SalesErrors
             Error.Validation(
                 "sales.order.required_date_past",
                 "The required-by date cannot be in the past.");
+
+        /// <summary>An invoice reference was not supplied.</summary>
+        public static readonly Error InvoiceReferenceRequired =
+            Error.Validation(
+                "sales.order.invoice_reference_required",
+                "Marking an order invoiced needs the document it was invoiced as.");
+
+        /// <summary>The invoice number was not supplied.</summary>
+        public static readonly Error InvoiceNumberRequired =
+            Error.Validation(
+                "sales.order.invoice_number_required",
+                "Marking an order invoiced needs the number printed on the document.");
+
+        /// <summary>A different document has already been drawn from this order.</summary>
+        public static Error AlreadyInvoiced(string documentNumber) =>
+            Error.Conflict(
+                "sales.order.already_invoiced",
+                $"That order was already invoiced as {documentNumber}.");
     }
 
     /// <summary>Failures relating to a <see cref="Orders.SalesOrderLine"/>.</summary>

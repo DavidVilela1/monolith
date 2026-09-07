@@ -4,6 +4,7 @@ using AutoPartsErp.SharedKernel.ValueObjects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace AutoPartsErp.Modules.Sales.Infrastructure.Persistence.Configurations;
 
@@ -87,6 +88,20 @@ public sealed class SalesOrderConfiguration : IEntityTypeConfiguration<SalesOrde
         builder.Property(order => order.Notes).HasMaxLength(SalesOrder.MaxNotesLength);
         builder.Property(order => order.ClosureReason).HasMaxLength(SalesOrder.MaxNotesLength);
 
+        // The document drawn from this order. A converter declared for the non-nullable type,
+        // which EF lifts onto the nullable property - the same shape Purchasing uses for its
+        // nullable order reference, and the one that actually compiles.
+        builder.Property(order => order.InvoiceId)
+            .HasConversion(new ValueConverter<InvoiceRef, Guid>(
+                invoice => invoice.Value, value => new InvoiceRef(value)))
+            .HasColumnName("invoice_id");
+
+        builder.Property(order => order.InvoiceDocumentNumber)
+            .HasColumnName("invoice_document_number")
+            .HasMaxLength(60);
+
+        builder.Property(order => order.InvoicedOn).HasColumnName("invoiced_on");
+
         builder.Property(order => order.CreatedAtUtc).IsRequired();
         builder.Property(order => order.CreatedBy).HasMaxLength(120).IsRequired();
         builder.Property(order => order.ModifiedBy).HasMaxLength(120);
@@ -108,6 +123,14 @@ public sealed class SalesOrderConfiguration : IEntityTypeConfiguration<SalesOrde
         // The picking list, and the late list.
         builder.HasIndex(order => new { order.TenantId, order.Status, order.RequiredBy })
             .HasDatabaseName("ix_sales_orders_tenant_status_required");
+
+        // "What has gone out and not yet been invoiced?" - the billing run, asked once a day and
+        // answered from this index rather than from a scan of every order ever taken. Filtered,
+        // because the rows worth having in it are the small minority that are dispatched and
+        // unbilled; an unfiltered index would be mostly history.
+        builder.HasIndex(order => new { order.TenantId, order.Status, order.InvoiceId })
+            .HasFilter("invoice_id IS NULL")
+            .HasDatabaseName("ix_sales_orders_tenant_awaiting_invoice");
     }
 
     private static void ConfigureLines(EntityTypeBuilder<SalesOrder> builder)

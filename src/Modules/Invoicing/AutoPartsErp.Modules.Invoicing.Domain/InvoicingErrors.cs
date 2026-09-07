@@ -305,5 +305,89 @@ public static class InvoicingErrors
                 "invoicing.vat.exemption_reason_too_long",
                 $"An exemption reason cannot be longer than " +
                 $"{Invoices.VatRate.MaxExemptionReasonLength} characters.");
+
+        /// <summary>The percentage is not one of the three rates in force in this region.</summary>
+        public static Error PercentNotInRegion(decimal percent, string regionCode) =>
+            Error.DomainRule(
+                "invoicing.vat.percent_not_in_region",
+                $"{percent}% is not a VAT rate in force in {regionCode}. Either the line was " +
+                "priced under another region's rates, or the percentage was typed. Add the line " +
+                "by hand with the category it really belongs to.");
+    }
+
+    /// <summary>
+    /// Failures raised while drawing a document from a sales order.
+    /// <para>
+    /// Their own group rather than more <see cref="Document"/> errors, because every one of them
+    /// is about the <i>other</i> module's record and not about this document. A caller reading
+    /// <c>invoicing.from_order.not_dispatched</c> knows immediately that the thing to go and look
+    /// at is the order.
+    /// </para>
+    /// </summary>
+    public static class FromOrder
+    {
+        /// <summary>Sales has no such order.</summary>
+        public static Error OrderNotFound(string identifier) =>
+            Error.NotFound(
+                "invoicing.from_order.not_found", $"No sales order matches '{identifier}'.");
+
+        /// <summary>The order exists but nothing has left the building yet.</summary>
+        public static readonly Error NotDispatched =
+            Error.DomainRule(
+                "invoicing.from_order.not_dispatched",
+                "An order is invoiced once everything on it has gone out. Invoicing goods that " +
+                "have not shipped is a promise, and a promise with a document number is a " +
+                "problem.");
+
+        /// <summary>The order was called off.</summary>
+        public static readonly Error OrderCancelled =
+            Error.DomainRule(
+                "invoicing.from_order.cancelled",
+                "That order was cancelled. There is nothing to invoice.");
+
+        /// <summary>The order has already produced a document.</summary>
+        public static Error AlreadyInvoiced(string documentNumber) =>
+            Error.Conflict(
+                "invoicing.from_order.already_invoiced",
+                $"That order was already invoiced as {documentNumber}. Void that document first " +
+                "if it was wrong, or raise a credit note if the customer has seen it.");
+
+        /// <summary>Partners has no such customer, or will not say who they are.</summary>
+        public static Error CustomerNotFound(string identifier) =>
+            Error.NotFound(
+                "invoicing.from_order.customer_not_found",
+                $"Partners does not have a billing identity for '{identifier}'.");
+
+        /// <summary>The customer has no tax number, and the document type needs one.</summary>
+        public static readonly Error CustomerHasNoTaxNumber =
+            Error.DomainRule(
+                "invoicing.from_order.customer_has_no_tax_number",
+                "An invoice has to identify its customer, and this one has no tax number on " +
+                "file. Record their NIF in Partners, or issue a simplified invoice instead.");
+    }
+
+    /// <summary>Failures raised while producing a SAF-T (PT) file.</summary>
+    public static class Saft
+    {
+        /// <summary>The period runs backwards.</summary>
+        public static readonly Error PeriodBackwards =
+            Error.Validation(
+                "invoicing.saft.period_backwards",
+                "The end of the period cannot be before its start.");
+
+        /// <summary>The period crosses a year end.</summary>
+        public static readonly Error PeriodSpansYears =
+            Error.Validation(
+                "invoicing.saft.period_spans_years",
+                "A SAF-T file carries one fiscal year in its header, so a period cannot cross a " +
+                "year end. Export each year separately.");
+
+        /// <summary>The company's own details have not been configured.</summary>
+        public static Error CompanyNotConfigured(string setting) =>
+            Error.Validation(
+                "invoicing.saft.company_not_configured",
+                $"Erp:Invoicing:{setting} has not been set, and a SAF-T file cannot name the " +
+                "company without it. Nothing else in this module needs it, which is why the " +
+                "application starts happily without it and only this refuses.");
     }
 }

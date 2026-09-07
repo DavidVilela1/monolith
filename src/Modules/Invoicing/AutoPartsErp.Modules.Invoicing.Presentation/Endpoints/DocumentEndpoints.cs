@@ -54,6 +54,17 @@ public sealed class DocumentEndpoints : IEndpointGroup
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
+        group.MapPost("/documents/from-sales-order", DrawFromSalesOrderAsync)
+            .WithName("DrawDocumentFromSalesOrder")
+            .WithSummary(
+                "Draw a draft document from a dispatched sales order. Produces a draft, not an "
+                + "issued document: somebody should see what is about to go to the customer.")
+            .Produces<Guid>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
         group.MapPost("/documents/{invoiceId:guid}/lines", AddLineAsync)
             .WithName("AddDocumentLine")
             .WithSummary(
@@ -139,6 +150,15 @@ public sealed class DocumentEndpoints : IEndpointGroup
     private static async Task<IResult> CreateAsync(
         IDispatcher dispatcher,
         CreateDocumentCommand command,
+        CancellationToken cancellationToken)
+    {
+        Result<Guid> result = await dispatcher.SendAsync(command, cancellationToken);
+        return result.ToCreated(id => $"/api/invoicing/documents/{id}");
+    }
+
+    private static async Task<IResult> DrawFromSalesOrderAsync(
+        IDispatcher dispatcher,
+        DrawFromSalesOrderCommand command,
         CancellationToken cancellationToken)
     {
         Result<Guid> result = await dispatcher.SendAsync(command, cancellationToken);

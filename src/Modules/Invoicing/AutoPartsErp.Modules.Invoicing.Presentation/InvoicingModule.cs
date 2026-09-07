@@ -134,5 +134,6 @@ public sealed class InvoicingModule : IModule
 
         new DocumentSeriesEndpoints().Map(group);
         new DocumentEndpoints().Map(group);
+        new SaftEndpoints().Map(group);
     }
 }

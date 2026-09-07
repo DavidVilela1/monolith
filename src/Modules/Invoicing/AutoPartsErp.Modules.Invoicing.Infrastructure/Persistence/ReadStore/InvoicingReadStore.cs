@@ -1,5 +1,7 @@
+using System.Globalization;
 using AutoPartsErp.Modules.Invoicing.Application.Abstractions;
 using AutoPartsErp.Modules.Invoicing.Application.Contracts;
+using AutoPartsErp.Modules.Invoicing.Application.Saft;
 using AutoPartsErp.Modules.Invoicing.Domain;
 using AutoPartsErp.Modules.Invoicing.Domain.Invoices;
 using AutoPartsErp.Modules.Invoicing.Domain.Series;
@@ -198,6 +200,75 @@ public sealed class InvoicingReadStore : IInvoicingReadStore
         List<InvoiceSummary> items = [.. rows.Select(MapSummary)];
 
         return PagedResult<InvoiceSummary>.Create(items, page.Page, page.PageSize, total);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<SaftDocument>> GetSaftDocumentsAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken = default)
+    {
+        // Ordered by the series and then by the number within it, which is the order the documents
+        // were issued in and the order an auditor reads them. Ordering by date would interleave
+        // two series and make a gap in either one invisible.
+        List<Invoice> invoices = await _context.Invoices
+            .AsNoTracking()
+            .Where(invoice => invoice.SeriesNumber > 0)
+            .Where(invoice => invoice.DocumentDate >= from && invoice.DocumentDate <= to)
+            .OrderBy(invoice => invoice.SeriesId)
+            .ThenBy(invoice => invoice.SeriesNumber)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return [.. invoices.Select(MapSaft)];
+    }
+
+    private static SaftDocument MapSaft(Invoice invoice)
+    {
+        TaxSummary taxes = invoice.Taxes;
+        bool voided = invoice.Status == InvoiceStatus.Voided;
+
+        var document = new SaftInvoice
+        {
+            InvoiceNo = invoice.DocumentNumber,
+            Atcud = invoice.Atcud?.Value ?? string.Empty,
+
+            // N for a live document, A for a voided one. The voided one keeps everything else it
+            // ever had - its number, its figures, its signature and its place in the chain.
+            Status = voided ? "A" : "N",
+            StatusDate = invoice.VoidedAtUtc ?? invoice.SystemEntryDateUtc ?? invoice.CreatedAtUtc,
+            StatusReason = voided ? invoice.VoidReason : null,
+            SourceId = invoice.CreatedBy,
+            Hash = invoice.Signature?.Value ?? string.Empty,
+
+            // Filled in by the handler, which is the only thing that knows which key version the
+            // deployment is configured with. Left blank here rather than guessed.
+            HashControl = string.Empty,
+            Period = invoice.DocumentDate.Month,
+            InvoiceDate = invoice.DocumentDate,
+            InvoiceType = invoice.Type.Code(),
+            SystemEntryDate = invoice.SystemEntryDateUtc ?? invoice.CreatedAtUtc,
+            CustomerId = invoice.CustomerId.Value.ToString("D", CultureInfo.InvariantCulture),
+            Lines = [.. invoice.Lines.Select(line => new SaftInvoiceLine(
+                line.Number,
+                line.Sku,
+                line.Description,
+                line.Quantity.Value,
+                line.Quantity.Unit.Code,
+                line.UnitPrice.Amount,
+                invoice.DocumentDate,
+                line.NetAmount.Amount,
+                invoice.TaxRegion.Code(),
+                line.VatRate.TaxCode,
+                line.VatRate.Percent,
+                line.VatRate.ExemptionReason,
+                line.VatRate.ExemptionCode))],
+            TaxPayable = taxes.VatTotal,
+            NetTotal = taxes.NetTotal,
+            GrossTotal = taxes.GrossTotal,
+        };
+
+        return new SaftDocument(document, invoice.CustomerName, invoice.CustomerTaxNumber);
     }
 
     private static DocumentSeriesDto MapSeries(DocumentSeries series) => new(

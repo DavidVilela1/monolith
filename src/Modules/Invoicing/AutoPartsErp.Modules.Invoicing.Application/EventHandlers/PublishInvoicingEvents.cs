@@ -63,35 +63,52 @@ public sealed class PublishInvoiceIssued : IDomainEventHandler<InvoiceIssuedDoma
     }
 }
 
-/// <summary>Republishes a voided document.</summary>
+/// <summary>
+/// Republishes a voided document.
+/// <para>
+/// Loads the document for the same reason the issued handler does: the sales order reference
+/// lives on the aggregate rather than on the event, and Sales needs it to work out which of its
+/// orders has just become billable again.
+/// </para>
+/// </summary>
 public sealed class PublishInvoiceVoided : IDomainEventHandler<InvoiceVoidedDomainEvent>
 {
     private readonly IEventBus _eventBus;
+    private readonly IInvoiceRepository _invoices;
     private readonly ITenantContext _tenantContext;
 
     /// <summary>Initializes the handler.</summary>
-    public PublishInvoiceVoided(IEventBus eventBus, ITenantContext tenantContext)
+    public PublishInvoiceVoided(
+        IEventBus eventBus,
+        IInvoiceRepository invoices,
+        ITenantContext tenantContext)
     {
         _eventBus = eventBus;
+        _invoices = invoices;
         _tenantContext = tenantContext;
     }
 
     /// <inheritdoc />
-    public Task HandleAsync(
+    public async Task HandleAsync(
         InvoiceVoidedDomainEvent domainEvent,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(domainEvent);
 
-        return _eventBus.PublishAsync(
+        Invoice? invoice = await _invoices
+            .GetByIdAsync(domainEvent.InvoiceId, cancellationToken)
+            .ConfigureAwait(false);
+
+        await _eventBus.PublishAsync(
             new InvoiceVoidedIntegrationEvent(
                 domainEvent.InvoiceId.Value,
                 domainEvent.Type.Code(),
                 domainEvent.DocumentNumber,
                 domainEvent.CustomerId.Value,
+                invoice?.SalesOrderId?.Value,
                 domainEvent.GrossTotal,
                 domainEvent.Reason,
                 _tenantContext.TenantId),
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
     }
 }

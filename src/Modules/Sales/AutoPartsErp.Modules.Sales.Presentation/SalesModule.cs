@@ -1,7 +1,9 @@
+using AutoPartsErp.ModuleContracts.Sales;
 using AutoPartsErp.Modules.Abstractions.DependencyInjection;
 using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Sales.Application.Abstractions;
 using AutoPartsErp.Modules.Sales.Domain;
+using AutoPartsErp.Modules.Sales.Infrastructure.Contracts;
 using AutoPartsErp.Modules.Sales.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Sales.Infrastructure.Persistence.ReadStore;
 using AutoPartsErp.Modules.Sales.Infrastructure.Persistence.Repositories;
@@ -68,6 +70,10 @@ public sealed class SalesModule : IModule
         services.AddScoped<ISalesOrderRepository, SalesOrderRepository>();
         services.AddScoped<ICustomerAccountRepository, CustomerAccountRepository>();
         services.AddScoped<ISalesReadStore, SalesReadStore>();
+
+        // What Sales tells Invoicing about an order that is ready to be billed. The only one of
+        // these contracts that this module answers rather than asks.
+        services.AddScoped<ISalesOrderDirectory, SalesOrderDirectory>();
 
         services.AddModuleHandlers(
             typeof(Application.Orders.Commands.CreateSalesOrderCommand).Assembly);

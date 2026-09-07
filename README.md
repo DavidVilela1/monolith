@@ -2,8 +2,8 @@
 
 An integrated ERP for **automotive parts distribution**, built as a modular monolith on .NET 8.
 
-Six modules are in place and talking to each other, with a seventh — the one Portuguese law
-cares about — half built:
+Seven modules are in place and talking to each other, including the one Portuguese law cares
+about:
 
 | Module | Schema | Order | What it owns |
 |---|---|---|---|
@@ -13,10 +13,10 @@ cares about — half built:
 | **Pricing** | `pricing` | 12 | Price lists, quantity breaks, customer agreements, price resolution |
 | **Purchasing** | `purchasing` | 15 | Purchase orders, goods receipt, replenishment suggestions |
 | **Sales** | `sales` | 20 | Customer accounts, sales orders, dispatch, credit control |
-| **Invoicing** | — | — | Registered series, ATCUD, the signature chain, the QR code. Domain only so far — see the roadmap. |
+| **Invoicing** | `invoicing` | 25 | Registered series, ATCUD, the signature chain, the QR code, the SAF-T (PT) export |
 
 They share no code beyond two contract assemblies, and no module references another module's
-projects. 396 tests, all green.
+projects. 443 tests, all green.
 
 ---
 
@@ -81,6 +81,34 @@ dotnet ef migrations add <Name> \
 `dotnet ef migrations add` prints a `HostAbortedException` as FATAL. It is not a failure — EF
 builds the host to read the DbContext configuration and then deliberately aborts it.
 
+### Configuring Invoicing
+
+`Erp:Invoicing` in `appsettings.json` carries the four facts about the company that are the same
+for every document a deployment ever issues, plus the company details the SAF-T header names.
+
+| Setting | What it is |
+|---|---|
+| `IssuerTaxNumber` | The company's own NIF. Field A of every QR code. |
+| `TaxRegion` | `Mainland`, `Azores` or `Madeira`. Decides which VAT rates are valid. |
+| `CertificateNumber` | The AT's software certification number. `0` means uncertified. |
+| `PrivateKeyPem` | The RSA key registered with the AT. Empty in development. |
+| `PrivateKeyVersion` | Which key version signed a document, for SAF-T `HashControl`. |
+| `Company` | Name, registry ID and address, for the SAF-T header. |
+| `Product` | The software **vendor's** NIF, product ID and version. |
+
+The first two are validated at startup and the application refuses to start without them: an
+empty NIF produces a QR code that scans perfectly and validates as nothing, and an unknown region
+produces the wrong VAT rates on every document a branch ever issues.
+
+`Company` and `Product` are not, deliberately. Everything else works without them, so refusing to
+boot would stop somebody invoicing for the sake of a file they may not produce for another month.
+Ask for the SAF-T export without them and it names the setting that is missing.
+
+With no `PrivateKeyPem` the signer generates a throwaway 1024-bit key at every startup and logs a
+warning saying so. Documents signed with it chain among themselves and verify against nothing,
+which is exactly right for a development database — it exercises the whole flow and makes it
+impossible to mistake the output for a legal document.
+
 ---
 
 ## Try it
@@ -116,6 +144,26 @@ POST /api/sales/orders/{salesOrderId}/confirm
 
 ### Parts at or below their reorder point, deepest shortfall first
 GET /api/purchasing/suggestions
+
+### Open a series and record the code the tax authority returns for it. Three
+### steps, because the middle one involves the AT and can be days later.
+POST /api/invoicing/series
+{ "type": "FT", "code": "SERIE2026", "year": 2026 }
+POST /api/invoicing/series/{seriesId}/validation-code
+{ "validationCode": "CSDF7T5H" }
+POST /api/invoicing/series/{seriesId}/activate
+
+### Draw a draft invoice from a dispatched order. A draft, not an issued
+### document: somebody should see what is about to go to the customer.
+POST /api/invoicing/documents/from-sales-order
+{ "salesOrderId": "..." }
+
+### Issue it. Number, ATCUD, signature and QR code, all at once, inside one
+### transaction holding a lock on the series. Nothing here can be undone.
+POST /api/invoicing/documents/{invoiceId}/issue
+
+### The month's SAF-T file
+GET /api/invoicing/saft/2026/9
 ```
 
 `requests.http` at the repository root has the full set for the REST Client extension, including
@@ -200,7 +248,7 @@ has to look at.
 
 #### Query contracts
 
-Four so far, each implemented by the module that owns the data and registered by that module.
+Six so far, each implemented by the module that owns the data and registered by that module.
 Consumers reference the contract, never the publisher.
 
 | Contract | Answers | Used by |
@@ -209,6 +257,21 @@ Consumers reference the contract, never the publisher.
 | `IPartnerDirectory` | May we trade with them, and what do we call them | Purchasing |
 | `ICatalogDirectory` | What is this part, and may we still trade it | Sales, Purchasing, Pricing |
 | `IPriceProvider` | What does this cost this customer at this quantity | Sales |
+| `IBillingPartyDirectory` | Who are they, for putting on a legal document | Invoicing |
+| `ISalesOrderDirectory` | Is this order ready to bill, and what is on it | Invoicing |
+
+The last two are worth a note each.
+
+`IBillingPartyDirectory` is deliberately a second contract rather than four more fields on
+`IPartnerDirectory`, which says in its own remarks that it does not hand out tax numbers.
+Purchasing asks the trading directory a hundred times a day and has no business receiving
+anybody's NIF in the answer. Two contracts, two reasons to be told, and a grep for who reads
+billing identities returns exactly the module that prints them.
+
+`ISalesOrderDirectory` is the first one that runs the other way round: the other five are asked
+by the module holding a document, about parts, stock, partners and prices. This one is Invoicing
+asking Sales for the thing it is about to turn into a legal document — and Sales answers "can
+this be invoiced" itself, rather than exposing a status for Invoicing to judge.
 
 They live in `AutoPartsErp.ModuleContracts`, which has **no dependencies at all** — not even the
 SharedKernel. A contract that referenced `Money` would drag the value-object model across the
@@ -395,8 +458,8 @@ it is computed, because that is the order a customer can check with a calculator
 
 ### Invoicing
 
-The part of Portuguese invoicing that is law rather than design. Domain only for now: no schema,
-no endpoints, not wired into the host.
+The part of Portuguese invoicing that is law rather than design, end to end: schema, endpoints,
+the Sales bridge and the monthly SAF-T file.
 
 **A series is a registered run of gapless numbers**, for one document type and one year. It has
 to be declared to the tax authority before anything is issued in it, and what comes back is a
@@ -419,16 +482,62 @@ after it, which is the entire point.
 **Voiding keeps everything**: the number, the figures, the signature, the place in the chain.
 Only the status changes and a reason is added. A missing number is worse than a cancelled one.
 
+**Two tills issuing at once queue rather than collide.** Taking a number holds a row lock on the
+series — `SELECT ... FOR UPDATE` inside an explicit transaction — so the second one waits a few
+milliseconds and gets the next number. Without it both would read the same number and one would
+lose on the concurrency token: safe, but a failed request in the middle of a customer's
+transaction. The repository refuses to run outside a transaction rather than silently taking no
+lock at all.
+
+It is also the only module registered **without** `EnableRetryOnFailure`. Mechanically, a
+retrying execution strategy will not run a user-initiated transaction, so the two together break
+every issue. More seriously, a retry re-runs against an aggregate the failed attempt has already
+mutated in memory — it would find a document that believes it has been issued having committed
+nothing, or take a second number for the same document. A transient fault here should surface as
+a failed request somebody repeats deliberately.
+
+**An invoice can be drawn from a dispatched sales order**, and the bridge runs both ways by two
+different mechanisms. Invoicing asks Sales a synchronous question, because it cannot draw a
+document without knowing what is on the order. Sales learns the outcome by integration event,
+because it is only being told something that already happened — and putting a second module
+inside the transaction that takes a document number is the one thing that transaction must not
+do. The honest cost is a window, a few hundred milliseconds wide, in which a duplicate *draft*
+could be raised. Not a duplicate document: that would need the series lock.
+
+An order is billable when everything on it has gone out, it was not cancelled, and it has not
+already been invoiced. Partial invoicing of a partly dispatched order is a real thing
+distributors do and is deliberately not built — it needs an invoiced quantity per line and more
+than one document per order.
+
+**A sales order records a VAT rate; a document has to declare a VAT category.** Nothing in the
+number itself says which: 13 is intermediate on the mainland and nothing at all in Madeira, where
+the intermediate rate is 12. `PortugueseVatRates` does the translation from the establishment's
+region, and refuses rather than guessing — a rate the region does not use, or a zero that is
+really an exemption missing its M-code. Getting this wrong does not produce a wrong total. It
+produces a correct total filed under the wrong heading, which reconciles perfectly until somebody
+compares the VAT return with the SAF-T file.
+
+**The SAF-T (PT) export** is schema 1.04_01, `TaxAccountingBasis` F — billing software, documents
+and no accounts. `GET /api/invoicing/saft/2026/9`. Drafts are excluded and voided documents
+included: a draft has no number and does not exist as far as the tax authority is concerned,
+while a voided one has a number that was reported and leaving it out would put a gap in the
+sequence. Products are built from the document lines rather than from Catalog, so a part
+withdrawn since it was sold still appears exactly as the document names it; customers come from
+Partners, because the SAF-T customer table is a master file, with the document's own snapshot
+standing in for anyone Partners no longer knows.
+
 **Nothing here was written from memory.** Every prescribed detail — the exact string that gets
 signed, the four characters taken from positions 1, 11, 21 and 31 of the base64 signature, the
-ATCUD's hyphen, the QR code's field list — was checked against a primary source and is tested
-against the worked examples those sources publish. The two signature examples from the DGCI
-specification are in the suite character for character.
+ATCUD's hyphen, the QR code's field list, the order of every element in the SAF-T schema — was
+checked against a primary source and is tested against the worked examples those sources publish.
+The two signature examples from the DGCI specification are in the suite character for character.
 
 **This is not certified software and nothing here makes it certified.** Issuing real invoices in
 Portugal also needs a certification number from the tax authority, a private key registered under
-it, each series declared, and the monthly communication of documents. The first three are
-paperwork; the fourth is code that does not exist yet.
+it, and each series declared. Configure `Erp:Invoicing` before anything real: without a
+`PrivateKeyPem` the signer generates a throwaway key at every startup and says so in the log, and
+documents signed with it verify against nothing — which is the correct behaviour for a
+development database and a disaster anywhere else.
 
 ---
 
@@ -451,7 +560,7 @@ AutoPartsErp.sln
 │       ├── Pricing
 │       ├── Purchasing
 │       ├── Sales
-│       └── Invoicing                     (domain only so far)
+│       └── Invoicing
 │           ├── ....Domain
 │           ├── ....Application
 │           ├── ....Infrastructure
@@ -512,25 +621,25 @@ works: who we trade with, what we stock, what we sell, what it costs, what we bu
 
 ## Roadmap
 
-**Done:** Partners, Inventory, Catalog, Pricing, Purchasing, Sales. Transactional outbox and
-consumer inbox. Four module query contracts. The Invoicing domain.
+**Done:** all seven modules. Transactional outbox and consumer inbox. Six module query
+contracts. Invoicing end to end, including the Sales bridge and the SAF-T (PT) export.
 
 **Next, in rough dependency order:**
 
-1. **Invoicing, the rest of it.** The domain is done and tested; what is missing is everything
-   that makes it run:
-   - the RSA signer (PKCS#1 v1.5 with a SHA-1 digest — not a choice anyone would make today, and
-     not ours to make), reading a key registered with the tax authority;
-   - a repository that takes a row lock while a document draws its number, so two tills queue
-     rather than one of them failing on a concurrency token;
-   - the `invoicing` schema, the endpoints, and the handler that turns a confirmed sales order
-     into a draft invoice.
-2. **SAF-T (PT) export**, schema 1.04_01. Header, MasterFiles, SourceDocuments. Without it the
-   documents are correct and unreportable.
-3. **Finance** — AR/AP, general ledger, VAT returns, period close.
-4. **Stock valuation and costing** — FIFO or weighted average over the movement ledger, which
+1. **Communicating documents to the AT.** The webservice that reports each document within days
+   of issuing it. The paperwork around certification is paperwork; this is the last piece of code
+   between here and a legally usable installation.
+2. **Credit notes against a document.** The domain type exists and a credit note issues correctly,
+   but nothing yet draws one *from* an invoice — which is the only correct way to reverse one, and
+   the thing anybody will reach for the first week they use this.
+3. **Partial invoicing.** An invoiced quantity per order line, and more than one document per
+   order. The billing contract already carries the dispatched quantity so that this becomes a
+   change to Sales rather than a change to what the field means.
+4. **Finance** — AR/AP, general ledger, VAT returns, period close. The invoices exist and nothing
+   consumes them yet.
+5. **Stock valuation and costing** — FIFO or weighted average over the movement ledger, which
    already carries a unit cost column for it. Also what a margin floor in Pricing would need.
-5. **Returns and core credits** — the other half of a parts business, and the reason
+6. **Returns and core credits** — the other half of a parts business, and the reason
    `RequiresCoreReturn` exists on a part already.
 
 **Known issues:**
@@ -547,8 +656,15 @@ consumer inbox. Four module query contracts. The Invoicing domain.
   messages twice — safe, because consumers are idempotent, but wasteful. `FOR UPDATE SKIP LOCKED`
   is the fix.
 - Nothing prunes delivered outbox and inbox rows. They grow forever until a retention job exists.
-- `ChangeSalesOrderLinePricing` does not clear the line's `PriceSource`, so a line quoted from a
-  price list and then overridden by hand still claims that list. Two lines in the aggregate.
+- The SAF-T `HashControl` field carries the signing key's version, which is what the AT's thinner
+  guidance on it appears to want. If a validator disagrees, `Erp:Invoicing:PrivateKeyVersion` is
+  the setting to change.
+- A document drawn from a sales order and then issued leaves a window of a few hundred
+  milliseconds in which the order does not yet know. A second *draft* can be raised in it. A
+  second issued document cannot, because that needs the series lock.
+- SAF-T is generated in memory and returned in one response. A year's file for a busy branch is
+  tens of megabytes, which is large for a response and fine for a machine; streaming it is the fix
+  if it ever stops being fine.
 
 **Foundation work wanted along the way:**
 
@@ -583,6 +699,10 @@ consumer inbox. Four module query contracts. The Invoicing domain.
   error like any other. The trap is a nested type that shadows a namespace of the same name —
   `InvoicingErrors.Series` hides the `Series` namespace, and the cref inside it has to be
   qualified.
+- An Application project references the domain and the two contract assemblies and **nothing
+  else** — no NuGet packages, no framework references. Configuration reaches a handler as a plain
+  options object registered by the module, not as `IOptions<T>`, so that the layer never learns
+  what a web host is.
 
 ### Notes for Windows
 

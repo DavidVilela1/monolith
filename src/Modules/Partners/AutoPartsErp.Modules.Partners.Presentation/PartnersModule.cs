@@ -70,6 +70,10 @@ public sealed class PartnersModule : IModule
         // the module that owns the data, so no consumer ever references this project.
         services.AddScoped<IPartnerDirectory, PartnerDirectory>();
 
+        // The billing identity, separate from the trading directory above. Two registrations for
+        // two contracts, so that a grep for who can be handed a tax number returns one line.
+        services.AddScoped<IBillingPartyDirectory, BillingPartyDirectory>();
+
         services.AddModuleHandlers(
             typeof(Application.Commands.CreatePartnerCommand).Assembly);
     }

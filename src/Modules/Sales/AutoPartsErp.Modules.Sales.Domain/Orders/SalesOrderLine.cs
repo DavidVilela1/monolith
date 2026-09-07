@@ -216,7 +216,16 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
         return Result.Success();
     }
 
-    /// <summary>Changes the price or the discount.</summary>
+    /// <summary>
+    /// Changes the price or the discount, and forgets where the old price came from.
+    /// <para>
+    /// Clearing <see cref="PriceSource"/> is the whole point of the method having a comment. This
+    /// is only reachable from somebody overriding a price by hand, and a line that still claimed
+    /// TRADE26 after Miguel typed a different number would be a document answering "why did we
+    /// charge that?" with a lie — the worst of the three possible answers, because it is the one
+    /// nobody thinks to check.
+    /// </para>
+    /// </summary>
     internal Result ChangePricing(Money unitPrice, decimal discountPercent)
     {
         ArgumentNullException.ThrowIfNull(unitPrice);
@@ -238,6 +247,7 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
 
         UnitPrice = unitPrice;
         DiscountPercent = discountPercent;
+        PriceSource = null;
 
         return Result.Success();
     }
