@@ -38,6 +38,9 @@ public sealed class Money : ValueObject, IComparable<Money>
     /// <summary>True when the amount is below zero (a credit, refund or negative adjustment).</summary>
     public bool IsNegative => Amount < 0m;
 
+    /// <summary>True when there is something here: neither zero nor negative.</summary>
+    public bool IsPositive => Amount > 0m;
+
     /// <summary>Creates an amount in the given currency.</summary>
     public static Money Of(decimal amount, Currency currency)
     {

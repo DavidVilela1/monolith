@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Finance.Domain</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Finance.Domain</AssemblyName>
+    <Description>
+      What each customer owes and what has been received against it. Open items raised from
+      issued documents, receipts matched to the documents they pay, and the ageing that falls
+      out of the two.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.SharedKernel\AutoPartsErp.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>
