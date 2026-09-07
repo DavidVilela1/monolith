@@ -298,17 +298,15 @@ public sealed class ErpFixture : IAsyncLifetime
 /// </summary>
 public sealed class ErpApplication
 {
-    private readonly IServiceProvider _provider;
-
     /// <summary>Initializes the wrapper.</summary>
     /// <param name="provider">The built container.</param>
     public ErpApplication(IServiceProvider provider)
     {
-        _provider = provider;
+        Services = provider;
     }
 
     /// <summary>The root container, for the rare test that wants it directly.</summary>
-    public IServiceProvider Services => _provider;
+    public IServiceProvider Services { get; }
 
     /// <summary>
     /// Runs something inside a scope with a chosen tenant, the way a request would.
@@ -326,7 +324,7 @@ public sealed class ErpApplication
     {
         ArgumentNullException.ThrowIfNull(work);
 
-        using IServiceScope scope = _provider.CreateScope();
+        using IServiceScope scope = Services.CreateScope();
         scope.ServiceProvider.GetRequiredService<AmbientTenant>().Set(tenantId, "TEST");
 
         return await work(scope.ServiceProvider).ConfigureAwait(false);

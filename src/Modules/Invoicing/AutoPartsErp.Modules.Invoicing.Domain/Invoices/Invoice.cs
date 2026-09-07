@@ -519,9 +519,20 @@ public sealed class Invoice : AggregateRoot<InvoiceId>, IAuditable, ITenantScope
             return InvoicingErrors.Line.CurrencyMismatch;
         }
 
+        // Copied, never adopted. Quantity, Money and VatRate are owned entities to EF Core, which
+        // means each one belongs to exactly one line and the owner's identifier is part of its
+        // key. Storing an instance that another line already owns asks EF to re-parent it, and it
+        // refuses - "the property 'VatRate.InvoiceLineId' is part of a key and so cannot be
+        // modified" - at the moment the new document is added, with a message that says nothing
+        // about where the instance came from.
+        //
+        // The caller that does this is DraftCreditNote, which copies the price and the rate off
+        // the invoiced line because a credit has to carry the figures it reverses. Copying there
+        // would fix it there; copying here fixes it for every caller there will ever be, and the
+        // cost is three allocations on a path that already allocates a line.
         Result<InvoiceLine> line = InvoiceLine.Create(
-            _lines.Count + 1, partId, sku, description, quantity, unitPrice, discountPercent,
-            vatRate, creditsLineId);
+            _lines.Count + 1, partId, sku, description, quantity.Copy(), unitPrice.Copy(),
+            discountPercent, vatRate.Copy(), creditsLineId);
 
         if (line.IsFailure)
         {

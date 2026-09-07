@@ -16,7 +16,7 @@ about:
 | **Invoicing** | `invoicing` | 25 | Registered series, ATCUD, the signature chain, the QR code, the SAF-T (PT) export |
 
 They share no code beyond two contract assemblies, and no module references another module's
-projects. 485 tests, all green — 459 that need nothing but the compiler, and 26 that need a real
+projects. 488 tests, all green — 459 that need nothing but the compiler, and 29 that need a real
 PostgreSQL because what they check does not exist until there is one.
 
 ---
@@ -45,9 +45,9 @@ ALTER ROLE erp CREATEDB;
 **That third line is not optional, and it is not for the application.** The integration suite
 creates a database of its own for each run and drops it at the end, which is what keeps it from
 ever touching `autoparts_erp`. Without `CREATEDB` the whole suite fails at the first line of the
-fixture with `42501: permission denied to create database` — twenty-one failures that all look
-like broken tests and are one missing grant. The application itself never creates anything and
-does not need the attribute.
+fixture with `42501: permission denied to create database` — every test in it failing at once,
+all of them looking like broken code and all of them being one missing grant. The application
+itself never creates anything and does not need the attribute.
 
 Point `ConnectionStrings:Erp` in `src/Api/AutoPartsErp.Api/appsettings.json` at any PostgreSQL 16
 instance you like.
@@ -667,17 +667,14 @@ three modules that hand out numbers.
 1. **Communicating documents to the AT.** The webservice that reports each document within days
    of issuing it. The paperwork around certification is paperwork; this is the last piece of code
    between here and a legally usable installation.
-2. **Credit notes against a document.** The domain type exists and a credit note issues correctly,
-   but nothing yet draws one *from* an invoice — which is the only correct way to reverse one, and
-   the thing anybody will reach for the first week they use this.
-3. **Partial invoicing.** An invoiced quantity per order line, and more than one document per
+2. **Partial invoicing.** An invoiced quantity per order line, and more than one document per
    order. The billing contract already carries the dispatched quantity so that this becomes a
    change to Sales rather than a change to what the field means.
-4. **Finance** — AR/AP, general ledger, VAT returns, period close. The invoices exist and nothing
+3. **Finance** — AR/AP, general ledger, VAT returns, period close. The invoices exist and nothing
    consumes them yet.
-5. **Stock valuation and costing** — FIFO or weighted average over the movement ledger, which
+4. **Stock valuation and costing** — FIFO or weighted average over the movement ledger, which
    already carries a unit cost column for it. Also what a margin floor in Pricing would need.
-6. **Returns and core credits** — the other half of a parts business, and the reason
+5. **Returns and core credits** — the other half of a parts business, and the reason
    `RequiresCoreReturn` exists on a part already.
 
 **Known issues:**
@@ -712,7 +709,7 @@ three modules that hand out numbers.
 
 ## Integration tests
 
-26 tests in `tests/AutoPartsErp.IntegrationTests`, against the PostgreSQL 16 this project already
+29 tests in `tests/AutoPartsErp.IntegrationTests`, against the PostgreSQL 16 this project already
 requires. No container, no second service, nothing to start first.
 
 ```bash
@@ -764,6 +761,7 @@ What it checks, and why each one is there rather than in a unit test:
 | Each year, tenant and module numbers apart | The counter's composite key is the key it was declared to be — one company's trading cannot advance another's numbering |
 | An invoice round-trips | Two owned values on the document, three per line, a unit through a converter with a hand-written comparer |
 | Two tenants cannot see each other | The global query filter, which is invisible at every call site by design |
+|
 
 ---
 
@@ -790,6 +788,13 @@ What it checks, and why each one is there rather than in a unit test:
 - Raw SQL in an index filter (`HasFilter("is_deleted = false")`) is correct only because of the
   snake_case convention. Renaming the property without renaming the string gives a migration that
   builds and an index that silently never applies.
+- **A value object mapped with `OwnsOne` belongs to one owner. Never hand an instance to a
+  second.** `Money`, `Quantity` and `VatRate` are owned entities to EF Core, so the owner's
+  identifier is part of their key; storing one that another entity already owns asks EF to move
+  it, and it throws *"the property 'VatRate.InvoiceLineId' is part of a key and so cannot be
+  modified"* at `Add`, naming nothing that would lead you to the line that did it. It is invisible
+  to every unit test, because in memory sharing an immutable value is perfectly correct. Copy
+  instead — each of those three has a `Copy()` that exists for this and says so.
 - `GenerateDocumentationFile` is on, so a `<see cref="..."/>` that does not resolve is a build
   error like any other. The trap is a nested type that shadows a namespace of the same name —
   `InvoicingErrors.Series` hides the `Series` namespace, and the cref inside it has to be

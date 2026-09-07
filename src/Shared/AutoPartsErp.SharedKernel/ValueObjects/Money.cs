@@ -55,6 +55,17 @@ public sealed class Money : ValueObject, IComparable<Money>
     /// <summary>Zero in the system default currency.</summary>
     public static Money ZeroDefault => Of(0m, Currency.Default);
 
+    /// <summary>
+    /// An equal amount in a new instance.
+    /// <para>
+    /// Nothing about the value needs this — two equal amounts are interchangeable, which is the
+    /// point of a value object. The reason it exists is that EF Core maps these as owned entities,
+    /// and an owned entity belongs to exactly one owner: handing the same instance to a second
+    /// one asks EF to move it, which it refuses because the owner is part of its key.
+    /// </para>
+    /// </summary>
+    public Money Copy() => new(Amount, Currency);
+
     /// <summary>Adds two amounts of the same currency.</summary>
     public Money Add(Money other)
     {

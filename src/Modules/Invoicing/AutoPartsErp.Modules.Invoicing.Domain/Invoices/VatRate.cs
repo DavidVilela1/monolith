@@ -92,6 +92,23 @@ public sealed class VatRate : ValueObject
     /// <summary>The mainland standard rate, which is what almost every part is sold at.</summary>
     public static VatRate PortugalStandard => new(VatCategory.Standard, 23m, null, null);
 
+    /// <summary>
+    /// An equal rate in a new instance.
+    /// <para>
+    /// Goes through the private constructor rather than <see cref="Of"/> or
+    /// <see cref="ExemptWith"/>, because what is being copied has already been validated and
+    /// re-running the factories would mean unwrapping a <c>Result</c> that cannot fail — and
+    /// choosing between the two factories by inspecting the category, which is the sort of branch
+    /// that is right until somebody adds a third kind of rate.
+    /// </para>
+    /// <para>
+    /// It exists for EF Core's benefit. A rate is owned by the line it is on, and an owned entity
+    /// has exactly one owner; a credit note that reused the invoiced line's instance would be
+    /// asking EF to move it, which it refuses.
+    /// </para>
+    /// </summary>
+    public VatRate Copy() => new(Category, Percent, ExemptionCode, ExemptionReason);
+
     /// <summary>Creates a rate that charges VAT.</summary>
     /// <param name="category">Reduced, intermediate or standard.</param>
     /// <param name="percent">The percentage, 0 to 100.</param>

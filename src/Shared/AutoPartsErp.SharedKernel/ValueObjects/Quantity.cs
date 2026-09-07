@@ -79,6 +79,15 @@ public sealed class Quantity : ValueObject, IComparable<Quantity>
     /// <summary>Zero in the given unit.</summary>
     public static Quantity Zero(UnitOfMeasure unit) => Of(0m, unit);
 
+    /// <summary>
+    /// An equal quantity in a new instance.
+    /// <para>
+    /// For the same reason as <see cref="Money.Copy"/>: these are owned entities to EF Core, and
+    /// an owned entity has exactly one owner.
+    /// </para>
+    /// </summary>
+    public Quantity Copy() => new(Value, Unit);
+
     /// <summary>Adds a quantity of the same unit.</summary>
     public Quantity Add(Quantity other)
     {
