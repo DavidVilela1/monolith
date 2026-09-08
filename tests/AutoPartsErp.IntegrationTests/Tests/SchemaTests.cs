@@ -85,7 +85,7 @@ public sealed class SchemaTests
     [Theory]
     [InlineData("invoicing", "ux_invoices_tenant_number", "document_number <> ''")]
     [InlineData("invoicing", "ix_invoices_tenant_credited", "credited_invoice_id IS NOT NULL")]
-    [InlineData("sales", "ix_sales_orders_tenant_awaiting_invoice", "invoice_id IS NULL")]
+    [InlineData("sales", "ix_sales_orders_tenant_awaiting_invoice", "invoicing_status")]
     [InlineData("pricing", "ux_price_lists_one_default_per_tenant", "is_default is_deleted")]
     [InlineData("finance", "ix_open_items_tenant_outstanding", "status")]
     [InlineData("finance", "ix_receipts_tenant_unallocated", "status")]

@@ -70,23 +70,11 @@ public static class SalesErrors
                 "sales.order.required_date_past",
                 "The required-by date cannot be in the past.");
 
-        /// <summary>An invoice reference was not supplied.</summary>
-        public static readonly Error InvoiceReferenceRequired =
+        /// <summary>A billing was recorded with no lines on it.</summary>
+        public static readonly Error NothingBilled =
             Error.Validation(
-                "sales.order.invoice_reference_required",
-                "Marking an order invoiced needs the document it was invoiced as.");
-
-        /// <summary>The invoice number was not supplied.</summary>
-        public static readonly Error InvoiceNumberRequired =
-            Error.Validation(
-                "sales.order.invoice_number_required",
-                "Marking an order invoiced needs the number printed on the document.");
-
-        /// <summary>A different document has already been drawn from this order.</summary>
-        public static Error AlreadyInvoiced(string documentNumber) =>
-            Error.Conflict(
-                "sales.order.already_invoiced",
-                $"That order was already invoiced as {documentNumber}.");
+                "sales.order.nothing_billed",
+                "Recording a billing needs the lines the document charged for.");
     }
 
     /// <summary>Failures relating to a <see cref="Orders.SalesOrderLine"/>.</summary>
@@ -170,6 +158,18 @@ public static class SalesErrors
         /// <summary>That line is complete.</summary>
         public static readonly Error AlreadyDispatched =
             Error.DomainRule("sales.line.already_dispatched", "That line has already gone out in full.");
+
+        /// <summary>Billing nothing is not billing.</summary>
+        public static readonly Error BilledNotPositive =
+            Error.Validation(
+                "sales.line.billed_not_positive", "A billed quantity must be above zero.");
+
+        /// <summary>More was charged for than went out and is still unbilled.</summary>
+        public static Error OverBilled(string sku, decimal billable) =>
+            Error.DomainRule(
+                "sales.line.over_billed",
+                $"Only {billable} of {sku} has gone out and not yet been charged for. Charging "
+                + "for more than left the building is a promise with a document number on it.");
 
         /// <summary>
         /// There is not enough on the shelf to promise this line.

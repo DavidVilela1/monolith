@@ -107,21 +107,26 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
     /// <summary>Why it was cancelled.</summary>
     public string? ClosureReason { get; private set; }
 
-    /// <summary>The document drawn from this order, or null while none has been.</summary>
-    public InvoiceRef? InvoiceId { get; private set; }
-
     /// <summary>
-    /// That document's number, e.g. <c>FT SERIE2026/35</c>. Null while none has been drawn.
+    /// How much of what has gone out has been charged for.
     /// <para>
-    /// Kept alongside the identifier rather than looked up, because the only thing Sales ever does
-    /// with it is show it to somebody asking "was this invoiced, and as what?". A join across a
-    /// module boundary to answer that would be the boundary existing in name only.
+    /// A status rather than a reference to a document, because there is no longer one document to
+    /// point at. An order can be billed across three invoices as the goods leave in three lorries,
+    /// and a single <c>InvoiceId</c> column would be right for the first of them and a half-truth
+    /// on every screen thereafter. Which documents were drawn is a question for Invoicing, which
+    /// is the module that has them; what Sales owns is how much is still to bill.
+    /// </para>
+    /// <para>
+    /// Stored rather than computed from the lines, because it is what the index for "orders
+    /// waiting to be invoiced" is filtered on, and a filter cannot be written against a property
+    /// that only exists in C#.
     /// </para>
     /// </summary>
-    public string? InvoiceDocumentNumber { get; private set; }
+    public SalesOrderInvoicingStatus InvoicingStatus { get; private set; }
+        = SalesOrderInvoicingStatus.NotInvoiced;
 
-    /// <summary>The date on that document.</summary>
-    public DateOnly? InvoicedOn { get; private set; }
+    /// <summary>The date the most recent document was drawn from this order.</summary>
+    public DateOnly? LastInvoicedOn { get; private set; }
 
     /// <summary>The lines on the order.</summary>
     public IReadOnlyCollection<SalesOrderLine> Lines => _lines.AsReadOnly();
@@ -166,25 +171,34 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
     /// <summary>True while at least one line still owes the customer something.</summary>
     public bool HasOutstandingLines => _lines.Exists(line => line.IsOutstanding);
 
-    /// <summary>True once a document has been drawn from this order.</summary>
-    public bool IsInvoiced => InvoiceId is not null;
+    /// <summary>
+    /// True once the order is finished with billing: everything sold has gone out and all of it
+    /// has been charged for. An order with nothing to bill today but stock still to ship is not
+    /// this.
+    /// </summary>
+    public bool IsInvoiced => InvoicingStatus == SalesOrderInvoicingStatus.Invoiced;
+
+    /// <summary>True while something has gone out that nobody has charged for yet.</summary>
+    public bool HasBillableLines => _lines.Exists(line => line.IsBillable);
 
     /// <summary>
     /// True when a document may be drawn from this order.
     /// <para>
-    /// Everything on it has to have gone out first. Invoicing goods that have not shipped is a
-    /// promise, and a promise with a document number on it is a problem — the number is reported
-    /// to the tax authority, the VAT falls due, and the only way back is a credit note for goods
-    /// that never moved.
+    /// What has gone out may be charged for, and nothing else. Invoicing goods that have not
+    /// shipped is a promise, and a promise with a document number on it is a problem — the number
+    /// is reported to the tax authority, the VAT falls due, and the only way back is a credit note
+    /// for goods that never moved.
     /// </para>
     /// <para>
-    /// So: fully dispatched, and not yet invoiced. Partial invoicing of a partly dispatched order
-    /// is a real thing distributors do and is deliberately not this — it needs an invoiced
-    /// quantity per line and more than one document per order, which is a bigger change than a
-    /// looser condition here.
+    /// The order does not have to be finished. Six of ten went out this morning; those six can be
+    /// charged for today and the other four when they follow, which is what a distributor
+    /// supplying against a standing order actually does. The condition is therefore "something has
+    /// gone out and nobody has charged for it", not "the order is closed".
     /// </para>
     /// </summary>
-    public bool CanInvoice => Status == SalesOrderStatus.Dispatched && !IsInvoiced;
+    public bool CanInvoice =>
+        Status is SalesOrderStatus.PartiallyDispatched or SalesOrderStatus.Dispatched
+        && HasBillableLines;
 
     /// <summary>
     /// True when the order puts credit at risk. A counter sale is paid before the goods leave,
@@ -536,71 +550,148 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
     }
 
     /// <summary>
-    /// Records that a document has been drawn from this order.
+    /// Records that a document has charged for some of what went out.
     /// <para>
     /// Called from an event handler, not from a person: Invoicing issues the document and says so,
-    /// and Sales writes it down. Which means this arrives after the fact and cannot refuse on the
+    /// and Sales writes it down. Which means it arrives after the fact and cannot refuse on the
     /// grounds that the order was not ready — the document already exists and has a number the tax
-    /// authority has been told about. Refusing here would leave the two modules disagreeing about
-    /// something that has already happened, so the only thing it guards is being told twice about
-    /// two different documents, which is a genuine contradiction rather than a late arrival.
+    /// authority has been told about. What it can refuse is a quantity larger than what is left to
+    /// bill, because that is not a late arrival but two documents charging for the same goods.
     /// </para>
     /// </summary>
-    /// <param name="invoiceId">The document.</param>
-    /// <param name="documentNumber">Its number, as printed.</param>
-    /// <param name="on">The date on it.</param>
-    public Result MarkInvoiced(InvoiceRef invoiceId, string? documentNumber, DateOnly on)
+    /// <param name="billed">How much of each line the document charged for.</param>
+    /// <param name="on">The date on the document.</param>
+    public Result RecordBilling(IReadOnlyDictionary<SalesOrderLineId, Quantity> billed, DateOnly on)
     {
-        if (invoiceId.IsEmpty)
+        ArgumentNullException.ThrowIfNull(billed);
+
+        if (billed.Count == 0)
         {
-            return SalesErrors.Order.InvoiceReferenceRequired;
+            return SalesErrors.Order.NothingBilled;
         }
 
-        if (string.IsNullOrWhiteSpace(documentNumber))
+        // Checked before anything is applied, for the same reason a settlement is: a three-line
+        // document that failed on the third would otherwise leave two lines billed in memory,
+        // with no transaction to roll back because nothing has been saved yet.
+        foreach ((SalesOrderLineId lineId, Quantity quantity) in billed)
         {
-            return SalesErrors.Order.InvoiceNumberRequired;
+            SalesOrderLine? line = _lines.Find(item => item.Id == lineId);
+
+            if (line is null)
+            {
+                return SalesErrors.Line.NotFound(lineId.ToString());
+            }
+
+            if (quantity.Unit != line.Quantity.Unit)
+            {
+                return SalesErrors.Line.UnitMismatch;
+            }
+
+            if (quantity.Value <= 0m)
+            {
+                return SalesErrors.Line.BilledNotPositive;
+            }
+
+            if (quantity > line.BillableQuantity)
+            {
+                return SalesErrors.Line.OverBilled(line.Sku, line.BillableQuantity.Value);
+            }
         }
 
-        // Being told the same thing twice is the ordinary case, not an error: the inbox
-        // guarantees at-least-once, so a redelivered event has to land on its feet.
-        if (InvoiceId is { } existing && existing != invoiceId)
+        foreach ((SalesOrderLineId lineId, Quantity quantity) in billed)
         {
-            return SalesErrors.Order.AlreadyInvoiced(InvoiceDocumentNumber ?? existing.ToString());
+            SalesOrderLine line = _lines.Find(item => item.Id == lineId)!;
+
+            Result applied = line.Bill(quantity);
+
+            if (applied.IsFailure)
+            {
+                return applied;
+            }
         }
 
-        InvoiceId = invoiceId;
-        InvoiceDocumentNumber = Clip(documentNumber, MaxOrderNumberLength * 2);
-        InvoicedOn = on;
+        LastInvoicedOn = on;
+        UpdateInvoicingStatus();
 
         return Result.Success();
     }
 
     /// <summary>
-    /// Forgets the document, because it was voided.
+    /// Puts billed quantities back, because the document that charged for them was voided.
     /// <para>
     /// A voided invoice keeps its number and its place in the chain forever, but it no longer
-    /// bills anybody — so the order goes back to being one that has not been invoiced, and can be
-    /// invoiced again. Without this, voiding a document raised against the wrong customer would
-    /// leave the order permanently unbillable, and the only remedy would be re-keying it.
+    /// bills anybody — so what it charged for becomes billable again. Without this, voiding a
+    /// document raised against the wrong customer would leave those goods permanently unbillable,
+    /// and the only remedy would be re-keying the order.
+    /// </para>
+    /// <para>
+    /// A quantity that is no longer there is put back as far as it goes rather than refused. By
+    /// the time a void arrives the line may have been re-invoiced and credited in ways this
+    /// aggregate cannot reconstruct, and refusing would stop the whole message rather than the
+    /// part of it that no longer applies.
     /// </para>
     /// </summary>
-    /// <param name="invoiceId">
-    /// The document being voided. A void for some other document is ignored rather than obeyed:
-    /// by the time it arrives the order may already have been re-invoiced, and clearing the new
-    /// reference because the old one was cancelled is how an order ends up billed twice.
-    /// </param>
-    public Result ClearInvoice(InvoiceRef invoiceId)
+    /// <param name="billed">How much of each line the voided document had charged for.</param>
+    public Result ReverseBilling(IReadOnlyDictionary<SalesOrderLineId, Quantity> billed)
     {
-        if (InvoiceId != invoiceId)
+        ArgumentNullException.ThrowIfNull(billed);
+
+        foreach ((SalesOrderLineId lineId, Quantity quantity) in billed)
         {
-            return Result.Success();
+            SalesOrderLine? line = _lines.Find(item => item.Id == lineId);
+
+            if (line is null || quantity.Unit != line.Quantity.Unit)
+            {
+                continue;
+            }
+
+            Quantity toReverse = quantity > line.InvoicedQuantity ? line.InvoicedQuantity : quantity;
+
+            if (toReverse.Value <= 0m)
+            {
+                continue;
+            }
+
+            Result reversed = line.Unbill(toReverse);
+
+            if (reversed.IsFailure)
+            {
+                return reversed;
+            }
         }
 
-        InvoiceId = null;
-        InvoiceDocumentNumber = null;
-        InvoicedOn = null;
+        UpdateInvoicingStatus();
 
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Works out where the order stands on billing, from the lines.
+    /// <para>
+    /// <c>Invoiced</c> means finished: everything sold has gone out and every bit of it has been
+    /// charged for. Nothing left to bill <em>today</em> is not the same thing and must not be
+    /// confused with it — an order with four of ten shipped and those four billed has nothing to
+    /// bill this morning and six units to bill when the rest arrives.
+    /// </para>
+    /// <para>
+    /// The reason this distinction is load-bearing rather than pedantic: the billing run reads
+    /// <c>ix_sales_orders_tenant_awaiting_invoice</c>, which is filtered on
+    /// <c>invoicing_status &lt;&gt; 'Invoiced'</c>. This method is the only thing that writes that
+    /// column, and it is called only when a document is raised or voided — never on dispatch. An
+    /// order marked <c>Invoiced</c> while it still had stock to ship would therefore leave the
+    /// worklist and have nothing to bring it back: the remaining six units would be delivered and
+    /// never charged for, and the order would look correct in every screen while it happened.
+    /// </para>
+    /// </summary>
+    private void UpdateInvoicingStatus()
+    {
+        bool anyBilled = _lines.Exists(line => line.InvoicedQuantity.Value > 0m);
+
+        InvoicingStatus = anyBilled
+            ? HasBillableLines || HasOutstandingLines
+                ? SalesOrderInvoicingStatus.PartiallyInvoiced
+                : SalesOrderInvoicingStatus.Invoiced
+            : SalesOrderInvoicingStatus.NotInvoiced;
     }
 
     private Money Sum(Func<SalesOrderLine, Money> selector)
@@ -662,4 +753,39 @@ public enum SalesOrderStatus
 
     /// <summary>Called off before anything went out.</summary>
     Cancelled = 5,
+}
+
+/// <summary>How far through billing the order is.</summary>
+public enum SalesOrderInvoicingStatus
+{
+    /// <summary>Unspecified. Never persisted.</summary>
+    Unknown = 0,
+
+    /// <summary>Nothing has been charged for yet.</summary>
+    NotInvoiced = 1,
+
+    /// <summary>
+    /// Something has been charged for and the order is not finished.
+    /// <para>
+    /// Two different situations wear this status, and deliberately so: there is something that has
+    /// gone out and not been billed, or there is nothing to bill today because the rest of the
+    /// order has not shipped yet. Both mean the same thing to the billing run — come back to this
+    /// order — and the run reads a filtered index that can only say <c>Invoiced</c> or not.
+    /// </para>
+    /// <para>
+    /// Not the same as a partly dispatched order. A line can be fully dispatched and half
+    /// invoiced, and a line can be half dispatched and fully invoiced for that half — the two
+    /// quantities move independently.
+    /// </para>
+    /// </summary>
+    PartiallyInvoiced = 2,
+
+    /// <summary>
+    /// Finished. Everything sold has gone out and all of it has been charged for.
+    /// <para>
+    /// Terminal in practice, and reachable only from a fully dispatched order. Voiding a document
+    /// is the one thing that takes an order back out of it.
+    /// </para>
+    /// </summary>
+    Invoiced = 3,
 }

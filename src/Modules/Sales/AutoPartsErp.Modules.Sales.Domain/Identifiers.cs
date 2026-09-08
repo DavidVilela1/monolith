@@ -102,23 +102,3 @@ internal static class OrderedGuid
     }
 }
 
-/// <summary>
-/// A reference to a document in the Invoicing module.
-/// <para>
-/// A bare identifier and nothing more. Sales does not know what an invoice is, cannot load one,
-/// and has no opinion about its number beyond printing it back — it learns both from an
-/// integration event and keeps them so an order cannot be billed twice.
-/// </para>
-/// </summary>
-/// <param name="Value">The underlying identifier.</param>
-public readonly record struct InvoiceRef(Guid Value)
-{
-    /// <summary>The unset reference.</summary>
-    public static readonly InvoiceRef Empty = new(Guid.Empty);
-
-    /// <summary>True when the reference has not been set.</summary>
-    public bool IsEmpty => Value == Guid.Empty;
-
-    /// <inheritdoc />
-    public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
-}

@@ -335,9 +335,9 @@ public static class InvoicingErrors
         public static readonly Error NotDispatched =
             Error.DomainRule(
                 "invoicing.from_order.not_dispatched",
-                "An order is invoiced once everything on it has gone out. Invoicing goods that " +
-                "have not shipped is a promise, and a promise with a document number is a " +
-                "problem.");
+                "Nothing on that order has gone out yet. A document charges for goods that have " +
+                "shipped; invoicing goods that have not is a promise, and a promise with a " +
+                "document number on it has been declared to the tax authority.");
 
         /// <summary>The order was called off.</summary>
         public static readonly Error OrderCancelled =
@@ -345,12 +345,21 @@ public static class InvoicingErrors
                 "invoicing.from_order.cancelled",
                 "That order was cancelled. There is nothing to invoice.");
 
-        /// <summary>The order has already produced a document.</summary>
-        public static Error AlreadyInvoiced(string documentNumber) =>
+        /// <summary>
+        /// Everything that has gone out on the order has already been charged for.
+        /// <para>
+        /// This does not name the documents that did it, and cannot: an order billed across three
+        /// deliveries has three of them, and Invoicing is the module that holds them — the order
+        /// only knows how much of each line has been charged. Whoever needs the list asks for the
+        /// documents raised against the order.
+        /// </para>
+        /// </summary>
+        public static readonly Error NothingLeftToBill =
             Error.Conflict(
-                "invoicing.from_order.already_invoiced",
-                $"That order was already invoiced as {documentNumber}. Void that document first " +
-                "if it was wrong, or raise a credit note if the customer has seen it.");
+                "invoicing.from_order.nothing_left_to_bill",
+                "Everything that has gone out on that order has already been charged for. " +
+                "Dispatch the rest of it to bill the rest, void a document if it was wrong, or " +
+                "raise a credit note if the customer has already seen it.");
 
         /// <summary>Partners has no such customer, or will not say who they are.</summary>
         public static Error CustomerNotFound(string identifier) =>

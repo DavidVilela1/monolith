@@ -495,6 +495,10 @@ public sealed class Invoice : AggregateRoot<InvoiceId>, IAuditable, ITenantScope
     /// <param name="discountPercent">The discount given, 0 to 100.</param>
     /// <param name="vatRate">The VAT rate applied.</param>
     /// <param name="creditsLineId">The original line this one credits, on a credit note.</param>
+    /// <param name="salesOrderLineId">
+    /// The sales order line this charges for, when the document was drawn from an order. It is
+    /// what lets Sales be told how much of each of its lines has been billed.
+    /// </param>
     public Result<InvoiceLineId> AddLine(
         PartRef partId,
         string? sku,
@@ -503,7 +507,8 @@ public sealed class Invoice : AggregateRoot<InvoiceId>, IAuditable, ITenantScope
         Money unitPrice,
         decimal discountPercent,
         VatRate vatRate,
-        InvoiceLineId? creditsLineId = null)
+        InvoiceLineId? creditsLineId = null,
+        SalesOrderLineRef? salesOrderLineId = null)
     {
         ArgumentNullException.ThrowIfNull(quantity);
         ArgumentNullException.ThrowIfNull(unitPrice);
@@ -532,7 +537,7 @@ public sealed class Invoice : AggregateRoot<InvoiceId>, IAuditable, ITenantScope
         // cost is three allocations on a path that already allocates a line.
         Result<InvoiceLine> line = InvoiceLine.Create(
             _lines.Count + 1, partId, sku, description, quantity.Copy(), unitPrice.Copy(),
-            discountPercent, vatRate.Copy(), creditsLineId);
+            discountPercent, vatRate.Copy(), creditsLineId, salesOrderLineId);
 
         if (line.IsFailure)
         {

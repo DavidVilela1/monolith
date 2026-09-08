@@ -17,7 +17,7 @@ about:
 | **Finance** | `finance` | 30 | The sales ledger: open items, receipts matched to the documents they pay, ageing |
 
 They share no code beyond two contract assemblies, and no module references another module's
-projects. 522 tests, all green — 493 that need nothing but the compiler, and 29 that need a real
+projects. 531 tests, all green — 498 that need nothing but the compiler, and 33 that need a real
 PostgreSQL because what they check does not exist until there is one.
 
 ---
@@ -160,8 +160,9 @@ POST /api/invoicing/series/{seriesId}/validation-code
 { "validationCode": "CSDF7T5H" }
 POST /api/invoicing/series/{seriesId}/activate
 
-### Draw a draft invoice from a dispatched order. A draft, not an issued
-### document: somebody should see what is about to go to the customer.
+### Draw a draft invoice for whatever has gone out and not yet been charged
+### for. A draft, not an issued document: somebody should see what is about
+### to go to the customer. Ship the rest later and draw a second one.
 POST /api/invoicing/documents/from-sales-order
 { "salesOrderId": "..." }
 
@@ -548,18 +549,33 @@ mutated in memory — it would find a document that believes it has been issued 
 nothing, or take a second number for the same document. A transient fault here should surface as
 a failed request somebody repeats deliberately.
 
-**An invoice can be drawn from a dispatched sales order**, and the bridge runs both ways by two
-different mechanisms. Invoicing asks Sales a synchronous question, because it cannot draw a
-document without knowing what is on the order. Sales learns the outcome by integration event,
-because it is only being told something that already happened — and putting a second module
-inside the transaction that takes a document number is the one thing that transaction must not
-do. The honest cost is a window, a few hundred milliseconds wide, in which a duplicate *draft*
+**An invoice can be drawn from a sales order for whatever has shipped**, and the bridge runs both
+ways by two different mechanisms. Invoicing asks Sales a synchronous question, because it cannot
+draw a document without knowing what is on the order. Sales learns the outcome by integration
+event, because it is only being told something that already happened — and putting a second
+module inside the transaction that takes a document number is the one thing that transaction must
+not do. The honest cost is a window, a few hundred milliseconds wide, in which a duplicate *draft*
 could be raised. Not a duplicate document: that would need the series lock.
 
-An order is billable when everything on it has gone out, it was not cancelled, and it has not
-already been invoiced. Partial invoicing of a partly dispatched order is a real thing
-distributors do and is deliberately not built — it needs an invoiced quantity per line and more
-than one document per order.
+An order is billable when something on it has gone out, that something has not already been
+charged for, and the order was not cancelled. It does not have to be finished. Each line carries
+an `InvoicedQuantity` alongside its dispatched one, and what is billable is the difference; the
+order itself carries `NotInvoiced` / `PartiallyInvoiced` / `Invoiced` derived from the lines, and
+no invoice reference at all. An order that ships in three lorries is billed by three documents, so
+the order keeps the quantities and Invoicing keeps the documents. Each invoice line records the
+order line it bills, which is what lets a void give back exactly what that document charged for
+and leave the others alone.
+
+`SalesOrder.RecordBilling` is the last thing standing between a redelivered message and a double
+charge: it refuses a quantity larger than what is left to bill, and refuses it before applying any
+of the document's lines, so a document that fails on its third line bills none of them. The
+refusal fails the message, which goes to the inbox's retries and then to its dead letters, where a
+person sees it. Detection rather than prevention, and deliberate: preventing it would mean holding
+the order inside the numbering transaction.
+
+The reverse leg is looser on purpose. A void that gives back more than the line still carries is
+applied as far as it goes rather than refused — by the time it arrives the line may have been
+credited by another route, and refusing would send a correct void to the dead letters.
 
 **A sales order records a VAT rate; a document has to declare a VAT category.** Nothing in the
 number itself says which: 13 is intermediate on the mainland and nothing at all in Madeira, where
@@ -675,24 +691,21 @@ works: who we trade with, what we stock, what we sell, what it costs, what we bu
 ## Roadmap
 
 **Done:** all eight modules. Transactional outbox and consumer inbox. Six module query
-contracts. Invoicing end to end, including the Sales bridge and the SAF-T (PT) export. An
-integration suite against real PostgreSQL. Document numbering that survives concurrency in all
-three modules that hand out numbers.
+contracts. Invoicing end to end, including partial invoicing over the Sales bridge and the SAF-T
+(PT) export. An integration suite against real PostgreSQL. Document numbering that survives
+concurrency in all three modules that hand out numbers.
 
 **Next, in rough dependency order:**
 
 1. **Communicating documents to the AT.** The webservice that reports each document within days
    of issuing it. The paperwork around certification is paperwork; this is the last piece of code
    between here and a legally usable installation.
-2. **Partial invoicing.** An invoiced quantity per order line, and more than one document per
-   order. The billing contract already carries the dispatched quantity so that this becomes a
-   change to Sales rather than a change to what the field means.
-3. **Accounts payable, the general ledger, VAT returns and period close.** Finance covers what
+2. **Accounts payable, the general ledger, VAT returns and period close.** Finance covers what
    customers owe and nothing else yet: there is no supplier invoice to owe anything against,
    because Purchasing has an order and a goods receipt and no document between them.
-4. **Stock valuation and costing** — FIFO or weighted average over the movement ledger, which
+3. **Stock valuation and costing** — FIFO or weighted average over the movement ledger, which
    already carries a unit cost column for it. Also what a margin floor in Pricing would need.
-5. **Returns and core credits** — the other half of a parts business, and the reason
+4. **Returns and core credits** — the other half of a parts business, and the reason
    `RequiresCoreReturn` exists on a part already.
 
 **Known issues:**

@@ -101,6 +101,27 @@ public readonly record struct SalesOrderRef(Guid Value)
     public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
 }
 
+/// <summary>
+/// A line of the sales order a document was drawn from.
+/// <para>
+/// Carried so that Sales can be told which of its lines a document charged for, and how much of
+/// each. Without it an issued invoice says only "this order was billed", which is enough when an
+/// order becomes exactly one document and useless the moment it becomes three.
+/// </para>
+/// </summary>
+/// <param name="Value">The line's identifier in Sales.</param>
+public readonly record struct SalesOrderLineRef(Guid Value)
+{
+    /// <summary>The unset reference.</summary>
+    public static readonly SalesOrderLineRef Empty = new(Guid.Empty);
+
+    /// <summary>True when the reference has not been set.</summary>
+    public bool IsEmpty => Value == Guid.Empty;
+
+    /// <inheritdoc />
+    public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
+}
+
 /// <summary>Creates time-ordered <see cref="Guid"/> values so inserts stay at the right edge of the index.</summary>
 internal static class OrderedGuid
 {

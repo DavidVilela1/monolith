@@ -42,22 +42,21 @@ public sealed class SalesOrderDirectory : ISalesOrderDirectory
             return null;
         }
 
-        // Only the lines that have something dispatched. On a fully dispatched order — the only
-        // kind CanInvoice admits today — that is all of them, so this filter does nothing yet. It
-        // is here because the field it feeds is documented as the dispatched quantity, and a
-        // filter that is currently a no-op is cheaper than a contract that quietly means
-        // something else the day partial invoicing arrives.
+        // Only what has gone out and nobody has charged for yet. A line dispatched in full and
+        // already invoiced disappears from here entirely, which is what makes drawing a second
+        // document from the same order produce the rest of it rather than a duplicate of the
+        // first.
         List<BillableOrderLine> lines =
         [
             .. order.Lines
-                .Where(line => line.DispatchedQuantity.Value > 0m)
+                .Where(line => line.IsBillable)
                 .Select(line => new BillableOrderLine(
                     line.Id.Value,
                     line.PartId.Value,
                     line.Sku,
                     line.Description,
-                    line.DispatchedQuantity.Value,
-                    line.DispatchedQuantity.Unit.Code,
+                    line.BillableQuantity.Value,
+                    line.BillableQuantity.Unit.Code,
                     line.UnitPrice.Amount,
                     line.DiscountPercent,
                     line.VatRatePercent)),
@@ -70,7 +69,7 @@ public sealed class SalesOrderDirectory : ISalesOrderDirectory
             order.CurrencyCode,
             order.Kind.ToString(),
             order.Status.ToString(),
-            order.InvoiceDocumentNumber,
+            order.InvoicingStatus.ToString(),
             order.CanInvoice,
             lines);
     }

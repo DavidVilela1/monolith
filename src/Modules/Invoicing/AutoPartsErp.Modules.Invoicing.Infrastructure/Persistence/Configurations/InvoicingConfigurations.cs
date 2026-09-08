@@ -294,6 +294,16 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
                     id => id.Value, value => new InvoiceLineId(value)))
                 .HasColumnName("credits_line_id");
 
+            // Which order line this one bills, when the document was drawn from an order. Null for
+            // a line typed by hand and for every credit note line, and it is the only thing that
+            // ties a partial invoice back to what it charged for: the reversal on void reads it to
+            // decide what becomes billable again. Nullable rather than required for that reason,
+            // and no foreign key, because the order lives in another module's schema.
+            line.Property(item => item.SalesOrderLineId)
+                .HasConversion(new ValueConverter<SalesOrderLineRef, Guid>(
+                    id => id.Value, value => new SalesOrderLineRef(value)))
+                .HasColumnName("sales_order_line_id");
+
             // The running total of what has been credited back off this line. Not derived from
             // the credit notes pointing at it, because the answer has to be right under two people
             // drafting at once and this one is protected by the invoice's own concurrency token.

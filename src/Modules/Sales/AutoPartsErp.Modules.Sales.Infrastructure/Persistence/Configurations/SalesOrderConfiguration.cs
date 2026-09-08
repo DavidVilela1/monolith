@@ -88,19 +88,16 @@ public sealed class SalesOrderConfiguration : IEntityTypeConfiguration<SalesOrde
         builder.Property(order => order.Notes).HasMaxLength(SalesOrder.MaxNotesLength);
         builder.Property(order => order.ClosureReason).HasMaxLength(SalesOrder.MaxNotesLength);
 
-        // The document drawn from this order. A converter declared for the non-nullable type,
-        // which EF lifts onto the nullable property - the same shape Purchasing uses for its
-        // nullable order reference, and the one that actually compiles.
-        builder.Property(order => order.InvoiceId)
-            .HasConversion(new ValueConverter<InvoiceRef, Guid>(
-                invoice => invoice.Value, value => new InvoiceRef(value)))
-            .HasColumnName("invoice_id");
+        // How much of what has gone out has been charged for. There is no document reference here
+        // any more: an order can be billed across three invoices, and a single invoice_id column
+        // would be right for the first of them and a half-truth on every screen thereafter.
+        builder.Property(order => order.InvoicingStatus)
+            .HasConversion<string>()
+            .HasColumnName("invoicing_status")
+            .HasMaxLength(30)
+            .IsRequired();
 
-        builder.Property(order => order.InvoiceDocumentNumber)
-            .HasColumnName("invoice_document_number")
-            .HasMaxLength(60);
-
-        builder.Property(order => order.InvoicedOn).HasColumnName("invoiced_on");
+        builder.Property(order => order.LastInvoicedOn).HasColumnName("last_invoiced_on");
 
         builder.Property(order => order.CreatedAtUtc).IsRequired();
         builder.Property(order => order.CreatedBy).HasMaxLength(120).IsRequired();
@@ -126,10 +123,14 @@ public sealed class SalesOrderConfiguration : IEntityTypeConfiguration<SalesOrde
 
         // "What has gone out and not yet been invoiced?" - the billing run, asked once a day and
         // answered from this index rather than from a scan of every order ever taken. Filtered,
-        // because the rows worth having in it are the small minority that are dispatched and
-        // unbilled; an unfiltered index would be mostly history.
-        builder.HasIndex(order => new { order.TenantId, order.Status, order.InvoiceId })
-            .HasFilter("invoice_id IS NULL")
+        // because the rows worth having in it are the small minority with something left to bill;
+        // an unfiltered index would be mostly history.
+        //
+        // The filter names invoicing_status rather than an invoice_id that no longer exists. It is
+        // a raw SQL string, so nothing in the compiler connects it to the property above - which
+        // is why SchemaTests asserts on this index by name and on the column inside the predicate.
+        builder.HasIndex(order => new { order.TenantId, order.Status, order.InvoicingStatus })
+            .HasFilter("invoicing_status <> 'Invoiced'")
             .HasDatabaseName("ix_sales_orders_tenant_awaiting_invoice");
     }
 
@@ -163,6 +164,9 @@ public sealed class SalesOrderConfiguration : IEntityTypeConfiguration<SalesOrde
 
             line.OwnsOne(l => l.DispatchedQuantity, quantity => MapQuantity(quantity, "dispatched_quantity"));
             line.Navigation(l => l.DispatchedQuantity).IsRequired();
+
+            line.OwnsOne(l => l.InvoicedQuantity, quantity => MapQuantity(quantity, "invoiced_quantity"));
+            line.Navigation(l => l.InvoicedQuantity).IsRequired();
 
             line.OwnsOne(l => l.UnitPrice, price =>
             {

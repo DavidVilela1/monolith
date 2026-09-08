@@ -45,6 +45,7 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
         VatRatePercent = vatRatePercent;
         PriceSource = priceSource;
         DispatchedQuantity = Quantity.Zero(quantity.Unit);
+        InvoicedQuantity = Quantity.Zero(quantity.Unit);
         CreatedBy = string.Empty;
     }
 
@@ -108,6 +109,32 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
 
     /// <summary>What is still to go out.</summary>
     public Quantity OutstandingQuantity => Quantity - DispatchedQuantity;
+
+    /// <summary>
+    /// How much of this line has been billed.
+    /// <para>
+    /// Counted against what was dispatched, never against what was ordered. Invoicing goods that
+    /// have not shipped is a promise, and a promise with a document number on it is a problem: the
+    /// number goes to the tax authority, the VAT falls due, and the only way back is a credit note
+    /// for goods that never moved.
+    /// </para>
+    /// <para>
+    /// It moves when a document is <i>issued</i>, never when one is drafted. A draft can be
+    /// abandoned, and a line that counted abandoned drafts against itself would become unbillable
+    /// without anybody ever having been charged - the same rule, for the same reason, as the
+    /// credited quantity on an invoice line.
+    /// </para>
+    /// </summary>
+    public Quantity InvoicedQuantity { get; private set; } = null!;
+
+    /// <summary>What has gone out and not yet been charged for.</summary>
+    public Quantity BillableQuantity => DispatchedQuantity - InvoicedQuantity;
+
+    /// <summary>True once everything dispatched on this line has been charged for.</summary>
+    public bool IsFullyInvoiced => InvoicedQuantity >= DispatchedQuantity;
+
+    /// <summary>True while something has gone out that nobody has charged for yet.</summary>
+    public bool IsBillable => BillableQuantity.Value > 0m;
 
     /// <summary>True once everything sold has gone out.</summary>
     public bool IsFullyDispatched => DispatchedQuantity >= Quantity;
@@ -279,6 +306,57 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
         }
 
         DispatchedQuantity += dispatched;
+
+        return Result.Success();
+    }
+
+    /// <summary>Records that some of what went out has been charged for.</summary>
+    /// <param name="billed">How much was billed. Positive, and no more than is billable.</param>
+    internal Result Bill(Quantity billed)
+    {
+        ArgumentNullException.ThrowIfNull(billed);
+
+        if (billed.Unit != Quantity.Unit)
+        {
+            return SalesErrors.Line.UnitMismatch;
+        }
+
+        if (billed.Value <= 0m)
+        {
+            return SalesErrors.Line.BilledNotPositive;
+        }
+
+        Quantity billable = BillableQuantity;
+
+        if (billed > billable)
+        {
+            return SalesErrors.Line.OverBilled(Sku, billable.Value);
+        }
+
+        InvoicedQuantity += billed;
+
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Puts a billed quantity back, because the document that charged for it was voided.
+    /// </summary>
+    /// <param name="billed">How much to put back.</param>
+    internal Result Unbill(Quantity billed)
+    {
+        ArgumentNullException.ThrowIfNull(billed);
+
+        if (billed.Unit != Quantity.Unit)
+        {
+            return SalesErrors.Line.UnitMismatch;
+        }
+
+        if (billed > InvoicedQuantity)
+        {
+            return SalesErrors.Line.OverBilled(Sku, InvoicedQuantity.Value);
+        }
+
+        InvoicedQuantity -= billed;
 
         return Result.Success();
     }

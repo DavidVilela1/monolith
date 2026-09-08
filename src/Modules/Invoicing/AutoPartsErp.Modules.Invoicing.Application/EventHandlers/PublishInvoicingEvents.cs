@@ -60,7 +60,43 @@ public sealed class PublishInvoiceIssued : IDomainEventHandler<InvoiceIssuedDoma
                 domainEvent.DocumentDate,
                 _tenantContext.TenantId),
             cancellationToken).ConfigureAwait(false);
+
+        // A second event, for the one consumer that needs the lines. Sales has to know how much
+        // of each of its lines was charged for; nobody else does, and putting the lines on the
+        // event above would send an order's internals to every consumer of every document.
+        IReadOnlyList<BilledOrderLine> billed = BilledLines(invoice);
+
+        if (invoice?.SalesOrderId is { } salesOrderId && billed.Count > 0)
+        {
+            await _eventBus.PublishAsync(
+                new SalesOrderBilledIntegrationEvent(
+                    salesOrderId.Value,
+                    domainEvent.InvoiceId.Value,
+                    domainEvent.DocumentNumber,
+                    domainEvent.DocumentDate,
+                    billed,
+                    _tenantContext.TenantId),
+                cancellationToken).ConfigureAwait(false);
+        }
     }
+
+    /// <summary>
+    /// The lines of a document that charge for a sales order line, as plain numbers.
+    /// <para>
+    /// Lines with no order line behind them are left out rather than sent as nulls. A counter sale
+    /// keyed straight into Invoicing has none at all, and a document drawn from an order can still
+    /// carry a line somebody added by hand.
+    /// </para>
+    /// </summary>
+    internal static IReadOnlyList<BilledOrderLine> BilledLines(Invoice? invoice) =>
+        invoice is null
+            ? []
+            : [.. invoice.Lines
+                .Where(line => line.SalesOrderLineId is not null)
+                .Select(line => new BilledOrderLine(
+                    line.SalesOrderLineId!.Value.Value,
+                    line.Quantity.Value,
+                    line.Quantity.Unit.Code))];
 }
 
 /// <summary>
@@ -110,5 +146,19 @@ public sealed class PublishInvoiceVoided : IDomainEventHandler<InvoiceVoidedDoma
                 domainEvent.Reason,
                 _tenantContext.TenantId),
             cancellationToken).ConfigureAwait(false);
+
+        IReadOnlyList<BilledOrderLine> billed = PublishInvoiceIssued.BilledLines(invoice);
+
+        if (invoice?.SalesOrderId is { } salesOrderId && billed.Count > 0)
+        {
+            await _eventBus.PublishAsync(
+                new SalesOrderBillingReversedIntegrationEvent(
+                    salesOrderId.Value,
+                    domainEvent.InvoiceId.Value,
+                    domainEvent.DocumentNumber,
+                    billed,
+                    _tenantContext.TenantId),
+                cancellationToken).ConfigureAwait(false);
+        }
     }
 }

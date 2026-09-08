@@ -141,16 +141,31 @@ public sealed class DrawFromSalesOrderCommandHandler : ICommandHandler<DrawFromS
         return invoice.Id.Value;
     }
 
+    /// <summary>
+    /// Turns a refusal into the reason for it.
+    /// <para>
+    /// Sales answers <c>CanInvoice</c> and this reads the rest of the view to say why not. The
+    /// order of the checks is the order of the questions a person asks: was it called off, has
+    /// anything shipped, and has what shipped already been charged for. Cancelled comes first
+    /// because a cancelled order is also an order with nothing billable, and "there is nothing
+    /// left to bill" would be a true answer that hides the real one.
+    /// </para>
+    /// </summary>
     private static Error ExplainRefusal(BillableOrder order)
     {
-        if (order.InvoiceDocumentNumber is { Length: > 0 } number)
+        if (string.Equals(order.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
         {
-            return InvoicingErrors.FromOrder.AlreadyInvoiced(number);
+            return InvoicingErrors.FromOrder.OrderCancelled;
         }
 
-        return string.Equals(order.Status, "Cancelled", StringComparison.OrdinalIgnoreCase)
-            ? InvoicingErrors.FromOrder.OrderCancelled
-            : InvoicingErrors.FromOrder.NotDispatched;
+        // Nothing has left the building. Not a conflict - come back when it ships.
+        if (string.Equals(order.Status, "Draft", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(order.Status, "Confirmed", StringComparison.OrdinalIgnoreCase))
+        {
+            return InvoicingErrors.FromOrder.NotDispatched;
+        }
+
+        return InvoicingErrors.FromOrder.NothingLeftToBill;
     }
 
     private Result AddLine(Invoice invoice, BillableOrderLine line)
@@ -184,7 +199,14 @@ public sealed class DrawFromSalesOrderCommandHandler : ICommandHandler<DrawFromS
             quantity.Value,
             Money.Of(line.UnitPrice, invoice.Currency),
             line.DiscountPercent,
-            rate.Value);
+            rate.Value,
+            creditsLineId: null,
+
+            // Copied onto the line so that issuing the document can tell Sales how much of this
+            // order line was charged for. Without it an issued invoice says only "this order was
+            // billed", which is enough when an order becomes exactly one document and useless the
+            // moment it becomes three.
+            salesOrderLineId: new SalesOrderLineRef(line.LineId));
 
         return added.IsFailure ? Result.Failure(added.Error) : Result.Success();
     }

@@ -37,10 +37,12 @@ public sealed class InvoiceLine : Entity<InvoiceLineId>, ITenantScoped
         Money unitPrice,
         decimal discountPercent,
         VatRate vatRate,
-        InvoiceLineId? creditsLineId)
+        InvoiceLineId? creditsLineId,
+        SalesOrderLineRef? salesOrderLineId)
         : base(id)
     {
         CreditsLineId = creditsLineId;
+        SalesOrderLineId = salesOrderLineId;
         Number = number;
         PartId = partId;
         Sku = sku;
@@ -101,6 +103,16 @@ public sealed class InvoiceLine : Entity<InvoiceLineId>, ITenantScoped
     public InvoiceLineId? CreditsLineId { get; private set; }
 
     /// <summary>
+    /// The sales order line this charges for, when the document was drawn from an order.
+    /// <para>
+    /// Null on a counter sale keyed straight into Invoicing, and null on a credit note — a credit
+    /// note reverses an invoice, and what it does to the order behind that invoice is a question
+    /// this system does not answer yet.
+    /// </para>
+    /// </summary>
+    public SalesOrderLineRef? SalesOrderLineId { get; private set; }
+
+    /// <summary>
     /// How much of this line has already been credited back.
     /// <para>
     /// Lives on the original invoice's line rather than being counted from the credit notes that
@@ -147,6 +159,10 @@ public sealed class InvoiceLine : Entity<InvoiceLineId>, ITenantScoped
     /// <param name="discountPercent">The discount given, 0 to 100.</param>
     /// <param name="vatRate">The VAT rate applied.</param>
     /// <param name="creditsLineId">The original line this one credits, on a credit note.</param>
+    /// <param name="salesOrderLineId">
+    /// The sales order line this charges for, when the document was drawn from an order. It is
+    /// what lets Sales be told how much of each of its lines has been billed.
+    /// </param>
     internal static Result<InvoiceLine> Create(
         int number,
         PartRef partId,
@@ -156,7 +172,8 @@ public sealed class InvoiceLine : Entity<InvoiceLineId>, ITenantScoped
         Money unitPrice,
         decimal discountPercent,
         VatRate vatRate,
-        InvoiceLineId? creditsLineId = null)
+        InvoiceLineId? creditsLineId = null,
+        SalesOrderLineRef? salesOrderLineId = null)
     {
         ArgumentNullException.ThrowIfNull(quantity);
         ArgumentNullException.ThrowIfNull(unitPrice);
@@ -202,7 +219,8 @@ public sealed class InvoiceLine : Entity<InvoiceLineId>, ITenantScoped
             unitPrice,
             discountPercent,
             vatRate,
-            creditsLineId);
+            creditsLineId,
+            salesOrderLineId);
     }
 
     /// <summary>
