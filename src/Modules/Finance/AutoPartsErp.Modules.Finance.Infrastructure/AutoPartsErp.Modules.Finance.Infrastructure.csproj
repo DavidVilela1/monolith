@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Finance.Infrastructure</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Finance.Infrastructure</AssemblyName>
+    <Description>
+      The Finance module's persistence: its own PostgreSQL schema, the open items and receipts
+      that make up a customer's account, and the ageing that reads across them.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="EFCore.NamingConventions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoPartsErp.Modules.Finance.Application\AutoPartsErp.Modules.Finance.Application.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.Modules.Abstractions\AutoPartsErp.Modules.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.Persistence\AutoPartsErp.Persistence.csproj" />
+  </ItemGroup>
+
+</Project>

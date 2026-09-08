@@ -1,4 +1,5 @@
 using AutoPartsErp.Modules.Catalog.Infrastructure.Persistence;
+using AutoPartsErp.Modules.Finance.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Inventory.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Invoicing.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Partners.Infrastructure.Persistence;
@@ -50,6 +51,7 @@ public sealed class SchemaTests
         await AssertMigratedAsync<PurchasingDbContext>();
         await AssertMigratedAsync<SalesDbContext>();
         await AssertMigratedAsync<InvoicingDbContext>();
+        await AssertMigratedAsync<FinanceDbContext>();
     }
 
     /// <summary>Each module owns its own schema, and they are all there.</summary>
@@ -61,6 +63,7 @@ public sealed class SchemaTests
     [InlineData("purchasing")]
     [InlineData("sales")]
     [InlineData("invoicing")]
+    [InlineData("finance")]
     public async Task Each_module_created_its_own_schema(string schema)
     {
         IReadOnlyList<string> schemas = await QueryAsync(
@@ -84,6 +87,8 @@ public sealed class SchemaTests
     [InlineData("invoicing", "ix_invoices_tenant_credited", "credited_invoice_id IS NOT NULL")]
     [InlineData("sales", "ix_sales_orders_tenant_awaiting_invoice", "invoice_id IS NULL")]
     [InlineData("pricing", "ux_price_lists_one_default_per_tenant", "is_default is_deleted")]
+    [InlineData("finance", "ix_open_items_tenant_outstanding", "status")]
+    [InlineData("finance", "ix_receipts_tenant_unallocated", "status")]
     public async Task A_filtered_index_exists_and_its_predicate_still_names_real_columns(
         string schema,
         string index,
@@ -134,6 +139,7 @@ public sealed class SchemaTests
     [InlineData("invoicing")]
     [InlineData("sales")]
     [InlineData("partners")]
+    [InlineData("finance")]
     public async Task Each_module_has_its_own_outbox(string schema)
     {
         IReadOnlyList<string> tables = await QueryAsync(

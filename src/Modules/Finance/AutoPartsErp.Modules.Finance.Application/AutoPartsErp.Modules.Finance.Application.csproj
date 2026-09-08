@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Finance.Application</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Finance.Application</AssemblyName>
+    <Description>
+      The use cases of the sales ledger: recording money, matching it to the documents it pays,
+      and answering what a customer owes and since when.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoPartsErp.Modules.Finance.Domain\AutoPartsErp.Modules.Finance.Domain.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.IntegrationEvents\AutoPartsErp.IntegrationEvents.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.ModuleContracts\AutoPartsErp.ModuleContracts.csproj" />
+  </ItemGroup>
+
+</Project>

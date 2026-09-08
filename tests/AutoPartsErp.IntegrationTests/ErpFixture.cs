@@ -3,6 +3,8 @@ using AutoPartsErp.IntegrationEvents.Catalog;
 using AutoPartsErp.Modules.Abstractions.DependencyInjection;
 using AutoPartsErp.Modules.Catalog.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Catalog.Presentation;
+using AutoPartsErp.Modules.Finance.Infrastructure.Persistence;
+using AutoPartsErp.Modules.Finance.Presentation;
 using AutoPartsErp.Modules.Inventory.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Inventory.Presentation;
 using AutoPartsErp.Modules.Invoicing.Infrastructure.Persistence;
@@ -209,7 +211,8 @@ public sealed class ErpFixture : IAsyncLifetime
             new PricingModule(),
             new PurchasingModule(),
             new SalesModule(),
-            new InvoicingModule());
+            new InvoicingModule(),
+            new FinanceModule());
 
         // The same validation the real host performs in Development. A singleton that captures a
         // scoped DbContext is a bug that behaves perfectly until the second request.
@@ -238,6 +241,7 @@ public sealed class ErpFixture : IAsyncLifetime
         await MigrateAsync<PurchasingDbContext>(scope).ConfigureAwait(false);
         await MigrateAsync<SalesDbContext>(scope).ConfigureAwait(false);
         await MigrateAsync<InvoicingDbContext>(scope).ConfigureAwait(false);
+        await MigrateAsync<FinanceDbContext>(scope).ConfigureAwait(false);
     }
 
     private static Task MigrateAsync<TContext>(IServiceScope scope)

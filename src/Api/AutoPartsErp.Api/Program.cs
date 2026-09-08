@@ -7,6 +7,8 @@ using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Catalog.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Catalog.Infrastructure.Persistence.Seed;
 using AutoPartsErp.Modules.Catalog.Presentation;
+using AutoPartsErp.Modules.Finance.Infrastructure.Persistence;
+using AutoPartsErp.Modules.Finance.Presentation;
 using AutoPartsErp.Modules.Inventory.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Inventory.Infrastructure.Persistence.Seed;
 using AutoPartsErp.Modules.Inventory.Presentation;
@@ -88,7 +90,8 @@ try
         .AddDbContextCheck<PricingDbContext>("pricing-database")
         .AddDbContextCheck<PurchasingDbContext>("purchasing-database")
         .AddDbContextCheck<SalesDbContext>("sales-database")
-        .AddDbContextCheck<InvoicingDbContext>("invoicing-database");
+        .AddDbContextCheck<InvoicingDbContext>("invoicing-database")
+        .AddDbContextCheck<FinanceDbContext>("finance-database");
 
     // ---------------------------------------------------------------------------------
     // Modules
@@ -104,7 +107,8 @@ try
         new PricingModule(),
         new PurchasingModule(),
         new SalesModule(),
-        new InvoicingModule());
+        new InvoicingModule(),
+        new FinanceModule());
 
     WebApplication app = builder.Build();
 
@@ -211,6 +215,12 @@ static async Task MigrateAndSeedAsync(WebApplication app)
     // than no series at all, because it looks ready.
     var invoicing = scope.ServiceProvider.GetRequiredService<InvoicingDbContext>();
     await invoicing.Database.MigrateAsync();
+
+    // Finance after Invoicing, and with no seeder. Its three tables are filled by events: an
+    // issued document raises an open item, and a customer's terms arrive when Partners grants the
+    // customer role. A seeded balance would be money the company is owed by nobody.
+    var finance = scope.ServiceProvider.GetRequiredService<FinanceDbContext>();
+    await finance.Database.MigrateAsync();
 }
 
 /// <summary>Exposed so integration tests can reference the host with <c>WebApplicationFactory</c>.</summary>

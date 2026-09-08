@@ -65,5 +65,9 @@ public sealed class ReceiptAllocation : Entity<ReceiptAllocationId>, ITenantScop
         string documentNumber,
         Money amount,
         DateOnly allocatedOn) =>
-        new(ReceiptAllocationId.New(), openItemId, documentNumber, amount, allocatedOn);
+
+        // Copied, never adopted. The same Money instance was handed to the item being settled in
+        // the same breath, and an owned entity belongs to one owner - see the rule in the README,
+        // and the afternoon it cost in Invoicing.
+        new(ReceiptAllocationId.New(), openItemId, documentNumber, amount.Copy(), allocatedOn);
 }

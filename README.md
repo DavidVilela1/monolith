@@ -2,7 +2,7 @@
 
 An integrated ERP for **automotive parts distribution**, built as a modular monolith on .NET 8.
 
-Seven modules are in place and talking to each other, including the one Portuguese law cares
+Eight modules are in place and talking to each other, including the one Portuguese law cares
 about:
 
 | Module | Schema | Order | What it owns |
@@ -14,9 +14,10 @@ about:
 | **Purchasing** | `purchasing` | 15 | Purchase orders, goods receipt, replenishment suggestions |
 | **Sales** | `sales` | 20 | Customer accounts, sales orders, dispatch, credit control |
 | **Invoicing** | `invoicing` | 25 | Registered series, ATCUD, the signature chain, the QR code, the SAF-T (PT) export |
+| **Finance** | `finance` | 30 | The sales ledger: open items, receipts matched to the documents they pay, ageing |
 
 They share no code beyond two contract assemblies, and no module references another module's
-projects. 488 tests, all green — 459 that need nothing but the compiler, and 29 that need a real
+projects. 522 tests, all green — 493 that need nothing but the compiler, and 29 that need a real
 PostgreSQL because what they check does not exist until there is one.
 
 ---
@@ -67,7 +68,7 @@ dotnet run --project src/Api/AutoPartsErp.Api
 Open **http://localhost:5150/swagger**.
 
 Each module carries its own migrations and its own `__migrations_history` table inside its own
-schema. In Development the host applies all six on start, then seeds warehouses, brands,
+schema. In Development the host applies all eight on start, then seeds warehouses, brands,
 categories, parts and a few partners — so there is something to query immediately.
 
 Sales and Pricing are deliberately not seeded. A customer account is not Sales' to invent: it
@@ -170,6 +171,22 @@ POST /api/invoicing/documents/{invoiceId}/issue
 
 ### The month's SAF-T file
 GET /api/invoicing/saft/2026/9
+
+### What a customer owes, and the documents behind it
+GET /api/finance/customers/{customerId}/statement
+
+### Record money that arrived. The allocations are optional: a transfer lands
+### with a reference nobody can read, and the balance should show it before
+### anybody has worked out which invoices it was for.
+POST /api/finance/receipts
+{ "customerId": "...", "amount": 500.00, "method": "BankTransfer" }
+
+### Say what it paid, once somebody has worked it out
+POST /api/finance/receipts/{receiptId}/allocate
+{ "allocations": [ { "openItemId": "...", "amount": 300.00 } ] }
+
+### Every customer with a balance, in thirty-day buckets
+GET /api/finance/aging
 ```
 
 `requests.http` at the repository root has the full set for the REST Client extension, including
@@ -657,7 +674,7 @@ works: who we trade with, what we stock, what we sell, what it costs, what we bu
 
 ## Roadmap
 
-**Done:** all seven modules. Transactional outbox and consumer inbox. Six module query
+**Done:** all eight modules. Transactional outbox and consumer inbox. Six module query
 contracts. Invoicing end to end, including the Sales bridge and the SAF-T (PT) export. An
 integration suite against real PostgreSQL. Document numbering that survives concurrency in all
 three modules that hand out numbers.
@@ -670,8 +687,9 @@ three modules that hand out numbers.
 2. **Partial invoicing.** An invoiced quantity per order line, and more than one document per
    order. The billing contract already carries the dispatched quantity so that this becomes a
    change to Sales rather than a change to what the field means.
-3. **Finance** — AR/AP, general ledger, VAT returns, period close. The invoices exist and nothing
-   consumes them yet.
+3. **Accounts payable, the general ledger, VAT returns and period close.** Finance covers what
+   customers owe and nothing else yet: there is no supplier invoice to owe anything against,
+   because Purchasing has an order and a goods receipt and no document between them.
 4. **Stock valuation and costing** — FIFO or weighted average over the movement ledger, which
    already carries a unit cost column for it. Also what a margin floor in Pricing would need.
 5. **Returns and core credits** — the other half of a parts business, and the reason
