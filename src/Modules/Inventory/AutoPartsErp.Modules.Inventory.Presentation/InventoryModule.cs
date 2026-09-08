@@ -3,6 +3,7 @@ using AutoPartsErp.Modules.Abstractions.DependencyInjection;
 using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Inventory.Application.Abstractions;
 using AutoPartsErp.Modules.Inventory.Application.Counting;
+using AutoPartsErp.Modules.Inventory.Application.Transfers;
 using AutoPartsErp.Modules.Inventory.Domain;
 using AutoPartsErp.Modules.Inventory.Infrastructure.Contracts;
 using AutoPartsErp.Modules.Inventory.Infrastructure.Persistence;
@@ -82,6 +83,9 @@ public sealed class InventoryModule : IModule
         // abstraction rather than the concrete reader, because it asks Catalog a question and
         // the Application project must not know that Catalog exists.
         services.AddScoped<IStockCountScope, StockCountScope>();
+
+        services.AddScoped<IStockTransferRepository, StockTransferRepository>();
+        services.AddScoped<ITransferPartNaming, TransferPartNaming>();
         services.AddScoped<IInventoryReadStore, InventoryReadStore>();
         services.AddScoped<InventorySeeder>();
 
@@ -108,6 +112,7 @@ public sealed class InventoryModule : IModule
 
         new StockEndpoints().Map(group);
         new StockCountEndpoints().Map(group);
+        new StockTransferEndpoints().Map(group);
         new WarehouseEndpoints().Map(group);
     }
 }

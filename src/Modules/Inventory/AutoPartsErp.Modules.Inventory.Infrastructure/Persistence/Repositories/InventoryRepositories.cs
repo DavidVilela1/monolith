@@ -3,7 +3,9 @@ using AutoPartsErp.ModuleContracts.Catalog;
 using AutoPartsErp.Modules.Inventory.Application.Counting;
 using AutoPartsErp.Modules.Inventory.Domain;
 using AutoPartsErp.Modules.Inventory.Domain.Counting;
+using AutoPartsErp.Modules.Inventory.Application.Transfers;
 using AutoPartsErp.Modules.Inventory.Domain.Stock;
+using AutoPartsErp.Modules.Inventory.Domain.Transfers;
 using AutoPartsErp.Modules.Inventory.Domain.Warehouses;
 using AutoPartsErp.SharedKernel.ValueObjects;
 using Microsoft.EntityFrameworkCore;
@@ -404,5 +406,104 @@ public sealed class StockCountScope : IStockCountScope
                 known ? part!.Name : string.Empty,
                 Quantity.Create(row.OnHand, row.Unit).Value);
         })];
+    }
+}
+
+/// <summary>Write-side access to stock transfers.</summary>
+public sealed class StockTransferRepository : IStockTransferRepository
+{
+    private const string NumberKey = "stock-transfer";
+    private const string NumberPrefix = "TR";
+
+    private readonly InventoryDbContext _context;
+
+    /// <summary>Initializes the repository.</summary>
+    public StockTransferRepository(InventoryDbContext context)
+    {
+        _context = context;
+    }
+
+    /// <inheritdoc />
+    public Task<StockTransfer?> GetByIdAsync(
+        StockTransferId id,
+        CancellationToken cancellationToken = default) =>
+        _context.StockTransfers.FirstOrDefaultAsync(transfer => transfer.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> ExistsAsync(StockTransferId id, CancellationToken cancellationToken = default) =>
+        _context.StockTransfers.AnyAsync(transfer => transfer.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<StockTransfer>> GetInTransitAsync(
+        CancellationToken cancellationToken = default)
+    {
+        List<StockTransfer> transfers = await _context.StockTransfers
+            .Where(transfer => transfer.Status == StockTransferStatus.InTransit
+                || transfer.Status == StockTransferStatus.PartiallyReceived)
+            .OrderByDescending(transfer => transfer.DispatchedAtUtc)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return transfers;
+    }
+
+    /// <inheritdoc />
+    public async Task<string> NextTransferNumberAsync(
+        int year,
+        CancellationToken cancellationToken = default)
+    {
+        int next = await _context
+            .TakeNextNumberAsync(NumberKey, year, cancellationToken)
+            .ConfigureAwait(false);
+
+        return string.Create(CultureInfo.InvariantCulture, $"{NumberPrefix}-{year}-{next:D5}");
+    }
+
+    /// <inheritdoc />
+    public void Add(StockTransfer aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.StockTransfers.Add(aggregate);
+    }
+
+    /// <inheritdoc />
+    public void Remove(StockTransfer aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.StockTransfers.Remove(aggregate);
+    }
+}
+
+/// <summary>
+/// Names a part for a transfer note, from the catalogue.
+/// <para>
+/// A part the catalogue does not recognize still goes on the note, with its identifier in place
+/// of a SKU. Something physically on a shelf has to be movable whatever the catalogue currently
+/// thinks of it — a discontinued part is exactly the kind of thing a branch sends back to the
+/// depot.
+/// </para>
+/// </summary>
+public sealed class TransferPartNaming : ITransferPartNaming
+{
+    private readonly ICatalogDirectory _catalog;
+
+    /// <summary>Initializes the reader.</summary>
+    public TransferPartNaming(ICatalogDirectory catalog)
+    {
+        _catalog = catalog;
+    }
+
+    /// <inheritdoc />
+    public async Task<(string Sku, string Description)> DescribeAsync(
+        Guid partId,
+        CancellationToken cancellationToken = default)
+    {
+        PartDescriptor? part = await _catalog
+            .GetAsync(partId, cancellationToken)
+            .ConfigureAwait(false);
+
+        return part is null
+            ? (partId.ToString("D", CultureInfo.InvariantCulture), string.Empty)
+            : (part.Sku, part.Name);
     }
 }

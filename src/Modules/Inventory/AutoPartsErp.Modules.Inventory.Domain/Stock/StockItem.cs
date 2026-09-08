@@ -247,6 +247,124 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
     }
 
     /// <summary>
+    /// Brings stock in at a value that is already known exactly.
+    /// <para>
+    /// For goods arriving from another shelf in the same company. The value came off the sending
+    /// warehouse's balance as a total, and it has to land here as the same total — deriving a unit
+    /// price from it and multiplying back would round twice, and the company would quietly gain or
+    /// lose a few cents every time a van moved between branches. Same reason the ledger stores
+    /// what a movement was worth rather than what a unit cost.
+    /// </para>
+    /// <para>
+    /// Separate from <see cref="Receive"/> rather than an overload of it because the two are
+    /// genuinely different facts. A purchase knows a price per unit and the total follows; a
+    /// transfer knows a total and no price per unit exists — the goods may have been bought on
+    /// four different days at four different prices.
+    /// </para>
+    /// </summary>
+    /// <param name="quantity">How much arrived. Must be positive.</param>
+    /// <param name="reference">The transfer that sent it.</param>
+    /// <param name="now">The current instant.</param>
+    /// <param name="value">
+    /// What the goods were worth when they left the other warehouse. Null when the sending shelf
+    /// had no value of its own, which happens for stock that has never been through a priced
+    /// receipt.
+    /// </param>
+    public Result<StockMovement> ReceiveValued(
+        decimal quantity,
+        MovementReference reference,
+        DateTimeOffset now,
+        Money? value)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+
+        Result<Quantity> parsed = ParsePositive(quantity);
+        if (parsed.IsFailure)
+        {
+            return Result.Failure<StockMovement>(parsed.Error);
+        }
+
+        if (value is not null && value.Currency != StockValue.Currency)
+        {
+            return Result.Failure<StockMovement>(
+                InventoryErrors.Stock.CostCurrencyMismatch(
+                    value.Currency.Code, StockValue.Currency.Code));
+        }
+
+        OnHand = OnHand.Add(parsed.Value);
+
+        if (value is not null)
+        {
+            StockValue = StockValue.Add(value);
+        }
+
+        StockMovement movement = StockMovement.Record(
+            Part, WarehouseId, MovementType.TransferIn, parsed.Value, OnHand, reference, now);
+
+        if (value is not null)
+        {
+            movement.AtValue(value);
+        }
+
+        Raise(new StockReceivedDomainEvent(Id, Part, WarehouseId, parsed.Value.Value, reference.Number));
+
+        return movement;
+    }
+
+    /// <summary>
+    /// Sends stock to another warehouse, and answers what value went with it.
+    /// <para>
+    /// The value is the whole reason this is not just an issue. Stock moving between two of the
+    /// company's own shelves must not change what the company owns: whatever comes off here has
+    /// to land there, to the cent. An issue that threw the figure away and a receipt that invented
+    /// a new one would make every transfer a small, silent revaluation.
+    /// </para>
+    /// </summary>
+    /// <param name="quantity">How much is going. Must be positive and on the shelf.</param>
+    /// <param name="reference">The transfer sending it.</param>
+    /// <param name="now">The current instant.</param>
+    /// <param name="allowNegative">Whether the warehouse permits negative balances.</param>
+    public Result<TransferredStock> Dispatch(
+        decimal quantity,
+        MovementReference reference,
+        DateTimeOffset now,
+        bool allowNegative = false)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+
+        Result<Quantity> parsed = ParsePositive(quantity);
+        if (parsed.IsFailure)
+        {
+            return Result.Failure<TransferredStock>(parsed.Error);
+        }
+
+        if (!allowNegative && parsed.Value > OnHand)
+        {
+            return Result.Failure<TransferredStock>(
+                InventoryErrors.Stock.InsufficientOnHand(OnHand.Value, parsed.Value.Value, Unit.Code));
+        }
+
+        Quantity before = OnHand;
+        OnHand = OnHand.Subtract(parsed.Value);
+
+        Money? value = TakeValueOut(parsed.Value, before);
+
+        StockMovement movement = StockMovement.Record(
+            Part, WarehouseId, MovementType.TransferOut, parsed.Value.Multiply(-1m), OnHand, reference, now);
+
+        if (value is not null)
+        {
+            movement.AtValue(value);
+        }
+
+        Raise(new StockIssuedDomainEvent(Id, Part, WarehouseId, parsed.Value.Value, reference.Number));
+
+        CheckReorderPoint();
+
+        return new TransferredStock(movement, value);
+    }
+
+    /// <summary>
     /// Takes the value of a departing quantity off the balance, and answers what it was.
     /// <para>
     /// One of the two places costing happens, and the only place a going-out cost is decided.

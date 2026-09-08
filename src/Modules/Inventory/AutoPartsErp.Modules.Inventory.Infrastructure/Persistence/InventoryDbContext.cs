@@ -1,6 +1,7 @@
 using AutoPartsErp.Modules.Inventory.Domain;
 using AutoPartsErp.Modules.Inventory.Domain.Counting;
 using AutoPartsErp.Modules.Inventory.Domain.Stock;
+using AutoPartsErp.Modules.Inventory.Domain.Transfers;
 using AutoPartsErp.Modules.Inventory.Domain.Warehouses;
 using AutoPartsErp.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -48,6 +49,9 @@ public sealed class InventoryDbContext : ModuleDbContext, IInventoryUnitOfWork
     /// <summary>Physical count sheets and what they found.</summary>
     public DbSet<StockCount> StockCounts => Set<StockCount>();
 
+    /// <summary>Stock moving between the company's own warehouses.</summary>
+    public DbSet<StockTransfer> StockTransfers => Set<StockTransfer>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -70,6 +74,9 @@ public sealed class InventoryDbContext : ModuleDbContext, IInventoryUnitOfWork
 
         modelBuilder.Entity<StockCount>()
             .HasQueryFilter(count => count.TenantId == CurrentTenantId);
+
+        modelBuilder.Entity<StockTransfer>()
+            .HasQueryFilter(transfer => transfer.TenantId == CurrentTenantId);
 
         base.OnModelCreating(modelBuilder);
     }

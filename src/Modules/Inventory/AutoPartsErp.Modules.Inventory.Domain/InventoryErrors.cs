@@ -228,6 +228,97 @@ public static class InventoryErrors
                 + "correct. The sheet was opened before it was removed.");
     }
 
+    /// <summary>Failures relating to a <see cref="Transfers.StockTransfer"/>.</summary>
+    public static class Transfer
+    {
+        /// <summary>The transfer does not exist.</summary>
+        public static Error NotFound(string identifier) =>
+            Error.NotFound("inventory.transfer.not_found", $"No stock transfer matches '{identifier}'.");
+
+        /// <summary>A transfer number is required.</summary>
+        public static readonly Error NumberRequired =
+            Error.Validation("inventory.transfer.number_required", "A transfer number is required.");
+
+        /// <summary>Both ends of the transfer are the same place.</summary>
+        public static readonly Error SameWarehouse =
+            Error.Validation(
+                "inventory.transfer.same_warehouse",
+                "A transfer has to go somewhere else. Sending stock to the shelf it is already "
+                + "on nets to nothing and leaves two ledger rows explaining it.");
+
+        /// <summary>The transfer has already left.</summary>
+        public static readonly Error NotDraft =
+            Error.DomainRule(
+                "inventory.transfer.not_draft",
+                "That transfer has already been dispatched. What is on the van cannot be edited.");
+
+        /// <summary>The transfer has nothing on it.</summary>
+        public static readonly Error NoLines =
+            Error.DomainRule("inventory.transfer.no_lines", "There is nothing on that transfer.");
+
+        /// <summary>The line is not on this transfer.</summary>
+        public static Error LineNotFound(string identifier) =>
+            Error.NotFound(
+                "inventory.transfer.line_not_found", $"Line '{identifier}' is not on that transfer.");
+
+        /// <summary>The part is already on the transfer.</summary>
+        public static Error PartAlreadyOnTransfer(string sku) =>
+            Error.Conflict(
+                "inventory.transfer.part_already_on_transfer",
+                $"'{sku}' is already on that transfer. Change the quantity on the line it is on.");
+
+        /// <summary>A line was left out of the dispatch.</summary>
+        public static Error LineNotDispatched(string sku) =>
+            Error.DomainRule(
+                "inventory.transfer.line_not_dispatched",
+                $"'{sku}' has no dispatch figure. A transfer leaves whole or not at all, so a "
+                + "line the sending warehouse could not fill has to come off it first.");
+
+        /// <summary>Nothing is on its way.</summary>
+        public static readonly Error NotInTransit =
+            Error.DomainRule(
+                "inventory.transfer.not_in_transit",
+                "That transfer has nothing on its way. It has either not left yet or is finished.");
+
+        /// <summary>Everything that left has been accounted for.</summary>
+        public static readonly Error NothingInTransit =
+            Error.DomainRule(
+                "inventory.transfer.nothing_in_transit",
+                "Everything that left has arrived or been written off. There is no shortfall to accept.");
+
+        /// <summary>More arrived than ever left.</summary>
+        public static Error OverReceived(string sku, decimal inTransit) =>
+            Error.DomainRule(
+                "inventory.transfer.over_received",
+                $"Only {inTransit} of '{sku}' is still on its way. Booking in more than left the "
+                + "other warehouse would create stock out of nothing.");
+
+        /// <summary>The arrival is in a different unit from the balance.</summary>
+        public static Error UnitMismatch(string sku, string unit) =>
+            Error.Validation(
+                "inventory.transfer.unit_mismatch",
+                $"'{sku}' moves in '{unit}'. An arrival in any other unit is a different number "
+                + "about a different thing.");
+
+        /// <summary>Goods on a van cannot be uninvented.</summary>
+        public static readonly Error CannotCancelInTransit =
+            Error.DomainRule(
+                "inventory.transfer.cannot_cancel_in_transit",
+                "The goods have already left. Either they arrive and are received, or they do not "
+                + "and the shortfall is written off - there is nothing left to cancel.");
+
+        /// <summary>The transfer is finished.</summary>
+        public static readonly Error AlreadyClosed =
+            Error.DomainRule("inventory.transfer.already_closed", "That transfer is closed.");
+
+        /// <summary>Closing a transfer needs an explanation.</summary>
+        public static readonly Error CloseReasonRequired =
+            Error.Validation(
+                "inventory.transfer.close_reason_required",
+                "Say why. Stock that left one warehouse and never reached another is a loss, and "
+                + "in six months this sentence is the only thing that will explain it.");
+    }
+
     /// <summary>Failures relating to a <see cref="AutoPartsErp.Modules.Inventory.Domain.Stock.StockMovement"/>.</summary>
     public static class Movement
     {

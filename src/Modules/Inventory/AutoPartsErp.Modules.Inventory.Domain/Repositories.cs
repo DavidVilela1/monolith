@@ -1,5 +1,6 @@
 using AutoPartsErp.Modules.Inventory.Domain.Counting;
 using AutoPartsErp.Modules.Inventory.Domain.Stock;
+using AutoPartsErp.Modules.Inventory.Domain.Transfers;
 using AutoPartsErp.Modules.Inventory.Domain.Warehouses;
 using AutoPartsErp.SharedKernel.Abstractions;
 
@@ -102,6 +103,22 @@ public interface IStockCountRepository : IRepository<StockCount, StockCountId>
 
     /// <summary>Loads a sheet with its lines, or null when there is no such sheet.</summary>
     Task<StockCount?> GetWithLinesAsync(StockCountId id, CancellationToken cancellationToken = default);
+}
+
+/// <summary>Write-side access to stock transfers.</summary>
+public interface IStockTransferRepository : IRepository<StockTransfer, StockTransferId>
+{
+    /// <summary>Takes the next transfer number for the year, through the module's counter.</summary>
+    Task<string> NextTransferNumberAsync(int year, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every transfer with something still on a van, newest first.
+    /// <para>
+    /// The question a warehouse manager asks every morning, and the one that has no answer at all
+    /// without this document: what is somewhere between two of our own buildings right now.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<StockTransfer>> GetInTransitAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>The Inventory module's unit of work.</summary>

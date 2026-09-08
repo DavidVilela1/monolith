@@ -321,4 +321,7 @@ internal static class Fixture
 
     public static MovementReference Count(string number = "SC-1") =>
         MovementReference.Create(ReferenceType.StockCount, number, "Annual count").Value;
+
+    public static MovementReference Transfer(string number = "TR-1") =>
+        MovementReference.Create(ReferenceType.StockTransfer, number).Value;
 }

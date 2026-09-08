@@ -180,6 +180,34 @@ public readonly record struct StockCountLineId(Guid Value)
     public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
 }
 
+/// <summary>Identity of a <see cref="Transfers.StockTransfer"/>.</summary>
+/// <param name="Value">The underlying identifier.</param>
+public readonly record struct StockTransferId(Guid Value)
+{
+    /// <summary>The unset identifier.</summary>
+    public static readonly StockTransferId Empty = new(Guid.Empty);
+
+    /// <summary>Generates a new identifier.</summary>
+    public static StockTransferId New() => new(OrderedGuid.Create());
+
+    /// <inheritdoc />
+    public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
+}
+
+/// <summary>Identity of a <see cref="Transfers.StockTransferLine"/>.</summary>
+/// <param name="Value">The underlying identifier.</param>
+public readonly record struct StockTransferLineId(Guid Value)
+{
+    /// <summary>The unset identifier.</summary>
+    public static readonly StockTransferLineId Empty = new(Guid.Empty);
+
+    /// <summary>Generates a new identifier.</summary>
+    public static StockTransferLineId New() => new(OrderedGuid.Create());
+
+    /// <inheritdoc />
+    public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
+}
+
 /// <summary>Creates time-ordered <see cref="Guid"/> values so inserts stay at the right edge of the index.</summary>
 internal static class OrderedGuid
 {

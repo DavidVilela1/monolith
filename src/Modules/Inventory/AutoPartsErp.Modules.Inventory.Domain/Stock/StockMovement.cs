@@ -184,3 +184,18 @@ public sealed class StockMovement : AggregateRoot<MovementId>, IAuditable, ITena
         return this;
     }
 }
+
+/// <summary>
+/// What left a warehouse on a transfer: the ledger row, and the value that went with it.
+/// <para>
+/// The value is returned rather than read off the movement afterwards because the receiving end
+/// needs it as a number to add, and a caller that dug it out of the movement would be free to
+/// pass a different one.
+/// </para>
+/// </summary>
+/// <param name="Movement">The ledger row recording the departure.</param>
+/// <param name="Value">
+/// What the goods were worth on the sending shelf, or null when that shelf had no value — stock
+/// that has never been through a priced receipt.
+/// </param>
+public sealed record TransferredStock(StockMovement Movement, Money? Value);

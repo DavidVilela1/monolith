@@ -8,7 +8,7 @@ about:
 | Module | Schema | Order | What it owns |
 |---|---|---|---|
 | **Partners** | `partners` | 1 | Customers and suppliers, addresses, contacts, credit limits, trading status |
-| **Inventory** | `inventory` | 5 | Warehouses, stock balances, reservations, expected deliveries, valuation, counts, the movement ledger |
+| **Inventory** | `inventory` | 5 | Warehouses, balances, reservations, expected deliveries, valuation, counts, transfers, the movement ledger |
 | **Catalog** | `catalog` | 10 | Parts, brands, categories, cross-references, vehicle fitment |
 | **Pricing** | `pricing` | 12 | Price lists, quantity breaks, customer agreements, price resolution |
 | **Purchasing** | `purchasing` | 15 | Purchase orders, goods receipt, replenishment suggestions |
@@ -17,7 +17,7 @@ about:
 | **Finance** | `finance` | 30 | The sales ledger: open items, receipts matched to the documents they pay, ageing |
 
 They share no code beyond two contract assemblies, and no module references another module's
-projects. 581 tests, all green — 548 that need nothing but the compiler, and 33 that need a real
+projects. 602 tests, all green — 569 that need nothing but the compiler, and 33 that need a real
 PostgreSQL because what they check does not exist until there is one.
 
 ---
@@ -133,6 +133,18 @@ GET /api/inventory/stock/parts/{partId}
 
 ### The ledger: every movement, with the balance and the value that followed it
 GET /api/inventory/stock/parts/{partId}/movements
+
+### Move stock to another branch. Two steps and a van in between.
+POST /api/inventory/transfers
+{ "fromWarehouseId": "...", "toWarehouseId": "..." }
+POST /api/inventory/transfers/{stockTransferId}/lines
+{ "partId": "...", "quantity": 10 }
+POST /api/inventory/transfers/{stockTransferId}/dispatch
+POST /api/inventory/transfers/{stockTransferId}/lines/{lineId}/receive
+{ "quantity": 6 }
+
+### What is on a van right now, between two of our own buildings
+GET /api/inventory/transfers/in-transit
 
 ### Count a warehouse. Open the sheet, walk the aisle, hand it to somebody
 ### else to accept. Posting is a separate call so it can be a separate person.
@@ -533,6 +545,30 @@ of.
 anywhere in this system. Converting with an invented one puts a number on the balance sheet that
 nobody can trace back to a decision.
 
+**Stock between two warehouses is on a document, not in a transaction.** A transfer that issued
+from the branch and received into the depot in one breath would put the goods on the depot's shelf
+on Monday, where a salesperson can promise them to a customer collecting that afternoon — and if
+the van never arrives, the loss surfaces weeks later as an unexplained count variance. So a
+`StockTransfer` has two steps and a middle: dispatch takes the stock off the sending shelf,
+receipt puts what turned up on the receiving one, and what is in between belongs to neither.
+`GET /api/inventory/transfers/in-transit` is the only thing that knows where it is.
+
+**Transit is not a shelf.** There is no in-transit warehouse, deliberately: one would appear in
+availability, in the replenishment list and on count sheets, and every one of those would have to
+learn to exclude it. What is on the van lives on the transfer instead, as a quantity and a value
+per line.
+
+**Value travels with the goods.** Moving stock between two of the company's own shelves must not
+change what the company owns, so the exact value comes off the sender, rides on the document, and
+lands on the receiver. That is why the receiving end takes a total rather than a unit price —
+deriving a price per unit and multiplying back would round twice, and every van journey would
+quietly gain or lose the company a few cents.
+
+**A shortfall in transit is a loss with a reason on it**, and writes no stock movement. Nothing
+moves at either end: the sending shelf gave the goods up at dispatch and the receiving shelf never
+had them. The loss is the gap between the `TransferOut` and the `TransferIn`, and the transfer
+document is what explains it — the same role a count sheet plays for an adjustment.
+
 ### Pricing
 
 **Three things and the rules that turn them into one number.** A `PriceList` (named, one currency,
@@ -755,6 +791,7 @@ AutoPartsErp.sln
 | `DocumentSeries` | `Invoicing.Domain` | The only thing that hands out a document number, one at a time |
 | `SignatureSource` | `Invoicing.Domain` | Builds the exact string the tax authority prescribes for signing |
 | `StockCount` | `Inventory.Domain` | A counted warehouse: the snapshot, the findings, and who accepted them |
+| `StockTransfer` | `Inventory.Domain` | Stock between two warehouses, and the value riding with it |
 
 ---
 
@@ -835,8 +872,8 @@ concurrency in all three modules that hand out numbers.
 - A customer return is valued at today's average rather than at what those goods cost when they
   left. The second is correct and needs the sales line to carry its cost back, which is a change
   to Sales.
-- Transfers between warehouses are not implemented. `TransferIn` and `TransferOut` are in the
-  movement enum and nothing produces them.
+- A shortfall written off in transit produces no shrinkage posting, because there is no general
+  ledger to post it to. The `StockTransferClosedShort` event carries the lost value ready for one.
 - Storage bins are recorded but never used: `StockMovement.InBin` has no caller, so no movement
   says where in the warehouse anything went.
 - A count sheet records who counted and who posted, but nothing stops them being the same person.
