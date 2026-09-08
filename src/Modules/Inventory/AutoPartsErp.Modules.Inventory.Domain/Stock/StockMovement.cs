@@ -105,8 +105,31 @@ public sealed class StockMovement : AggregateRoot<MovementId>, IAuditable, ITena
     /// <summary>The bin it came from or went to, where the warehouse tracks bins.</summary>
     public BinId? BinId { get; private set; }
 
-    /// <summary>Unit cost at the time, when known. Finance values the movement from this.</summary>
-    public Money? UnitCost { get; private set; }
+    /// <summary>
+    /// What this movement was worth, when a cost is known. Always the magnitude, never signed —
+    /// the direction is in <see cref="Quantity"/>.
+    /// <para>
+    /// The <em>value</em> is stored and the unit cost is derived from it, not the other way round.
+    /// <see cref="Money"/> rounds to the currency's decimal places, so a stored unit cost of
+    /// €0.35 against 3,000 units would report €1,050.00 for a movement that actually took
+    /// €1,046.87 off the balance sheet, and the ledger would stop tying out to the stock value it
+    /// is supposed to explain. Storing what moved and dividing for display cannot drift.
+    /// </para>
+    /// <para>
+    /// It also survives a change of costing method. A FIFO issue can span three cost layers at
+    /// three different prices and has no single unit cost at all; it does have a value.
+    /// </para>
+    /// </summary>
+    public Money? CostValue { get; private set; }
+
+    /// <summary>
+    /// The value spread over the quantity, for anybody who wants to read a per-unit figure.
+    /// Rounded, and derived — never the number the balance sheet is built from.
+    /// </summary>
+    public Money? UnitCost =>
+        CostValue is null || Quantity.Value == 0m
+            ? null
+            : CostValue.Divide(Math.Abs(Quantity.Value));
 
     /// <summary>True when this movement increased stock.</summary>
     public bool IsInbound => Quantity.Value > 0m;
@@ -147,13 +170,17 @@ public sealed class StockMovement : AggregateRoot<MovementId>, IAuditable, ITena
         return this;
     }
 
-    /// <summary>Attaches the unit cost, for valuation.</summary>
-    public StockMovement AtCost(Money unitCost)
+    /// <summary>
+    /// Attaches what the movement was worth.
+    /// <para>
+    /// Internal, because the value has to come from the balance it was taken out of or added to.
+    /// A caller free to stamp any figure here could write a ledger that does not add up to the
+    /// stock value, and the ledger being reconstructible is the only reason it is worth keeping.
+    /// </para>
+    /// </summary>
+    internal StockMovement AtValue(Money costValue)
     {
-        UnitCost = unitCost;
+        CostValue = costValue;
         return this;
     }
-
-    /// <summary>The total value of this movement, when a cost is known.</summary>
-    public Money? TotalCost => UnitCost?.Multiply(Math.Abs(Quantity.Value));
 }

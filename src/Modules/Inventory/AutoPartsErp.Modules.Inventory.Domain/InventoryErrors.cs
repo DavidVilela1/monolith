@@ -101,6 +101,23 @@ public static class InventoryErrors
                 "inventory.stock.adjustment_no_change",
                 "The counted quantity matches the current balance, so there is nothing to adjust.");
 
+        /// <summary>
+        /// A receipt arrived priced in a currency the stock is not valued in.
+        /// <para>
+        /// Refused rather than converted, because there is no exchange rate anywhere in this
+        /// system and converting with an invented one puts a wrong number on the balance sheet
+        /// that nobody can trace back to a decision. A company that buys in another currency
+        /// needs a rate source and a policy about which day's rate applies — that is a feature,
+        /// not a default.
+        /// </para>
+        /// </summary>
+        public static Error CostCurrencyMismatch(string received, string valued) =>
+            Error.DomainRule(
+                "inventory.stock.cost_currency_mismatch",
+                $"The receipt is priced in {received} and this stock is valued in {valued}. "
+                + "There is no exchange rate in this system, so booking it in would mean "
+                + "inventing one.");
+
         /// <summary>An expected delivery has to name the order that is bringing it.</summary>
         public static readonly Error PurchaseOrderRequired =
             Error.Validation(

@@ -46,8 +46,22 @@ public sealed record StockBalance
     /// <summary>How much to order when it does.</summary>
     public decimal? ReorderQuantity { get; init; }
 
-    /// <summary>True when available stock has reached the reorder point.</summary>
+    /// <summary>
+    /// True when the position — available plus on order — has reached the reorder point.
+    /// </summary>
     public required bool NeedsReplenishment { get; init; }
+
+    /// <summary>What the stock here is worth.</summary>
+    public required decimal StockValue { get; init; }
+
+    /// <summary>
+    /// What one unit is worth on average, or null when the shelf is empty or nothing here has
+    /// ever been bought at a known price.
+    /// </summary>
+    public decimal? AverageCost { get; init; }
+
+    /// <summary>The currency the value is in: the company's own, never the supplier's.</summary>
+    public required string ValueCurrency { get; init; }
 
     /// <summary>When stock here was last physically counted.</summary>
     public DateTimeOffset? LastCountedAtUtc { get; init; }
@@ -58,12 +72,16 @@ public sealed record StockBalance
 /// <param name="Unit">The unit all the quantities are in.</param>
 /// <param name="TotalOnHand">Physically present across all sites.</param>
 /// <param name="TotalAvailable">Sellable across all sites.</param>
+/// <param name="TotalValue">What the group holds of this part is worth.</param>
+/// <param name="ValueCurrency">The currency that value is in: the company's own.</param>
 /// <param name="ByWarehouse">The breakdown, because "somewhere in the group" rarely helps a customer.</param>
 public sealed record PartStockPosition(
     Guid PartId,
     string Unit,
     decimal TotalOnHand,
     decimal TotalAvailable,
+    decimal TotalValue,
+    string ValueCurrency,
     IReadOnlyList<StockBalance> ByWarehouse);
 
 /// <summary>A claim currently held against stock.</summary>
@@ -94,6 +112,15 @@ public sealed record ReservationDto(
 /// <param name="ReferenceNumber">Which document.</param>
 /// <param name="OccurredAtUtc">When it happened.</param>
 /// <param name="CreatedBy">Who entered it.</param>
+/// <param name="CostValue">
+/// What the movement was worth, when a cost is known. The stored figure — the one that ties out
+/// to the stock value.
+/// </param>
+/// <param name="UnitCost">
+/// <paramref name="CostValue"/> spread over the quantity, for reading. Derived, and never what
+/// anything is calculated from.
+/// </param>
+/// <param name="CostCurrency">The currency of both, when there is a cost.</param>
 public sealed record StockMovementDto(
     Guid MovementId,
     Guid PartId,
@@ -104,7 +131,10 @@ public sealed record StockMovementDto(
     string ReferenceType,
     string ReferenceNumber,
     DateTimeOffset OccurredAtUtc,
-    string CreatedBy);
+    string CreatedBy,
+    decimal? CostValue,
+    decimal? UnitCost,
+    string? CostCurrency);
 
 /// <summary>A warehouse, as returned by the warehouse endpoints.</summary>
 /// <param name="Id">The warehouse.</param>

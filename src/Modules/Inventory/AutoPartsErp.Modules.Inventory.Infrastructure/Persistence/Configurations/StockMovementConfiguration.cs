@@ -105,12 +105,15 @@ public sealed class StockMovementConfiguration : IEntityTypeConfiguration<StockM
 
         builder.Navigation(movement => movement.Reference).IsRequired();
 
-        builder.OwnsOne(movement => movement.UnitCost, cost =>
+        // The value that moved, not a unit cost. UnitCost is derived in C# and deliberately has
+        // no column: a stored per-unit figure rounds at two decimal places on every row and stops
+        // adding up to the stock value it is meant to explain.
+        builder.OwnsOne(movement => movement.CostValue, cost =>
         {
-            cost.Property(m => m.Amount).HasColumnName("unit_cost").HasPrecision(18, 4);
+            cost.Property(m => m.Amount).HasColumnName("cost_value").HasPrecision(18, 4);
 
             cost.Property(m => m.Currency)
-                .HasColumnName("unit_cost_currency")
+                .HasColumnName("cost_currency")
                 .HasConversion(currency => currency.Code, code => Currency.FromCode(code))
                 .HasMaxLength(3);
         });

@@ -4,6 +4,7 @@ using AutoPartsErp.Modules.Inventory.Domain.Warehouses;
 using AutoPartsErp.SharedKernel.Abstractions;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Results;
+using AutoPartsErp.SharedKernel.ValueObjects;
 
 namespace AutoPartsErp.Modules.Inventory.Application.Stock.Commands;
 
@@ -14,13 +15,24 @@ namespace AutoPartsErp.Modules.Inventory.Application.Stock.Commands;
 /// <param name="ReferenceType">The kind of document, e.g. GoodsReceipt.</param>
 /// <param name="ReferenceNumber">The document number.</param>
 /// <param name="Note">Optional explanation.</param>
+/// <param name="UnitPrice">
+/// What was paid per unit, when the receipt knows. Left out for a transfer, a customer return or
+/// a correction — arrivals with no price of their own join the balance at whatever the stock is
+/// already worth, rather than at a zero that would drag the average down towards nothing.
+/// </param>
+/// <param name="CurrencyCode">
+/// The currency of <paramref name="UnitPrice"/>. Defaults to the company's own, and a receipt in
+/// any other is refused rather than converted: there is no exchange rate in this system.
+/// </param>
 public sealed record ReceiveStockCommand(
     Guid PartId,
     Guid WarehouseId,
     decimal Quantity,
     string ReferenceType,
     string ReferenceNumber,
-    string? Note = null) : ICommand;
+    string? Note = null,
+    decimal? UnitPrice = null,
+    string? CurrencyCode = null) : ICommand;
 
 /// <summary>Checks the shape of a <see cref="ReceiveStockCommand"/>.</summary>
 public sealed class ReceiveStockCommandValidator : IValidator<ReceiveStockCommand>
@@ -35,6 +47,19 @@ public sealed class ReceiveStockCommandValidator : IValidator<ReceiveStockComman
         var failures = new List<ValidationFailure>();
         StockValidation.CheckMovement(
             failures, instance.Quantity, instance.ReferenceType, instance.ReferenceNumber);
+
+        // A negative purchase price is not a discount, it is a typo, and it would take value off
+        // the shelf while putting goods on it. Zero is refused for the same reason the price is
+        // optional at all: "free" and "we do not know" are different facts, and only the second
+        // one has an honest answer, which is to leave the price out.
+        if (instance.UnitPrice is { } price && price <= 0m)
+        {
+            failures.Add(new ValidationFailure(
+                "UnitPrice",
+                "not_positive",
+                "A unit price must be greater than zero. Leave it out entirely when the receipt "
+                + "has no price of its own."));
+        }
 
         return ValueTask.FromResult<IReadOnlyList<ValidationFailure>>(failures);
     }
@@ -88,8 +113,12 @@ public sealed class ReceiveStockCommandHandler : ICommandHandler<ReceiveStockCom
             return Result.FromError(reference.Error);
         }
 
+        Money? unitPrice = request.UnitPrice is { } price
+            ? Money.Of(price, request.CurrencyCode ?? Currency.Default.Code)
+            : null;
+
         Result<StockMovement> movement = context.Value.StockItem
-            .Receive(request.Quantity, reference.Value, _clock.UtcNow);
+            .Receive(request.Quantity, reference.Value, _clock.UtcNow, unitPrice);
 
         if (movement.IsFailure)
         {

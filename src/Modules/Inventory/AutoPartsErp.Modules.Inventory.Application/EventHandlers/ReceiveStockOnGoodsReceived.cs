@@ -4,6 +4,7 @@ using AutoPartsErp.Modules.Inventory.Domain.Stock;
 using AutoPartsErp.SharedKernel.Abstractions;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Results;
+using AutoPartsErp.SharedKernel.ValueObjects;
 
 namespace AutoPartsErp.Modules.Inventory.Application.EventHandlers;
 
@@ -61,10 +62,11 @@ public sealed class ReceiveStockOnGoodsReceived
     /// </para>
     /// </remarks>
     /// <exception cref="InvalidOperationException">
-    /// There is no stock record for the part in that warehouse, or the delivery arrived in a
-    /// different unit from the one the balance is kept in. Both mean the receipt cannot be
-    /// applied truthfully, and a wrong balance is worse than a loud failure: the event bus logs
-    /// it with the handler and event identity, and somebody has to look at the order.
+    /// There is no stock record for the part in that warehouse, the delivery arrived in a
+    /// different unit from the one the balance is kept in, or it is priced in a currency the
+    /// stock is not valued in. All three mean the receipt cannot be applied truthfully, and a
+    /// wrong balance is worse than a loud failure: the event bus logs it with the handler and
+    /// event identity, and somebody has to look at the order.
     /// </exception>
     public async Task HandleAsync(
         GoodsReceivedIntegrationEvent integrationEvent,
@@ -110,8 +112,14 @@ public sealed class ReceiveStockOnGoodsReceived
                 $"{reference.Error}");
         }
 
+        // The purchase price, finally used. It has travelled on this event since the contract was
+        // written - the parameter is documented "for stock valuation" - and was dropped on the
+        // floor here, which is why the ledger's cost column was empty and nothing in the system
+        // could say what anything cost.
+        Money unitPrice = Money.Of(integrationEvent.UnitPrice, integrationEvent.CurrencyCode);
+
         Result<StockMovement> movement = stockItem.Receive(
-            integrationEvent.Quantity, reference.Value, _clock.UtcNow);
+            integrationEvent.Quantity, reference.Value, _clock.UtcNow, unitPrice);
 
         if (movement.IsFailure)
         {

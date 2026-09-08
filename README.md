@@ -8,7 +8,7 @@ about:
 | Module | Schema | Order | What it owns |
 |---|---|---|---|
 | **Partners** | `partners` | 1 | Customers and suppliers, addresses, contacts, credit limits, trading status |
-| **Inventory** | `inventory` | 5 | Warehouses, stock balances, reservations, expected deliveries, the movement ledger |
+| **Inventory** | `inventory` | 5 | Warehouses, stock balances, reservations, expected deliveries, stock valuation, the movement ledger |
 | **Catalog** | `catalog` | 10 | Parts, brands, categories, cross-references, vehicle fitment |
 | **Pricing** | `pricing` | 12 | Price lists, quantity breaks, customer agreements, price resolution |
 | **Purchasing** | `purchasing` | 15 | Purchase orders, goods receipt, replenishment suggestions |
@@ -17,7 +17,7 @@ about:
 | **Finance** | `finance` | 30 | The sales ledger: open items, receipts matched to the documents they pay, ageing |
 
 They share no code beyond two contract assemblies, and no module references another module's
-projects. 551 tests, all green — 518 that need nothing but the compiler, and 33 that need a real
+projects. 564 tests, all green — 531 that need nothing but the compiler, and 33 that need a real
 PostgreSQL because what they check does not exist until there is one.
 
 ---
@@ -131,7 +131,7 @@ GET /api/catalog/parts?term=5q0698151a
 ### Stock for a part across every warehouse
 GET /api/inventory/stock/parts/{partId}
 
-### The ledger: every movement, with the balance that followed it
+### The ledger: every movement, with the balance and the value that followed it
 GET /api/inventory/stock/parts/{partId}/movements
 
 ### What this customer pays for ten of these, and why
@@ -468,6 +468,36 @@ stock moves at that moment, and it is exactly the moment the part may need buyin
 only what was outstanding. The extra is real stock and the receipt books it, but it was never on
 order and cannot come off a figure that never counted it.
 
+**Stock is valued at moving weighted average**, and the value is what is stored — the average is
+derived from it, not the other way round. That is the opposite of how it is usually described and
+it is the only version that stays correct: `Money` rounds to the currency's decimal places, so a
+stored per-unit cost would round on every receipt and compound for the life of the part. A total
+in euros rounds once, against a figure that is actually denominated in euros. Same reason the
+ledger stores what a movement was worth and derives its unit cost: three thousand units at 35
+cents is a movement worth €1,050.65, and a stored €0.35 would report €1,050.00 for it every time.
+
+**Costing lives in two methods and nowhere else.** A receipt adds value, one private method takes
+it out, and outside Inventory a cost only ever appears as a value stamped on a ledger row. Moving
+to FIFO means rewriting those two and adding a layer table — Sales, Pricing and Finance do not
+find out. An interface here would have been flexibility in name only: FIFO is not different
+arithmetic, it is different *state*, and an interface with nowhere to keep layers solves nothing.
+
+**A price is optional and its absence means something.** A purchase receipt knows what was paid; a
+transfer, a customer return and a count that found more do not. Those come in at what the shelf is
+already worth, so the average does not move. Treating an unknown price as zero would dilute the
+average towards nothing, and the first customer return would wreck the valuation of a part sold
+for years. Into a shelf that was never priced there is no average to apply, and the ledger says so
+with no cost rather than a cost of zero.
+
+**Emptying the shelf empties the value, to the cent.** The last issue takes whatever is left
+instead of its proportional share. Proportions round, and rounding leaves a few cents against a
+shelf with nothing on it — a balance sheet claiming the company owns €0.03 of a part it has none
+of.
+
+**A receipt priced in another currency is refused, not converted.** There is no exchange rate
+anywhere in this system. Converting with an invented one puts a number on the balance sheet that
+nobody can trace back to a decision.
+
 ### Pricing
 
 **Three things and the rules that turn them into one number.** A `PriceList` (named, one currency,
@@ -763,10 +793,12 @@ concurrency in all three modules that hand out numbers.
   supplier's lead time plus a safety margin, and the movement ledger already holds the consumption
   half — what is missing is a lead time anywhere in the system, on the supplier or on the
   part/supplier pair.
-- Nothing on a stock movement records what the goods cost. `unit_cost` exists on the ledger and is
-  always null, and `GoodsReceivedIntegrationEvent` carries the purchase price and throws it away.
-  Until that is wired there is no cost of sale, no margin, and no stock value — costing is the
-  next thing being built.
+- Cost of sale is on the ledger but nowhere else. Nothing posts it to a general ledger, because
+  there is no general ledger; nothing shows margin on a sales order line; and the margin floor
+  Pricing would want is now possible and not built.
+- A customer return is valued at today's average rather than at what those goods cost when they
+  left. The second is correct and needs the sales line to carry its cost back, which is a change
+  to Sales.
 - Transfers between warehouses are not implemented. `TransferIn` and `TransferOut` are in the
   movement enum and nothing produces them.
 - Storage bins are recorded but never used: `StockMovement.InBin` has no caller, so no movement

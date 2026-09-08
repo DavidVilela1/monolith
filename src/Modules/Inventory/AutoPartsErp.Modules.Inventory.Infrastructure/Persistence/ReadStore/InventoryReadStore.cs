@@ -46,6 +46,8 @@ public sealed class InventoryReadStore : IInventoryReadStore
             balances[0].Unit,
             balances.Sum(balance => balance.OnHand),
             balances.Sum(balance => balance.Available),
+            balances.Sum(balance => balance.StockValue),
+            balances[0].ValueCurrency,
             balances);
     }
 
@@ -115,12 +117,18 @@ public sealed class InventoryReadStore : IInventoryReadStore
     {
         ArgumentNullException.ThrowIfNull(page);
 
-        // The comparison is against available, not on-hand. Stock that is present but promised
-        // cannot fill the next order, so replenishment has to see the same number a salesperson does.
+        // Available plus on order, against the reorder point. Available because stock that is
+        // present but promised cannot fill the next order; plus on order because a part with a
+        // delivery already on its way does not need buying again, and a list that says otherwise
+        // every morning is a list that stops being read.
+        //
+        // Written out as arithmetic rather than calling StockItem.NeedsReplenishment, which is
+        // C# and would drag every stock row in the company into memory to filter it.
         IQueryable<StockItem> query = _context.StockItems
             .AsNoTracking()
             .Where(item => item.ReorderPoint != null
-                && (item.OnHand.Value - item.Reserved.Value) <= item.ReorderPoint!.Value);
+                && (item.OnHand.Value - item.Reserved.Value + item.OnOrder.Value)
+                    <= item.ReorderPoint!.Value);
 
         if (warehouseId is { } id)
         {
@@ -137,7 +145,9 @@ public sealed class InventoryReadStore : IInventoryReadStore
 
         // Deepest shortfall first: what a buyer should look at before anything else.
         IQueryable<StockItem> ordered = query
-            .OrderBy(item => (item.OnHand.Value - item.Reserved.Value) - item.ReorderPoint!.Value)
+            .OrderBy(item =>
+                item.OnHand.Value - item.Reserved.Value + item.OnOrder.Value
+                - item.ReorderPoint!.Value)
             .Skip(page.Skip)
             .Take(page.PageSize);
 
@@ -205,6 +215,8 @@ public sealed class InventoryReadStore : IInventoryReadStore
                 ReferenceNumber = movement.Reference.Number,
                 movement.OccurredAtUtc,
                 movement.CreatedBy,
+                CostValue = movement.CostValue != null ? movement.CostValue.Amount : (decimal?)null,
+                CostCurrency = movement.CostValue != null ? movement.CostValue.Currency : null,
             })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -219,7 +231,12 @@ public sealed class InventoryReadStore : IInventoryReadStore
             row.ReferenceType.ToString(),
             row.ReferenceNumber,
             row.OccurredAtUtc,
-            row.CreatedBy))];
+            row.CreatedBy,
+            row.CostValue,
+            row.CostValue is { } value && row.QuantityValue != 0m
+                ? decimal.Round(value / Math.Abs(row.QuantityValue), 4, MidpointRounding.ToEven)
+                : null,
+            row.CostCurrency?.Code))];
 
         return PagedResult<StockMovementDto>.Create(items, page.Page, page.PageSize, total);
     }
@@ -287,6 +304,8 @@ public sealed class InventoryReadStore : IInventoryReadStore
                 OnHand = item.OnHand.Value,
                 Reserved = item.Reserved.Value,
                 OnOrder = item.OnOrder.Value,
+                StockValue = item.StockValue.Amount,
+                ValueCurrency = item.StockValue.Currency,
                 ReorderPoint = item.ReorderPoint != null ? item.ReorderPoint.Value : (decimal?)null,
                 ReorderQuantity = item.ReorderQuantity != null ? item.ReorderQuantity.Value : (decimal?)null,
                 item.LastCountedAtUtc,
@@ -312,7 +331,17 @@ public sealed class InventoryReadStore : IInventoryReadStore
                 OnOrder = row.OnOrder,
                 ReorderPoint = row.ReorderPoint,
                 ReorderQuantity = row.ReorderQuantity,
-                NeedsReplenishment = row.ReorderPoint is { } point && available <= point,
+
+                // Available plus on order, matching StockItem.NeedsReplenishment. Two copies of
+                // one rule, and the copy is deliberate - the aggregate's version decides whether
+                // to raise the signal and cannot be a database expression, this one answers a
+                // screen and cannot be C# on the aggregate. What they must never do is disagree.
+                NeedsReplenishment = row.ReorderPoint is { } point && available + row.OnOrder <= point,
+                StockValue = row.StockValue,
+                AverageCost = row.OnHand > 0m
+                    ? decimal.Round(row.StockValue / row.OnHand, 4, MidpointRounding.ToEven)
+                    : null,
+                ValueCurrency = row.ValueCurrency.Code,
                 LastCountedAtUtc = row.LastCountedAtUtc,
             };
         })];

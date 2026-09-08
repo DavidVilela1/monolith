@@ -63,6 +63,25 @@ public sealed class StockItemConfiguration : IEntityTypeConfiguration<StockItem>
         builder.OwnsOne(item => item.OnOrder, quantity => MapQuantity(quantity, "on_order"));
         builder.Navigation(item => item.OnOrder).IsRequired();
 
+        // The balance-sheet figure. Required rather than nullable: a part nobody has ever bought
+        // is worth zero, which is a fact, and a null here would make every sum of stock value
+        // decide for itself what an absent number means.
+        builder.OwnsOne(item => item.StockValue, value =>
+        {
+            value.Property(m => m.Amount)
+                .HasColumnName("stock_value")
+                .HasPrecision(18, 4)
+                .IsRequired();
+
+            value.Property(m => m.Currency)
+                .HasColumnName("stock_value_currency")
+                .HasConversion(currency => currency.Code, code => Currency.FromCode(code))
+                .HasMaxLength(3)
+                .IsRequired();
+        });
+
+        builder.Navigation(item => item.StockValue).IsRequired();
+
         builder.OwnsOne(item => item.ReorderPoint, quantity => MapQuantity(quantity, "reorder_point"));
         builder.OwnsOne(item => item.ReorderQuantity, quantity => MapQuantity(quantity, "reorder_quantity"));
 

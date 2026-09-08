@@ -34,6 +34,7 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
         OnHand = Quantity.Zero(unit);
         Reserved = Quantity.Zero(unit);
         OnOrder = Quantity.Zero(unit);
+        StockValue = Money.Zero(Currency.Default);
         CreatedBy = string.Empty;
     }
 
@@ -75,6 +76,33 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
 
     /// <summary>What can still be sold: on hand minus reserved.</summary>
     public Quantity Available => OnHand.Subtract(Reserved);
+
+    /// <summary>
+    /// What the stock on this shelf is worth.
+    /// <para>
+    /// The stored figure, and the one the balance sheet is built from. Average cost is derived
+    /// from it rather than stored, which is the opposite of how it is usually described and is
+    /// the only version that stays correct: <see cref="Money"/> rounds to the currency's decimal
+    /// places, so a stored per-unit cost would round on every single receipt and the error would
+    /// compound for the life of the part. A total in euros rounds once, against a number that is
+    /// actually denominated in euros.
+    /// </para>
+    /// <para>
+    /// Always in the company's own currency — <c>Currency.Default</c>. Stock is valued in what
+    /// the company reports in, whatever it happened to be bought in.
+    /// </para>
+    /// </summary>
+    public Money StockValue { get; private set; } = null!;
+
+    /// <summary>
+    /// What one unit is currently worth on average, or null when there is nothing on the shelf.
+    /// <para>
+    /// Derived and rounded, for people to read. Never the figure anything is calculated from —
+    /// see <see cref="StockValue"/>.
+    /// </para>
+    /// </summary>
+    public Money? AverageCost =>
+        OnHand.Value > 0m ? StockValue.Divide(OnHand.Value) : null;
 
     /// <summary>
     /// Available plus what is on order — the position used to decide whether to buy more.
@@ -147,11 +175,32 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
         return item;
     }
 
-    /// <summary>Brings stock in.</summary>
+    /// <summary>
+    /// Brings stock in.
+    /// <para>
+    /// The unit price is optional and its absence is meaningful rather than lazy. A purchase
+    /// receipt knows what was paid; a transfer from another branch, a customer return and a count
+    /// that found more than expected do not, and there is no honest price to invent for them.
+    /// A receipt with no price comes in at whatever the shelf is already worth per unit, which
+    /// leaves the average exactly where it was. Adding the quantity and no value would be the
+    /// same as calling the goods free: the average would be diluted towards nothing, and the
+    /// first customer return would wreck the valuation of a part sold for years.
+    /// </para>
+    /// <para>
+    /// Into an empty or never-priced shelf there is no average to apply and the quantity simply
+    /// joins the balance uncosted — the state a part is in before its first priced receipt, and
+    /// one the ledger reports honestly as a movement with no cost rather than a cost of zero.
+    /// </para>
+    /// </summary>
     /// <param name="quantity">How much. Must be positive.</param>
     /// <param name="reference">The document that caused it.</param>
     /// <param name="now">The current instant, supplied by the caller's clock.</param>
-    public Result<StockMovement> Receive(decimal quantity, MovementReference reference, DateTimeOffset now)
+    /// <param name="unitPrice">What was paid per unit, when the receipt knows.</param>
+    public Result<StockMovement> Receive(
+        decimal quantity,
+        MovementReference reference,
+        DateTimeOffset now,
+        Money? unitPrice = null)
     {
         ArgumentNullException.ThrowIfNull(reference);
 
@@ -161,14 +210,98 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
             return Result.Failure<StockMovement>(parsed.Error);
         }
 
+        // Checked before the balance moves, so a receipt in the wrong currency changes nothing.
+        if (unitPrice is not null && unitPrice.Currency != StockValue.Currency)
+        {
+            return Result.Failure<StockMovement>(
+                InventoryErrors.Stock.CostCurrencyMismatch(
+                    unitPrice.Currency.Code, StockValue.Currency.Code));
+        }
+
+        Quantity before = OnHand;
         OnHand = OnHand.Add(parsed.Value);
+
+        Money? value;
+
+        if (unitPrice is not null)
+        {
+            value = unitPrice.Multiply(parsed.Value.Value);
+            StockValue = StockValue.Add(value);
+        }
+        else
+        {
+            value = AddValueAtAverage(parsed.Value, before);
+        }
 
         StockMovement movement = StockMovement.Record(
             Part, WarehouseId, MovementType.Receipt, parsed.Value, OnHand, reference, now);
 
+        if (value is not null)
+        {
+            movement.AtValue(value);
+        }
+
         Raise(new StockReceivedDomainEvent(Id, Part, WarehouseId, parsed.Value.Value, reference.Number));
 
         return movement;
+    }
+
+    /// <summary>
+    /// Takes the value of a departing quantity off the balance, and answers what it was.
+    /// <para>
+    /// One of the two places costing happens, and the only place a going-out cost is decided.
+    /// Everything that reduces stock comes through here — a sale, a write-off, a count that found
+    /// less — so swapping moving average for FIFO means rewriting this method and its partner in
+    /// <see cref="Receive"/>, and nothing else in this module or any other. That is the whole
+    /// seam: outside Inventory a cost only ever appears as a value stamped on a ledger row.
+    /// </para>
+    /// <para>
+    /// The last issue takes whatever is left rather than its proportional share. Proportions
+    /// round, and rounding leaves a few cents of value sitting against a shelf with nothing on
+    /// it — a balance sheet that says the company owns €0.03 of a part it has none of. Somebody
+    /// eventually writes a correction routine for that; the correction is to not create it.
+    /// </para>
+    /// </summary>
+    private Money? TakeValueOut(Quantity quantity, Quantity onHandBefore)
+    {
+        if (StockValue.IsZero || onHandBefore.Value <= 0m)
+        {
+            return null;
+        }
+
+        if (quantity.Value >= onHandBefore.Value)
+        {
+            Money everything = StockValue;
+            StockValue = Money.Zero(StockValue.Currency);
+
+            return everything;
+        }
+
+        Money value = StockValue.Multiply(quantity.Value / onHandBefore.Value);
+        StockValue = StockValue.Subtract(value);
+
+        return value;
+    }
+
+    /// <summary>
+    /// Adds quantity at whatever the stock already on the shelf is worth per unit.
+    /// <para>
+    /// For arrivals with no price of their own. Nothing to do when the shelf was empty or has no
+    /// value: there is no average to apply, and the quantity simply joins the balance uncosted —
+    /// the same state a part is in before its first priced receipt.
+    /// </para>
+    /// </summary>
+    private Money? AddValueAtAverage(Quantity quantity, Quantity onHandBefore)
+    {
+        if (StockValue.IsZero || onHandBefore.Value <= 0m)
+        {
+            return null;
+        }
+
+        Money value = StockValue.Multiply(quantity.Value / onHandBefore.Value);
+        StockValue = StockValue.Add(value);
+
+        return value;
     }
 
     /// <summary>
@@ -202,10 +335,18 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
                 InventoryErrors.Stock.InsufficientOnHand(OnHand.Value, parsed.Value.Value, Unit.Code));
         }
 
+        Quantity before = OnHand;
         OnHand = OnHand.Subtract(parsed.Value);
+
+        Money? value = TakeValueOut(parsed.Value, before);
 
         StockMovement movement = StockMovement.Record(
             Part, WarehouseId, MovementType.Issue, parsed.Value.Multiply(-1m), OnHand, reference, now);
+
+        if (value is not null)
+        {
+            movement.AtValue(value);
+        }
 
         Raise(new StockIssuedDomainEvent(Id, Part, WarehouseId, parsed.Value.Value, reference.Number));
 
@@ -254,11 +395,26 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
                 InventoryErrors.Stock.CountBelowReserved(countedQuantity, Reserved.Value, Unit.Code));
         }
 
+        Quantity before = OnHand;
         OnHand = parsed.Value;
         LastCountedAtUtc = now;
 
+        // A count that found less takes value out at the average, like any other departure. A
+        // count that found more takes the average with it: the extra units are the same part off
+        // the same shelf, and the only price anybody could defend for them is what the rest cost.
+        // Valuing a windfall at zero would say the company found something worthless, and valuing
+        // it at a purchase price would mean inventing one.
+        Money? value = delta.Value < 0m
+            ? TakeValueOut(delta.Multiply(-1m), before)
+            : AddValueAtAverage(delta, before);
+
         StockMovement movement = StockMovement.Record(
             Part, WarehouseId, MovementType.Adjustment, delta, OnHand, reference, now);
+
+        if (value is not null)
+        {
+            movement.AtValue(value);
+        }
 
         Raise(new StockAdjustedDomainEvent(Id, Part, WarehouseId, delta.Value, reference.Number));
 
@@ -354,10 +510,19 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
 
         reservation.Fulfil();
         Reserved = Reserved.Subtract(quantity);
+
+        Quantity before = OnHand;
         OnHand = OnHand.Subtract(quantity);
+
+        Money? value = TakeValueOut(quantity, before);
 
         StockMovement movement = StockMovement.Record(
             Part, WarehouseId, MovementType.Issue, quantity.Multiply(-1m), OnHand, reservation.Reference, now);
+
+        if (value is not null)
+        {
+            movement.AtValue(value);
+        }
 
         Raise(new StockIssuedDomainEvent(Id, Part, WarehouseId, quantity.Value, reservation.Reference.Number));
 
