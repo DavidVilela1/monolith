@@ -29,6 +29,7 @@ public sealed class ReplenishmentSuggestion
         PartRef partId,
         WarehouseRef warehouseId,
         decimal quantityAvailable,
+        decimal quantityOnOrder,
         decimal reorderPoint,
         decimal suggestedQuantity,
         DateTimeOffset raisedAtUtc)
@@ -37,6 +38,7 @@ public sealed class ReplenishmentSuggestion
         PartId = partId;
         WarehouseId = warehouseId;
         QuantityAvailable = quantityAvailable;
+        QuantityOnOrder = quantityOnOrder;
         ReorderPoint = reorderPoint;
         SuggestedQuantity = suggestedQuantity;
         RaisedAtUtc = raisedAtUtc;
@@ -68,6 +70,17 @@ public sealed class ReplenishmentSuggestion
     /// </para>
     /// </summary>
     public decimal QuantityAvailable { get; private set; }
+
+    /// <summary>
+    /// What is already on a purchase order and has not arrived.
+    /// <para>
+    /// Shown next to the available figure rather than netted into it. A buyer reading "2
+    /// available, reorder point 10" orders ten; the same buyer reading "2 available, 8 coming,
+    /// reorder point 10" orders two, or nothing. Netting them into one number takes that
+    /// judgement away, and takes it the expensive way.
+    /// </para>
+    /// </summary>
+    public decimal QuantityOnOrder { get; private set; }
 
     /// <summary>The level that triggered the suggestion.</summary>
     public decimal ReorderPoint { get; private set; }
@@ -108,13 +121,21 @@ public sealed class ReplenishmentSuggestion
     /// <summary>True while the buyer has not yet dealt with it.</summary>
     public bool IsOpen => Status == SuggestionStatus.Open;
 
-    /// <summary>How far below the trigger level the part has fallen.</summary>
-    public decimal Shortfall => ReorderPoint - QuantityAvailable;
+    /// <summary>
+    /// How far the position is below the trigger level, counting stock already on order.
+    /// <para>
+    /// This is what the buyer's list is sorted by, so it has to count what is coming: a part with
+    /// a delivery already on its way is not the most urgent thing on the list, however empty the
+    /// shelf looks.
+    /// </para>
+    /// </summary>
+    public decimal Shortfall => ReorderPoint - (QuantityAvailable + QuantityOnOrder);
 
     /// <summary>Opens a suggestion for a part in a warehouse.</summary>
     /// <param name="partId">The part that ran low.</param>
     /// <param name="warehouseId">Where it ran low.</param>
     /// <param name="quantityAvailable">What is left that is not already spoken for.</param>
+    /// <param name="quantityOnOrder">What is already on order and has not arrived.</param>
     /// <param name="reorderPoint">The level that triggered it.</param>
     /// <param name="suggestedQuantity">How much to order.</param>
     /// <param name="raisedAtUtc">When the signal arrived.</param>
@@ -122,6 +143,7 @@ public sealed class ReplenishmentSuggestion
         PartRef partId,
         WarehouseRef warehouseId,
         decimal quantityAvailable,
+        decimal quantityOnOrder,
         decimal reorderPoint,
         decimal suggestedQuantity,
         DateTimeOffset raisedAtUtc)
@@ -146,6 +168,7 @@ public sealed class ReplenishmentSuggestion
             partId,
             warehouseId,
             quantityAvailable,
+            quantityOnOrder,
             reorderPoint,
             suggestedQuantity,
             raisedAtUtc);
@@ -165,11 +188,13 @@ public sealed class ReplenishmentSuggestion
     /// </para>
     /// </summary>
     /// <param name="quantityAvailable">What is left now.</param>
+    /// <param name="quantityOnOrder">What is on order now.</param>
     /// <param name="reorderPoint">The trigger level now.</param>
     /// <param name="suggestedQuantity">How much to order now.</param>
     /// <param name="seenAtUtc">When this reading was taken.</param>
     public Result Refresh(
         decimal quantityAvailable,
+        decimal quantityOnOrder,
         decimal reorderPoint,
         decimal suggestedQuantity,
         DateTimeOffset seenAtUtc)
@@ -185,6 +210,7 @@ public sealed class ReplenishmentSuggestion
         }
 
         QuantityAvailable = quantityAvailable;
+        QuantityOnOrder = quantityOnOrder;
         ReorderPoint = reorderPoint;
         SuggestedQuantity = suggestedQuantity;
         LastSeenAtUtc = seenAtUtc;

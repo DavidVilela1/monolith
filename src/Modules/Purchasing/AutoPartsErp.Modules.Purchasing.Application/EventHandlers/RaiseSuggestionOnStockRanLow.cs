@@ -66,6 +66,7 @@ public sealed class RaiseSuggestionOnStockRanLow
         {
             Result refreshed = existing.Refresh(
                 integrationEvent.QuantityAvailable,
+                integrationEvent.QuantityOnOrder,
                 integrationEvent.ReorderPoint,
                 integrationEvent.ReorderQuantity,
                 _clock.UtcNow);
@@ -84,6 +85,7 @@ public sealed class RaiseSuggestionOnStockRanLow
                 part,
                 warehouse,
                 integrationEvent.QuantityAvailable,
+                integrationEvent.QuantityOnOrder,
                 integrationEvent.ReorderPoint,
                 integrationEvent.ReorderQuantity,
                 _clock.UtcNow);

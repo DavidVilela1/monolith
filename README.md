@@ -8,7 +8,7 @@ about:
 | Module | Schema | Order | What it owns |
 |---|---|---|---|
 | **Partners** | `partners` | 1 | Customers and suppliers, addresses, contacts, credit limits, trading status |
-| **Inventory** | `inventory` | 5 | Warehouses, stock balances, reservations, the movement ledger |
+| **Inventory** | `inventory` | 5 | Warehouses, stock balances, reservations, expected deliveries, the movement ledger |
 | **Catalog** | `catalog` | 10 | Parts, brands, categories, cross-references, vehicle fitment |
 | **Pricing** | `pricing` | 12 | Price lists, quantity breaks, customer agreements, price resolution |
 | **Purchasing** | `purchasing` | 15 | Purchase orders, goods receipt, replenishment suggestions |
@@ -17,7 +17,7 @@ about:
 | **Finance** | `finance` | 30 | The sales ledger: open items, receipts matched to the documents they pay, ageing |
 
 They share no code beyond two contract assemblies, and no module references another module's
-projects. 531 tests, all green — 498 that need nothing but the compiler, and 33 that need a real
+projects. 551 tests, all green — 518 that need nothing but the compiler, and 33 that need a real
 PostgreSQL because what they check does not exist until there is one.
 
 ---
@@ -149,7 +149,8 @@ POST /api/sales/orders/{salesOrderId}/lines
 ### Confirm it. Checks stock first, then the credit hold, then claims the stock.
 POST /api/sales/orders/{salesOrderId}/confirm
 
-### Parts at or below their reorder point, deepest shortfall first
+### Parts at or below their reorder point, counting what is already on
+### order, deepest shortfall first
 GET /api/purchasing/suggestions
 
 ### Open a series and record the code the tax authority returns for it. Three
@@ -442,6 +443,31 @@ that sentence is the only thing that will explain it.
 **Negative stock is a per-warehouse decision.** Off by default, because negative stock describes
 something physically impossible and every downstream valuation inherits the lie.
 
+**A fourth quantity, and it never counts as available.** *On order* is what a submitted purchase
+order is bringing and has not delivered. It exists for one decision — whether buying more would be
+buying the same thing twice — and `ProjectedAvailable` is the only place the two are added
+together. A counter that promised on-order stock would be promising goods that are not in the
+building, on a date nobody has confirmed.
+
+**On order is backed by rows, not by a counter.** Every expected delivery is an `IncomingStock`
+line naming the purchase order and the order line behind it, shaped deliberately like a
+reservation: they are the same kind of thing — a commitment against stock — pointing in opposite
+directions. A receipt takes the arrival off the line it arrived against; a cancellation or a short
+close drops what that specific order was still bringing. "Why does it say fourteen coming?" has an
+answer with an order number in it, which is the only kind of answer worth having when somebody is
+standing there disagreeing with the screen.
+
+**The reorder point is measured against the projected position.** A part with two on the shelf, a
+reorder point of ten and twenty arriving on Thursday does not need buying. Measured against
+available alone it would produce a fresh suggestion every morning until the lorry arrived, and a
+list that is wrong every morning is a list nobody reads — which also hides the parts that
+genuinely do need ordering. The check runs again when an order is cancelled or closed short: no
+stock moves at that moment, and it is exactly the moment the part may need buying in a hurry.
+
+**Over-delivery does not drive the figure negative.** A delivery larger than the order absorbs
+only what was outstanding. The extra is real stock and the receipt books it, but it was never on
+order and cannot come off a figure that never counted it.
+
 ### Pricing
 
 **Three things and the rules that turn them into one number.** A `PriceList` (named, one currency,
@@ -484,6 +510,12 @@ which is also how you avoid four separate €30 orders to the same supplier in o
 **At most one open suggestion per part per warehouse**, enforced by a partial unique index. Stock
 crossing the reorder point repeatedly — which it will, every time something is picked — refreshes
 the existing suggestion instead of building a pile of duplicates.
+
+**A suggestion counts what is already coming.** It carries the available quantity and the on-order
+quantity separately, and the list is ranked by the gap between the reorder point and their sum. A
+buyer reading "2 available, reorder point 10" orders ten; the same buyer reading "2 available, 8
+coming" orders two, or nothing. Netting the two into one number takes that judgement away, and
+usually takes it the expensive way.
 
 **The supplier is verified, not assumed.** Creating an order asks Partners whether the partner is
 an active supplier and takes their code from there.
@@ -727,6 +759,21 @@ concurrency in all three modules that hand out numbers.
 - SAF-T is generated in memory and returned in one response. A year's file for a busy branch is
   tens of megabytes, which is large for a response and fine for a machine; streaming it is the fix
   if it ever stops being fine.
+- The reorder point is a number somebody types. The honest version is consumption over the
+  supplier's lead time plus a safety margin, and the movement ledger already holds the consumption
+  half — what is missing is a lead time anywhere in the system, on the supplier or on the
+  part/supplier pair.
+- Nothing on a stock movement records what the goods cost. `unit_cost` exists on the ledger and is
+  always null, and `GoodsReceivedIntegrationEvent` carries the purchase price and throws it away.
+  Until that is wired there is no cost of sale, no margin, and no stock value — costing is the
+  next thing being built.
+- Transfers between warehouses are not implemented. `TransferIn` and `TransferOut` are in the
+  movement enum and nothing produces them.
+- Storage bins are recorded but never used: `StockMovement.InBin` has no caller, so no movement
+  says where in the warehouse anything went.
+- A stock count is a single command with no document behind it — no count sheet, no variance
+  report, no second pair of eyes. The ledger records the adjustment and the reason, which is the
+  floor rather than the goal.
 
 **Foundation work wanted along the way:**
 

@@ -44,9 +44,17 @@ public sealed class PublishPurchaseOrderSubmitted
                 domainEvent.Total,
                 domainEvent.CurrencyCode,
                 domainEvent.ExpectedOn,
+                Translate(domainEvent.Lines),
                 _tenantContext.TenantId),
             cancellationToken);
     }
+
+    /// <summary>Flattens the module's line records into the public ones.</summary>
+    internal static List<OrderedPartLine> Translate(IReadOnlyList<OrderedLine> lines) =>
+        lines
+            .Select(line => new OrderedPartLine(
+                line.LineId.Value, line.PartId.Value, line.Quantity, line.UnitCode))
+            .ToList();
 }
 
 /// <summary>
@@ -117,7 +125,50 @@ public sealed class PublishPurchaseOrderCancelled
             new PurchaseOrderCancelledIntegrationEvent(
                 domainEvent.PurchaseOrderId.Value,
                 domainEvent.OrderNumber,
+                domainEvent.WarehouseId.Value,
                 domainEvent.Reason,
+                PublishPurchaseOrderSubmitted.Translate(domainEvent.Lines),
+                _tenantContext.TenantId),
+            cancellationToken);
+    }
+}
+
+/// <summary>
+/// Republishes a short close, so the balance nobody is sending stops being expected.
+/// <para>
+/// The event that did not exist. An order closed short kept its outstanding quantity on
+/// Inventory's expected figure for ever — and since the reorder check now counts that figure, a
+/// part whose supplier once failed to complete a delivery would never be suggested for reorder
+/// again.
+/// </para>
+/// </summary>
+public sealed class PublishPurchaseOrderClosedShort
+    : IDomainEventHandler<PurchaseOrderClosedShortDomainEvent>
+{
+    private readonly IEventBus _eventBus;
+    private readonly ITenantContext _tenantContext;
+
+    /// <summary>Initializes the handler.</summary>
+    public PublishPurchaseOrderClosedShort(IEventBus eventBus, ITenantContext tenantContext)
+    {
+        _eventBus = eventBus;
+        _tenantContext = tenantContext;
+    }
+
+    /// <inheritdoc />
+    public Task HandleAsync(
+        PurchaseOrderClosedShortDomainEvent domainEvent,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(domainEvent);
+
+        return _eventBus.PublishAsync(
+            new PurchaseOrderClosedShortIntegrationEvent(
+                domainEvent.PurchaseOrderId.Value,
+                domainEvent.OrderNumber,
+                domainEvent.WarehouseId.Value,
+                domainEvent.Reason,
+                PublishPurchaseOrderSubmitted.Translate(domainEvent.Lines),
                 _tenantContext.TenantId),
             cancellationToken);
     }

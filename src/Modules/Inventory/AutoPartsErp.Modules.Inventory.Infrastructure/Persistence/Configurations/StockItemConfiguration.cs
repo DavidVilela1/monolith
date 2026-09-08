@@ -76,6 +76,7 @@ public sealed class StockItemConfiguration : IEntityTypeConfiguration<StockItem>
         builder.Property(item => item.ModifiedBy).HasMaxLength(120);
 
         ConfigureReservations(builder);
+        ConfigureIncoming(builder);
 
         // One balance per part per warehouse, enforced by the database rather than by hope:
         // two concurrent PartActivated deliveries would otherwise open two rows and split one
@@ -165,6 +166,100 @@ public sealed class StockItemConfiguration : IEntityTypeConfiguration<StockItem>
         });
 
         builder.Navigation(item => item.Reservations)
+            .UsePropertyAccessMode(PropertyAccessMode.Field);
+    }
+
+    /// <summary>
+    /// Maps the expected deliveries that back the on-order figure.
+    /// <para>
+    /// Deliberately shaped like the reservations above. They are the same kind of thing pointing
+    /// in opposite directions — a commitment against stock — and a reader who has understood one
+    /// should not have to learn a second pattern to understand the other.
+    /// </para>
+    /// </summary>
+    private static void ConfigureIncoming(EntityTypeBuilder<StockItem> builder)
+    {
+        builder.OwnsMany(item => item.Incoming, incoming =>
+        {
+            incoming.ToTable("stock_incoming");
+            incoming.WithOwner().HasForeignKey("stock_item_id");
+
+            incoming.HasKey(i => i.Id);
+
+            incoming.Property(i => i.Id)
+                .HasConversion(id => id.Value, value => new IncomingStockId(value))
+                .HasColumnName("id")
+                .ValueGeneratedNever();
+
+            incoming.Property(i => i.PurchaseOrderId)
+                .HasConversion(id => id.Value, value => new PurchaseOrderRef(value))
+                .HasColumnName("purchase_order_id")
+                .IsRequired();
+
+            incoming.Property(i => i.PurchaseOrderLineId)
+                .HasConversion(id => id.Value, value => new PurchaseOrderLineRef(value))
+                .HasColumnName("purchase_order_line_id")
+                .IsRequired();
+
+            incoming.Property(i => i.OrderNumber)
+                .HasColumnName("order_number")
+                .HasMaxLength(IncomingStock.MaxOrderNumberLength)
+                .IsRequired();
+
+            incoming.OwnsOne(i => i.Quantity, quantity =>
+            {
+                quantity.Property(q => q.Value)
+                    .HasColumnName("quantity")
+                    .HasPrecision(18, 4)
+                    .IsRequired();
+
+                quantity.Property(q => q.Unit)
+                    .HasColumnName("unit")
+                    .HasConversion(unit => unit.Code, code => UnitOfMeasure.FromCode(code))
+                    .HasMaxLength(8)
+                    .IsRequired();
+            });
+
+            incoming.Navigation(i => i.Quantity).IsRequired();
+
+            incoming.OwnsOne(i => i.ReceivedQuantity, quantity =>
+            {
+                quantity.Property(q => q.Value)
+                    .HasColumnName("received_quantity")
+                    .HasPrecision(18, 4)
+                    .IsRequired();
+
+                quantity.Property(q => q.Unit)
+                    .HasColumnName("received_unit")
+                    .HasConversion(unit => unit.Code, code => UnitOfMeasure.FromCode(code))
+                    .HasMaxLength(8)
+                    .IsRequired();
+            });
+
+            incoming.Navigation(i => i.ReceivedQuantity).IsRequired();
+
+            incoming.Property(i => i.ExpectedOn).HasColumnName("expected_on");
+
+            incoming.Property(i => i.Status)
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .IsRequired();
+
+            // One expectation per order line, and the database says so rather than the handler
+            // hoping. Two deliveries of the same submission arriving together would otherwise
+            // both find nothing and both insert, and the part would look twice as covered as it
+            // is - the exact failure that makes a buyer stop trusting the list.
+            incoming.HasIndex(i => i.PurchaseOrderLineId)
+                .IsUnique()
+                .HasDatabaseName("ux_stock_incoming_purchase_order_line");
+
+            // "What is this order still bringing?" - asked by the cancellation handler on every
+            // close, and by anyone chasing a supplier.
+            incoming.HasIndex(i => new { i.PurchaseOrderId, i.Status })
+                .HasDatabaseName("ix_stock_incoming_order_status");
+        });
+
+        builder.Navigation(item => item.Incoming)
             .UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }

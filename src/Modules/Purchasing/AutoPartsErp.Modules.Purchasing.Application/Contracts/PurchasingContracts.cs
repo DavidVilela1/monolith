@@ -111,7 +111,8 @@ public sealed record PurchaseOrderLineDto(
 /// <param name="Id">The suggestion.</param>
 /// <param name="PartId">The part that ran low.</param>
 /// <param name="WarehouseId">Where it ran low.</param>
-/// <param name="QuantityAvailable">What is left that is not already spoken for.</param>
+/// <param name="QuantityAvailable">What is on the shelf and not already spoken for.</param>
+/// <param name="QuantityOnOrder">What is already on a purchase order and has not arrived.</param>
 /// <param name="ReorderPoint">The level that triggered it.</param>
 /// <param name="SuggestedQuantity">How much to order.</param>
 /// <param name="Shortfall">How far below the trigger level it has fallen.</param>
@@ -125,6 +126,7 @@ public sealed record ReplenishmentSuggestionDto(
     Guid PartId,
     Guid WarehouseId,
     decimal QuantityAvailable,
+    decimal QuantityOnOrder,
     decimal ReorderPoint,
     decimal SuggestedQuantity,
     decimal Shortfall,

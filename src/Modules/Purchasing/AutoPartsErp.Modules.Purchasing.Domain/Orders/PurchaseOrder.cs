@@ -373,7 +373,14 @@ public sealed class PurchaseOrder : AggregateRoot<PurchaseOrderId>, IAuditable, 
         Money total = Total;
 
         Raise(new PurchaseOrderSubmittedDomainEvent(
-            Id, OrderNumber, SupplierId, DeliverToWarehouseId, total.Amount, total.Currency.Code, expectedOn));
+            Id,
+            OrderNumber,
+            SupplierId,
+            DeliverToWarehouseId,
+            total.Amount,
+            total.Currency.Code,
+            expectedOn,
+            Describe(line => line.Quantity)));
 
         return Result.Success();
     }
@@ -486,7 +493,16 @@ public sealed class PurchaseOrder : AggregateRoot<PurchaseOrderId>, IAuditable, 
         Status = PurchaseOrderStatus.Cancelled;
         ClosureReason = Clean(reason, MaxNotesLength);
 
-        Raise(new PurchaseOrderCancelledDomainEvent(Id, OrderNumber, ClosureReason!));
+        // What stops being expected is what has not arrived. On a cancellation that is the whole
+        // order, since nothing may be cancelled after a receipt - but reading it from the
+        // outstanding quantity rather than assuming means the rule and the payload cannot drift
+        // apart if that ever changes.
+        Raise(new PurchaseOrderCancelledDomainEvent(
+            Id,
+            OrderNumber,
+            DeliverToWarehouseId,
+            ClosureReason!,
+            Describe(line => line.OutstandingQuantity)));
 
         return Result.Success();
     }
@@ -521,10 +537,37 @@ public sealed class PurchaseOrder : AggregateRoot<PurchaseOrderId>, IAuditable, 
         Status = PurchaseOrderStatus.ClosedShort;
         ClosureReason = Clean(reason, MaxNotesLength);
 
-        Raise(new PurchaseOrderClosedShortDomainEvent(Id, OrderNumber, ClosureReason!));
+        Raise(new PurchaseOrderClosedShortDomainEvent(
+            Id,
+            OrderNumber,
+            DeliverToWarehouseId,
+            ClosureReason!,
+            Describe(line => line.OutstandingQuantity)));
 
         return Result.Success();
     }
+
+    /// <summary>
+    /// Flattens the lines for an event, taking the quantity that matters to this one.
+    /// <para>
+    /// Lines with nothing to say are left out: a line already received in full contributes
+    /// nothing to a cancellation, and sending it as a zero would make the consumer decide what
+    /// zero means.
+    /// </para>
+    /// <para>
+    /// Returns the concrete list rather than the interface. Private members that hand back an
+    /// interface over a type they just built are a CA1859 error here, and the analyser is right:
+    /// nothing inside this class needs the abstraction, and the events widen it to
+    /// <c>IReadOnlyList</c> at the boundary where it does matter.
+    /// </para>
+    /// </summary>
+    private List<OrderedLine> Describe(Func<PurchaseOrderLine, Quantity> quantity) =>
+        _lines
+            .Select(line => new { line.Id, line.PartId, Quantity = quantity(line) })
+            .Where(line => line.Quantity.Value > 0m)
+            .Select(line => new OrderedLine(
+                line.Id, line.PartId, line.Quantity.Value, line.Quantity.Unit.Code))
+            .ToList();
 
     private PurchaseOrderLine? FindLine(PurchaseOrderLineId lineId) =>
         _lines.Find(line => line.Id == lineId);

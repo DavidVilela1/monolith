@@ -23,6 +23,7 @@ namespace AutoPartsErp.Modules.Inventory.Domain.Stock;
 public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantScoped
 {
     private readonly List<StockReservation> _reservations = [];
+    private readonly List<IncomingStock> _incoming = [];
 
     private StockItem(StockItemId id, PartRef part, WarehouseId warehouseId, UnitOfMeasure unit)
         : base(id)
@@ -62,11 +63,28 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
     /// <summary>How much of <see cref="OnHand"/> is already spoken for.</summary>
     public Quantity Reserved { get; private set; } = null!;
 
-    /// <summary>What is on a purchase order and not yet received.</summary>
+    /// <summary>
+    /// What is on a purchase order and not yet received.
+    /// <para>
+    /// Kept in step with <see cref="Incoming"/> rather than set directly: it is the sum of the
+    /// outstanding expectations, stored because the reorder query filters on it and a filter
+    /// cannot be written against a sum computed in C#.
+    /// </para>
+    /// </summary>
     public Quantity OnOrder { get; private set; } = null!;
 
     /// <summary>What can still be sold: on hand minus reserved.</summary>
     public Quantity Available => OnHand.Subtract(Reserved);
+
+    /// <summary>
+    /// Available plus what is on order — the position used to decide whether to buy more.
+    /// <para>
+    /// Never show this to a salesperson. It counts goods that are not in the building, and a
+    /// counter that promises them has promised a delivery date it does not know. It exists for
+    /// exactly one decision: whether ordering more would be ordering the same thing twice.
+    /// </para>
+    /// </summary>
+    public Quantity ProjectedAvailable => Available.Add(OnOrder);
 
     /// <summary>The level at which replenishment should be suggested.</summary>
     public Quantity? ReorderPoint { get; private set; }
@@ -82,6 +100,9 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
 
     /// <summary>Claims currently held against this balance.</summary>
     public IReadOnlyCollection<StockReservation> Reservations => _reservations.AsReadOnly();
+
+    /// <summary>Deliveries expected against this balance, arrived and cancelled ones included.</summary>
+    public IReadOnlyCollection<IncomingStock> Incoming => _incoming.AsReadOnly();
 
     /// <inheritdoc />
     public Guid TenantId { get; set; }
@@ -370,22 +391,124 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
         return expired;
     }
 
-    /// <summary>Records what is expected in from suppliers but not yet received.</summary>
-    public Result SetOnOrder(decimal quantity)
+    /// <summary>
+    /// Records that a submitted purchase order line is bringing stock in.
+    /// <para>
+    /// Idempotent on the order line. The outbox delivers at-least-once and the inbox already
+    /// makes application exactly-once, so this is belt and braces — but it is the cheap kind, and
+    /// the failure it prevents is an expectation counted twice, which reads as stock arriving
+    /// that never will.
+    /// </para>
+    /// </summary>
+    /// <param name="purchaseOrderId">The order.</param>
+    /// <param name="purchaseOrderLineId">Its line.</param>
+    /// <param name="orderNumber">The order's number, for anyone asking where the goods are.</param>
+    /// <param name="quantity">How much was ordered. Must be positive.</param>
+    /// <param name="expectedOn">When it is expected, if the supplier has said.</param>
+    public Result ExpectIncoming(
+        PurchaseOrderRef purchaseOrderId,
+        PurchaseOrderLineRef purchaseOrderLineId,
+        string orderNumber,
+        decimal quantity,
+        DateOnly? expectedOn)
     {
-        if (quantity < 0m)
+        if (purchaseOrderId.IsEmpty || purchaseOrderLineId.IsEmpty)
         {
-            return InventoryErrors.Stock.OnOrderCannotBeNegative;
+            return InventoryErrors.Stock.PurchaseOrderRequired;
         }
 
-        Result<Quantity> parsed = Quantity.Create(quantity, Unit);
+        if (_incoming.Exists(item => item.PurchaseOrderLineId == purchaseOrderLineId))
+        {
+            return Result.Success();
+        }
+
+        Result<Quantity> parsed = ParsePositive(quantity);
         if (parsed.IsFailure)
         {
             return Result.Failure(parsed.Error);
         }
 
-        OnOrder = parsed.Value;
+        _incoming.Add(IncomingStock.Create(
+            purchaseOrderId,
+            purchaseOrderLineId,
+            Truncate(orderNumber, IncomingStock.MaxOrderNumberLength),
+            parsed.Value,
+            expectedOn));
+
+        OnOrder = OnOrder.Add(parsed.Value);
+
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Takes an arrival off the expected figure.
+    /// <para>
+    /// Deliberately cannot fail, and deliberately says nothing when the line is unknown. This runs
+    /// beside the receipt that puts the goods on the shelf, and the goods being on the shelf is
+    /// the fact that matters: a bookkeeping counter must never be the reason a delivery cannot be
+    /// booked in. An unknown line means the submission never reached this module — an order placed
+    /// before this was built, or an event that died in the dead letters — and the honest response
+    /// is to leave the figure where it is rather than drive it negative.
+    /// </para>
+    /// </summary>
+    /// <param name="purchaseOrderLineId">The line received against.</param>
+    /// <param name="quantity">How much arrived.</param>
+    /// <returns>How much of the arrival came off the on-order figure.</returns>
+    public Quantity ReceiveIncoming(PurchaseOrderLineRef purchaseOrderLineId, decimal quantity)
+    {
+        IncomingStock? expected = _incoming.Find(
+            item => item.PurchaseOrderLineId == purchaseOrderLineId);
+
+        if (expected is null || quantity <= 0m)
+        {
+            return Quantity.Zero(Unit);
+        }
+
+        Result<Quantity> parsed = Quantity.Create(quantity, Unit);
+
+        if (parsed.IsFailure)
+        {
+            return Quantity.Zero(Unit);
+        }
+
+        Quantity absorbed = expected.Receive(parsed.Value);
+        OnOrder = OnOrder.Subtract(absorbed);
+
+        return absorbed;
+    }
+
+    /// <summary>
+    /// Stops expecting everything still outstanding on an order, because it was cancelled or
+    /// closed short.
+    /// <para>
+    /// Checks the reorder point afterwards, and that check is the point of the method. The goods
+    /// stopping is exactly the moment the part may need buying again — from somebody else, or in
+    /// a hurry — and it is the one moment nothing else would notice, because no stock moved.
+    /// </para>
+    /// </summary>
+    /// <param name="purchaseOrderId">The order that will not be delivering.</param>
+    /// <returns>How many expectations were dropped.</returns>
+    public int CancelIncoming(PurchaseOrderRef purchaseOrderId)
+    {
+        int dropped = 0;
+
+        foreach (IncomingStock expected in _incoming)
+        {
+            if (expected.PurchaseOrderId != purchaseOrderId || !expected.IsOutstanding)
+            {
+                continue;
+            }
+
+            OnOrder = OnOrder.Subtract(expected.Cancel());
+            dropped++;
+        }
+
+        if (dropped > 0)
+        {
+            CheckReorderPoint();
+        }
+
+        return dropped;
     }
 
     /// <summary>Sets when to reorder and how much, or clears the policy when both are null.</summary>
@@ -429,9 +552,17 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
     /// <summary>Sets the bin this part is normally picked from.</summary>
     public void AssignDefaultBin(BinId binId) => DefaultBinId = binId;
 
-    /// <summary>True when available stock has reached the level that should trigger a reorder.</summary>
+    /// <summary>
+    /// True when the position has reached the level that should trigger a reorder.
+    /// <para>
+    /// Measured against <see cref="ProjectedAvailable"/>, not <see cref="Available"/>. A part with
+    /// two on the shelf, a reorder point of ten and twenty arriving on Thursday does not need
+    /// buying; a version of this that said it did would put the same line on the buyer's list
+    /// every morning for two weeks, and a list that is wrong every morning is a list nobody reads.
+    /// </para>
+    /// </summary>
     public bool NeedsReplenishment =>
-        ReorderPoint is { } point && Available <= point;
+        ReorderPoint is { } point && ProjectedAvailable <= point;
 
     private void CheckReorderPoint()
     {
@@ -440,11 +571,18 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
             return;
         }
 
-        if (Available <= point)
+        if (ProjectedAvailable <= point)
         {
             Raise(new StockFellBelowReorderPointDomainEvent(
-                Id, Part, WarehouseId, Available.Value, point.Value, amount.Value));
+                Id, Part, WarehouseId, Available.Value, OnOrder.Value, point.Value, amount.Value));
         }
+    }
+
+    private static string Truncate(string? value, int maxLength)
+    {
+        string trimmed = value?.Trim() ?? string.Empty;
+
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
     }
 
     private Result<Quantity> ParsePositive(decimal quantity)

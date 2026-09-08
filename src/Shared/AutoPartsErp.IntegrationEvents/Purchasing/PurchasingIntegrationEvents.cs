@@ -14,6 +14,7 @@ namespace AutoPartsErp.IntegrationEvents.Purchasing;
 /// <param name="Total">The order value.</param>
 /// <param name="CurrencyCode">Currency of the total.</param>
 /// <param name="ExpectedOn">When the goods are expected, when the supplier has confirmed a date.</param>
+/// <param name="Lines">What was ordered, so Inventory can expect it.</param>
 /// <param name="TenantId">The owning tenant.</param>
 public sealed record PurchaseOrderSubmittedIntegrationEvent(
     Guid PurchaseOrderId,
@@ -23,7 +24,30 @@ public sealed record PurchaseOrderSubmittedIntegrationEvent(
     decimal Total,
     string CurrencyCode,
     DateOnly? ExpectedOn,
+    IReadOnlyList<OrderedPartLine> Lines,
     Guid TenantId) : IntegrationEvent;
+
+/// <summary>
+/// One line of a purchase order, as it travels between modules.
+/// <para>
+/// The line identity travels with it and is the whole point: a receipt names the line it arrived
+/// against, so Inventory can take that arrival off the expectation it satisfies rather than off a
+/// shared running total. Arithmetic on a shared total is how an on-order figure ends up negative
+/// and nobody can say when it started.
+/// </para>
+/// </summary>
+/// <param name="PurchaseOrderLineId">The line.</param>
+/// <param name="PartId">The part.</param>
+/// <param name="Quantity">
+/// How much this line is about: what was ordered on a submission, what is still outstanding on a
+/// cancellation or a short close.
+/// </param>
+/// <param name="UnitCode">The unit the quantity is expressed in, e.g. EA, SET, L.</param>
+public sealed record OrderedPartLine(
+    Guid PurchaseOrderLineId,
+    Guid PartId,
+    decimal Quantity,
+    string UnitCode);
 
 /// <summary>
 /// Goods arrived against a purchase order line.
@@ -66,10 +90,37 @@ public sealed record GoodsReceivedIntegrationEvent(
 /// </summary>
 /// <param name="PurchaseOrderId">The order.</param>
 /// <param name="OrderNumber">Its human-readable number.</param>
+/// <param name="WarehouseId">Where the goods were expected, and now are not.</param>
 /// <param name="Reason">Why it was cancelled.</param>
+/// <param name="Lines">What stops being expected.</param>
 /// <param name="TenantId">The owning tenant.</param>
 public sealed record PurchaseOrderCancelledIntegrationEvent(
     Guid PurchaseOrderId,
     string OrderNumber,
+    Guid WarehouseId,
     string Reason,
+    IReadOnlyList<OrderedPartLine> Lines,
+    Guid TenantId) : IntegrationEvent;
+
+/// <summary>
+/// An order was closed with lines still outstanding: the supplier sent 96 of the 100 and both
+/// sides agreed to leave it there.
+/// <para>
+/// A different conversation with the supplier from a cancellation and the same fact for the
+/// shelf — the balance is not coming. Without this event the four that never arrived stay on the
+/// expected figure for ever, and every reorder check afterwards believes they are on their way.
+/// </para>
+/// </summary>
+/// <param name="PurchaseOrderId">The order.</param>
+/// <param name="OrderNumber">Its human-readable number.</param>
+/// <param name="WarehouseId">Where the balance was expected.</param>
+/// <param name="Reason">Why the shortfall was accepted.</param>
+/// <param name="Lines">The balance that stops being expected.</param>
+/// <param name="TenantId">The owning tenant.</param>
+public sealed record PurchaseOrderClosedShortIntegrationEvent(
+    Guid PurchaseOrderId,
+    string OrderNumber,
+    Guid WarehouseId,
+    string Reason,
+    IReadOnlyList<OrderedPartLine> Lines,
     Guid TenantId) : IntegrationEvent;

@@ -182,7 +182,8 @@ public sealed class PurchasingReadStore : IPurchasingReadStore
         // cost a sale. Written out rather than using the Shortfall property, which is C# and
         // would drag the whole table into memory to sort it.
         List<ReplenishmentSuggestion> rows = await query
-            .OrderByDescending(suggestion => suggestion.ReorderPoint - suggestion.QuantityAvailable)
+            .OrderByDescending(suggestion =>
+                suggestion.ReorderPoint - (suggestion.QuantityAvailable + suggestion.QuantityOnOrder))
             .ThenBy(suggestion => suggestion.RaisedAtUtc)
             .Skip(page.Skip)
             .Take(page.PageSize)
@@ -194,6 +195,7 @@ public sealed class PurchasingReadStore : IPurchasingReadStore
             suggestion.PartId.Value,
             suggestion.WarehouseId.Value,
             suggestion.QuantityAvailable,
+            suggestion.QuantityOnOrder,
             suggestion.ReorderPoint,
             suggestion.SuggestedQuantity,
             suggestion.Shortfall,

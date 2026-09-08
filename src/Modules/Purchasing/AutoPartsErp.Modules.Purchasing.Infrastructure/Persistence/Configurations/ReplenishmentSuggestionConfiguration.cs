@@ -43,6 +43,7 @@ public sealed class ReplenishmentSuggestionConfiguration
             .IsRequired();
 
         builder.Property(suggestion => suggestion.QuantityAvailable).HasPrecision(18, 4).IsRequired();
+        builder.Property(suggestion => suggestion.QuantityOnOrder).HasPrecision(18, 4).IsRequired();
         builder.Property(suggestion => suggestion.ReorderPoint).HasPrecision(18, 4).IsRequired();
         builder.Property(suggestion => suggestion.SuggestedQuantity).HasPrecision(18, 4).IsRequired();
 

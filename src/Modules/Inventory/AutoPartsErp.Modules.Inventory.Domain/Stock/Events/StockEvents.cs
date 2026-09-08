@@ -84,13 +84,20 @@ public sealed record StockReservationExpiredDomainEvent(
     decimal Quantity) : DomainEvent;
 
 /// <summary>
-/// Raised when available stock reaches the reorder point. Purchasing turns this into a
+/// Raised when the projected position reaches the reorder point. Purchasing turns this into a
 /// replenishment suggestion.
+/// <para>
+/// The trigger counts stock already on order, so an order placed last week suppresses this while
+/// it is in transit. Both figures travel, because the buyer deciding how much to order needs to
+/// see them apart: two on the shelf with twenty arriving on Thursday is a different decision from
+/// two on the shelf with nothing coming, and a single netted number cannot tell them apart.
+/// </para>
 /// </summary>
 /// <param name="StockItemId">The balance affected.</param>
 /// <param name="Part">The part.</param>
 /// <param name="WarehouseId">The warehouse.</param>
-/// <param name="Available">What is left that is not spoken for.</param>
+/// <param name="Available">What is on the shelf and not spoken for.</param>
+/// <param name="OnOrder">What is on a purchase order and has not arrived.</param>
 /// <param name="ReorderPoint">The level that triggered this.</param>
 /// <param name="ReorderQuantity">The suggested order quantity.</param>
 public sealed record StockFellBelowReorderPointDomainEvent(
@@ -98,5 +105,6 @@ public sealed record StockFellBelowReorderPointDomainEvent(
     PartRef Part,
     WarehouseId WarehouseId,
     decimal Available,
+    decimal OnOrder,
     decimal ReorderPoint,
     decimal ReorderQuantity) : DomainEvent;

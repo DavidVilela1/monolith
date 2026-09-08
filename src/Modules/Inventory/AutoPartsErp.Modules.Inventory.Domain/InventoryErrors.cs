@@ -101,9 +101,12 @@ public static class InventoryErrors
                 "inventory.stock.adjustment_no_change",
                 "The counted quantity matches the current balance, so there is nothing to adjust.");
 
-        /// <summary>Expected quantities cannot be negative.</summary>
-        public static readonly Error OnOrderCannotBeNegative =
-            Error.Validation("inventory.stock.on_order_negative", "An on-order quantity cannot be negative.");
+        /// <summary>An expected delivery has to name the order that is bringing it.</summary>
+        public static readonly Error PurchaseOrderRequired =
+            Error.Validation(
+                "inventory.stock.purchase_order_required",
+                "An expected delivery has to name the purchase order and line behind it. "
+                + "An on-order quantity nobody can trace back to an order is a number, not a fact.");
 
         /// <summary>The reservation does not exist on this record.</summary>
         public static readonly Error ReservationNotFound =

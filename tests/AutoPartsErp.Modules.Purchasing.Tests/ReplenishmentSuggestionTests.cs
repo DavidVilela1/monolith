@@ -18,9 +18,26 @@ public sealed class ReplenishmentSuggestionTests
     private static ReplenishmentSuggestion NewSuggestion(
         decimal available = 2m,
         decimal reorderPoint = 10m,
-        decimal suggested = 40m) =>
-        ReplenishmentSuggestion.Open(new PartRef(Guid.NewGuid()), Warehouse, available, reorderPoint, suggested, Now)
+        decimal suggested = 40m,
+        decimal onOrder = 0m) =>
+        ReplenishmentSuggestion.Open(
+            new PartRef(Guid.NewGuid()), Warehouse, available, onOrder, reorderPoint, suggested, Now)
             .Value;
+
+    /// <summary>
+    /// The shortfall is what the buyer's list is sorted by, so it has to count what is already on
+    /// its way. Sorted on available alone, a part with a delivery arriving on Thursday outranks a
+    /// part with nothing coming — which puts the wrong thing at the top of the list on the one
+    /// screen whose whole purpose is ordering.
+    /// </summary>
+    [Fact]
+    public void The_shortfall_counts_stock_already_on_order()
+    {
+        ReplenishmentSuggestion suggestion = NewSuggestion(available: 2m, reorderPoint: 10m, onOrder: 6m);
+
+        suggestion.QuantityOnOrder.Should().Be(6m);
+        suggestion.Shortfall.Should().Be(2m);
+    }
 
     [Fact]
     public void A_new_suggestion_is_open_and_waiting_for_a_buyer()
@@ -52,7 +69,7 @@ public sealed class ReplenishmentSuggestionTests
     public void Suggesting_an_order_for_nothing_is_refused()
     {
         Result<ReplenishmentSuggestion> suggestion = ReplenishmentSuggestion
-            .Open(new PartRef(Guid.NewGuid()), Warehouse, 2m, 10m, 0m, Now);
+            .Open(new PartRef(Guid.NewGuid()), Warehouse, 2m, 0m, 10m, 0m, Now);
 
         suggestion.IsFailure.Should().BeTrue();
         suggestion.Error.Code.Should().Be("purchasing.suggestion.quantity_not_positive");
@@ -62,7 +79,7 @@ public sealed class ReplenishmentSuggestionTests
     public void A_suggestion_needs_a_part()
     {
         ReplenishmentSuggestion
-            .Open(PartRef.Empty, Warehouse, 2m, 10m, 40m, Now)
+            .Open(PartRef.Empty, Warehouse, 2m, 0m, 10m, 40m, Now)
             .Error.Code.Should().Be("purchasing.suggestion.part_required");
     }
 
@@ -70,7 +87,7 @@ public sealed class ReplenishmentSuggestionTests
     public void A_suggestion_needs_a_warehouse()
     {
         ReplenishmentSuggestion
-            .Open(new PartRef(Guid.NewGuid()), WarehouseRef.Empty, 2m, 10m, 40m, Now)
+            .Open(new PartRef(Guid.NewGuid()), WarehouseRef.Empty, 2m, 0m, 10m, 40m, Now)
             .Error.Code.Should().Be("purchasing.suggestion.warehouse_required");
     }
 
@@ -79,7 +96,7 @@ public sealed class ReplenishmentSuggestionTests
     {
         ReplenishmentSuggestion suggestion = NewSuggestion(available: 2m, suggested: 40m);
 
-        suggestion.Refresh(1m, 10m, 45m, Now.AddMinutes(5)).IsSuccess.Should().BeTrue();
+        suggestion.Refresh(1m, 0m, 10m, 45m, Now.AddMinutes(5)).IsSuccess.Should().BeTrue();
 
         suggestion.QuantityAvailable.Should().Be(1m);
         suggestion.SuggestedQuantity.Should().Be(45m);
@@ -93,7 +110,7 @@ public sealed class ReplenishmentSuggestionTests
         ReplenishmentSuggestion suggestion = NewSuggestion();
         suggestion.ClearDomainEvents();
 
-        suggestion.Refresh(1m, 10m, 45m, Now.AddMinutes(5));
+        suggestion.Refresh(1m, 0m, 10m, 45m, Now.AddMinutes(5));
 
         suggestion.DomainEvents.Should().BeEmpty();
     }
@@ -118,7 +135,7 @@ public sealed class ReplenishmentSuggestionTests
         ReplenishmentSuggestion suggestion = NewSuggestion();
         suggestion.MarkOrdered(PurchaseOrderId.New());
 
-        Result refreshed = suggestion.Refresh(1m, 10m, 45m, Now.AddMinutes(5));
+        Result refreshed = suggestion.Refresh(1m, 0m, 10m, 45m, Now.AddMinutes(5));
 
         refreshed.IsFailure.Should().BeTrue();
         refreshed.Error.Code.Should().Be("purchasing.suggestion.not_open");

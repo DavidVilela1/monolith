@@ -16,10 +16,10 @@ namespace AutoPartsErp.Modules.Inventory.Application.EventHandlers;
 /// along the way; they meet only at two records and a Guid.
 /// </para>
 /// <para>
-/// Note what this handler does <i>not</i> do: it does not clear the on-order quantity, because
-/// nothing sets it yet. <c>SetOnOrder</c> exists on the aggregate and is still called by nobody —
-/// wiring it to the submitted-order event is the obvious next thing, and would make "how many are
-/// actually coming?" answerable at the counter.
+/// It also takes the arrival off what was expected. The two have to happen together and in one
+/// transaction: a receipt that raised the balance without lowering the expectation would count
+/// the same goods twice — once on the shelf and once on their way to it — and the reorder check
+/// reads the sum of those two.
 /// </para>
 /// </summary>
 public sealed class ReceiveStockOnGoodsReceived
@@ -119,6 +119,13 @@ public sealed class ReceiveStockOnGoodsReceived
                 $"Could not receive {integrationEvent.Quantity} of part {integrationEvent.PartId} " +
                 $"against {integrationEvent.OrderNumber}: {movement.Error}");
         }
+
+        // Cannot fail, and deliberately silent when the line is unknown to this module: the goods
+        // are on the shelf, which is the fact that matters, and a bookkeeping counter must never
+        // be the reason a delivery cannot be booked in.
+        stockItem.ReceiveIncoming(
+            new PurchaseOrderLineRef(integrationEvent.PurchaseOrderLineId),
+            integrationEvent.Quantity);
 
         _movements.Add(movement.Value);
 
