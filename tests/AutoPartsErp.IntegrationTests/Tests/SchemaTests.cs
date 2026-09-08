@@ -1,3 +1,4 @@
+using AutoPartsErp.Modules.Access.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Catalog.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Finance.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Inventory.Infrastructure.Persistence;
@@ -44,6 +45,7 @@ public sealed class SchemaTests
     [Fact]
     public async Task Every_module_has_applied_all_of_its_migrations()
     {
+        await AssertMigratedAsync<AccessDbContext>();
         await AssertMigratedAsync<PartnersDbContext>();
         await AssertMigratedAsync<InventoryDbContext>();
         await AssertMigratedAsync<CatalogDbContext>();
@@ -56,6 +58,7 @@ public sealed class SchemaTests
 
     /// <summary>Each module owns its own schema, and they are all there.</summary>
     [Theory]
+    [InlineData("access")]
     [InlineData("partners")]
     [InlineData("inventory")]
     [InlineData("catalog")]

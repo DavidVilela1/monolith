@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Access.Application</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Access.Application</AssemblyName>
+    <Description>
+      Signing in, managing users and roles, and turning a set of roles into the permissions that
+      go into a token.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoPartsErp.Modules.Access.Domain\AutoPartsErp.Modules.Access.Domain.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.IntegrationEvents\AutoPartsErp.IntegrationEvents.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.ModuleContracts\AutoPartsErp.ModuleContracts.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Access.Domain</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Access.Domain</AssemblyName>
+    <Description>
+      Who may use this system and what they are allowed to do. Users, the roles they hold, and
+      the permissions those roles carry. No cryptography lives here: a password hash is an
+      opaque string to this project.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.SharedKernel\AutoPartsErp.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>

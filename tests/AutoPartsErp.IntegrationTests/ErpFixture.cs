@@ -1,6 +1,8 @@
 using System.Globalization;
 using AutoPartsErp.IntegrationEvents.Catalog;
 using AutoPartsErp.Modules.Abstractions.DependencyInjection;
+using AutoPartsErp.Modules.Access.Infrastructure.Persistence;
+using AutoPartsErp.Modules.Access.Presentation;
 using AutoPartsErp.Modules.Catalog.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Catalog.Presentation;
 using AutoPartsErp.Modules.Finance.Infrastructure.Persistence;
@@ -151,6 +153,18 @@ public sealed class ErpFixture : IAsyncLifetime
                 ["Erp:DefaultTenantId"] = "00000000-0000-0000-0000-000000000001",
                 ["Erp:DefaultTenantCode"] = "TEST",
 
+                // Validated at registration, so a missing one refuses to start. Thirty-two
+                // characters of nothing in particular: these tests never present a token, because
+                // the fixture builds the container rather than the HTTP pipeline and there is no
+                // authentication middleware in front of anything it calls.
+                ["Erp:Access:SigningKey"] = "integration-tests-signing-key-32-chars",
+
+                // No bootstrap administrator. Every test runs against a database of its own and
+                // creates whatever it needs; an account appearing out of configuration would be a
+                // row no test asked for, in the one module where an unexpected row is a way in.
+                ["Erp:Access:BootstrapAdminEmail"] = string.Empty,
+                ["Erp:Access:BootstrapAdminPassword"] = string.Empty,
+
                 // Both are validated at registration and both refuse an empty value: a missing NIF
                 // produces a QR code whose field A is blank, and an unknown region produces the
                 // wrong VAT rates on every document. 999999990 is the tax authority's own
@@ -205,6 +219,7 @@ public sealed class ErpFixture : IAsyncLifetime
 
         services.AddErpModules(
             configuration,
+            new AccessModule(),
             new PartnersModule(),
             new InventoryModule(),
             new CatalogModule(),
@@ -234,6 +249,7 @@ public sealed class ErpFixture : IAsyncLifetime
     {
         using IServiceScope scope = provider.CreateScope();
 
+        await MigrateAsync<AccessDbContext>(scope).ConfigureAwait(false);
         await MigrateAsync<PartnersDbContext>(scope).ConfigureAwait(false);
         await MigrateAsync<InventoryDbContext>(scope).ConfigureAwait(false);
         await MigrateAsync<CatalogDbContext>(scope).ConfigureAwait(false);

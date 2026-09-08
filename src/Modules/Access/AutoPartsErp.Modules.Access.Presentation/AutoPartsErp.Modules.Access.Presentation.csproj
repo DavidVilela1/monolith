@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Access.Presentation</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Access.Presentation</AssemblyName>
+    <Description>The Access module's HTTP surface and its IModule entry point.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoPartsErp.Modules.Access.Infrastructure\AutoPartsErp.Modules.Access.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

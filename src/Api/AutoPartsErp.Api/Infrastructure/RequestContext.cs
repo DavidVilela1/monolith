@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using AutoPartsErp.Modules.Abstractions.Http;
 using AutoPartsErp.SharedKernel.Abstractions;
 
 namespace AutoPartsErp.Api.Infrastructure;
@@ -6,13 +7,19 @@ namespace AutoPartsErp.Api.Infrastructure;
 /// <summary>
 /// Resolves the tenant for the current request.
 /// <para>
-/// Until authentication is wired up, the tenant comes from an <c>X-Tenant-Id</c> header and
-/// falls back to a configured default. The important thing is that the rest of the system
-/// already asks for the tenant through this interface, so replacing this with a claim read from
-/// a validated token later touches one file rather than every query in the application.
+/// From a claim inside a validated token, and from nowhere else. There used to be an
+/// <c>X-Tenant-Id</c> header here, which was a way of saying "I am company B" that company A
+/// could also say — anybody who could reach the API could read anybody's data by changing one
+/// header. A claim cannot be edited by whoever is holding the token, because editing it breaks
+/// the signature.
 /// </para>
 /// <para>
-/// An explicitly set <see cref="AmbientTenant"/> wins over everything else. That is how the
+/// The default tenant survives, and only for calls with no authenticated user behind them: the
+/// health check, the root document, and the seeder that has to create the first administrator
+/// before anybody can sign in. A request that carries a token gets that token's tenant or none.
+/// </para>
+/// <para>
+/// An explicitly set <see cref="AmbientTenant"/> still wins over everything. That is how the
 /// outbox processor tells a handler which company's data it is working on: there is no request
 /// behind a background sweep, and without this the tenant would quietly fall back to the default
 /// and one company's goods would be received onto another company's shelf.
@@ -20,12 +27,6 @@ namespace AutoPartsErp.Api.Infrastructure;
 /// </summary>
 public sealed class HttpTenantContext : ITenantContext
 {
-    /// <summary>The header a client uses to select a tenant while authentication is not yet in place.</summary>
-    public const string TenantHeader = "X-Tenant-Id";
-
-    /// <summary>The claim the tenant will be read from once tokens are issued.</summary>
-    public const string TenantClaim = "tenant_id";
-
     private readonly IHttpContextAccessor _accessor;
     private readonly AmbientTenant _ambient;
     private readonly Guid _defaultTenantId;
@@ -63,24 +64,17 @@ public sealed class HttpTenantContext : ITenantContext
                 return _defaultTenantId;
             }
 
-            string? claim = context.User.FindFirstValue(TenantClaim);
-            if (Guid.TryParse(claim, out Guid fromClaim))
-            {
-                return fromClaim;
-            }
+            string? claim = context.User.FindFirstValue(ErpClaims.TenantId);
 
-            if (context.Request.Headers.TryGetValue(TenantHeader, out Microsoft.Extensions.Primitives.StringValues header)
-                && Guid.TryParse(header.ToString(), out Guid fromHeader))
-            {
-                return fromHeader;
-            }
-
-            return _defaultTenantId;
+            return Guid.TryParse(claim, out Guid fromClaim) ? fromClaim : _defaultTenantId;
         }
     }
 
     /// <inheritdoc />
-    public string TenantCode => _ambient.TenantCode ?? _defaultTenantCode;
+    public string TenantCode =>
+        _ambient.TenantCode
+        ?? _accessor.HttpContext?.User.FindFirstValue(ErpClaims.TenantCode)
+        ?? _defaultTenantCode;
 }
 
 /// <summary>

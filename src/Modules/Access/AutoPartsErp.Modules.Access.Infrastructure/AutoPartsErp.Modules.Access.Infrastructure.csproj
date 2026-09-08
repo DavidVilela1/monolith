@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Modules.Access.Infrastructure</RootNamespace>
+    <AssemblyName>AutoPartsErp.Modules.Access.Infrastructure</AssemblyName>
+    <Description>
+      The Access module's persistence, its password hashing and its token signing. The two
+      cryptographic jobs in this system live here and are both delegated to libraries.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="EFCore.NamingConventions" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoPartsErp.Modules.Access.Application\AutoPartsErp.Modules.Access.Application.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.Modules.Abstractions\AutoPartsErp.Modules.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\Shared\AutoPartsErp.Persistence\AutoPartsErp.Persistence.csproj" />
+  </ItemGroup>
+
+</Project>

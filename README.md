@@ -2,11 +2,12 @@
 
 An integrated ERP for **automotive parts distribution**, built as a modular monolith on .NET 8.
 
-Eight modules are in place and talking to each other, including the one Portuguese law cares
+Nine modules are in place and talking to each other, including the one Portuguese law cares
 about:
 
 | Module | Schema | Order | What it owns |
 |---|---|---|---|
+| **Access** | `access` | 0 | Who may use the system: users, the roles they hold, and the permissions those carry |
 | **Partners** | `partners` | 1 | Customers and suppliers, addresses, contacts, credit limits, trading status |
 | **Inventory** | `inventory` | 5 | Warehouses, balances, reservations, expected deliveries, valuation, counts, transfers, the movement ledger |
 | **Catalog** | `catalog` | 10 | Parts, brands, categories, cross-references, vehicle fitment |
@@ -17,7 +18,7 @@ about:
 | **Finance** | `finance` | 30 | The sales ledger: open items, receipts matched to the documents they pay, ageing |
 
 They share no code beyond two contract assemblies, and no module references another module's
-projects. 602 tests, all green — 569 that need nothing but the compiler, and 33 that need a real
+projects. 628 tests, all green — 594 that need nothing but the compiler, and 34 that need a real
 PostgreSQL because what they check does not exist until there is one.
 
 ---
@@ -68,13 +69,44 @@ dotnet run --project src/Api/AutoPartsErp.Api
 Open **http://localhost:5150/swagger**.
 
 Each module carries its own migrations and its own `__migrations_history` table inside its own
-schema. In Development the host applies all eight on start, then seeds warehouses, brands,
+schema. In Development the host applies all nine on start, then seeds warehouses, brands,
 categories, parts and a few partners — so there is something to query immediately.
+
+Access is the one module whose seeding is not a development convenience: it creates the starting
+roles and the first administrator wherever it runs, because a database with no users is a system
+nobody can sign in to.
 
 Sales and Pricing are deliberately not seeded. A customer account is not Sales' to invent: it
 arrives as an event when Partners grants the customer role, so the seeded partners populate it
 through the outbox on the first run. A price list is a commercial decision, and inventing a
 default one would be inventing what the company charges.
+
+### Configuring Access
+
+`Erp:Access` carries the signing key and the first administrator.
+
+| Setting | What it is |
+|---|---|
+| `SigningKey` | What every token is signed with. At least 32 characters, and a secret. |
+| `AccessTokenMinutes` | How long a token is accepted. 15 by default, and short on purpose. |
+| `RefreshTokenDays` | How long a session survives without a password. 14 by default. |
+| `BootstrapAdminEmail` | The first administrator, created only when there are no users at all. |
+| `BootstrapAdminPassword` | Their password. They must change it on first sign-in. |
+
+**Whoever holds `SigningKey` can mint a token for anybody with any permission.** It belongs in
+user secrets or an environment variable, never in a file that goes into version control. It is
+validated at startup and the application refuses to start without one, because a deployment that
+cannot authenticate anybody should say so while somebody is still watching the console.
+
+The bootstrap administrator exists because a database with no users is a system nobody can sign in
+to, and the screen that would create the first user is behind the sign-in. It is created once, on
+an empty users table, and never again — a company with an administrator has somebody who can
+create the rest.
+
+Six roles are created alongside it: **Administrator**, **Counter sales**, **Warehouse**,
+**Warehouse manager**, **Buyer** and **Accounts**. They are real jobs rather than tidy
+abstractions, and everything except the administrator can be renamed, re-permissioned or deleted,
+because no two distributors divide the work the same way.
 
 ### Adding a migration
 
@@ -121,6 +153,10 @@ impossible to mistake the output for a legal document.
 ## Try it
 
 ```http
+### Sign in. Everything else needs the token this returns.
+POST /api/access/sign-in
+{ "email": "admin@autopecas.local", "password": "..." }
+
 ### Everything that fits a 2015 Golf VII
 GET /api/catalog/parts/for-vehicle?make=Volkswagen&model=Golf VII&year=2015
 
@@ -437,6 +473,56 @@ core with a refundable deposit. A part sold against a core cannot go live withou
 sold down and still supported for warranty, but no longer purchased — which is why "sellable" and
 "purchasable" are two different questions with two different answers, and why `ICatalogDirectory`
 returns both.
+
+### Access
+
+**Everything is closed by default.** The API's fallback policy requires an authenticated caller,
+so a route added later without a thought about who may call it is refused rather than open. Three
+routes say otherwise — sign in, refresh, sign out — because they are where a token comes from.
+
+**The tenant is a claim, not a header.** There used to be an `X-Tenant-Id` header here, which was
+a way of saying "I am company B" that company A could also say: anybody who could reach the API
+could read anybody's data by changing one header. A claim inside a signed token cannot be edited
+by whoever is holding it.
+
+**Permissions, grouped into roles.** Thirty-six permissions named `module.thing.verb`, and roles
+are named bundles of them. Permissions live on the role rather than on the user, so giving
+somebody an exception means giving them a second role — which keeps "why can she do this?" to a
+list of role names instead of an audit of one person's history.
+
+**Counting stock and accepting the count are different permissions.** So are drafting a document
+and issuing one, and raising a purchase order and committing the company to it. Every one of those
+splits exists because the two halves are different acts with different consequences, and a single
+permission would make the separation of duties this system keeps writing about unenforceable.
+
+**Nothing cryptographic is hand-written.** Passwords go through the ASP.NET Core `PasswordHasher`
+(PBKDF2, per-password salt, a version byte for the day the parameters change); tokens are signed
+with the standard libraries. Both live behind one interface each in the infrastructure, so what a
+reviewer has to look at hard is findable, and neither the domain nor the use cases can quietly do
+any of it themselves.
+
+**Sign-in tells you nothing you did not already know.** No account, wrong password and closed
+account produce one identical error — telling them apart turns the endpoint into a way of
+discovering who has an account here. The hash is verified even when there is no account, because
+otherwise the endpoint answers unknown addresses faster than known ones and the timing says what
+the message would not.
+
+**Five wrong passwords lock the account for fifteen minutes.** Long enough that guessing stops
+being worth doing, short enough that somebody who fat-fingered their own password goes for a
+coffee.
+
+**Access tokens last fifteen minutes; sessions last a fortnight.** A signed token cannot be
+withdrawn, so its lifetime is exactly how long somebody keeps working after their access is taken
+away. A refresh handle behind it makes the window short without making people sign in all day.
+Each handle works once: presenting one twice ends every session that user has, because it means
+either a stolen copy or a client bug.
+
+**An account is closed, never deleted.** Their name is on documents that have to stay explicable
+for ten years.
+
+**The last administrator cannot be removed.** A company that takes away the last account holding
+`access.role.manage` cannot give it back — the screen that would do it is behind the permission
+nobody has — and the only remedy is somebody with a database client.
 
 ### Inventory
 
@@ -845,6 +931,17 @@ concurrency in all three modules that hand out numbers.
 
 **Known issues:**
 
+- A user belongs to one company. Somebody who works for two in a group needs two logins.
+- A permission taken away from a role reaches somebody already signed in only when their access
+  token expires — up to fifteen minutes. Shortening that further, or checking the database on
+  every request, is the trade nobody has needed to make yet.
+- Signing out withdraws the refresh handle but cannot withdraw the access token, which stays
+  valid for its remaining minutes. That is what a signed token is.
+- The endpoints of the other eight modules are not yet behind permissions. They require an
+  authenticated caller — the fallback policy sees to that — but any authenticated caller. The
+  `RequirePermission` extension and the whole permission catalogue exist; putting them on eight
+  modules' routes is the next pass.
+
 - A malformed `warehouseId` in a request body returns 500 rather than 400. Bad client input
   should never surface as a server error.
 - Purchase order lines have no concurrency token of their own, so two people editing different
@@ -884,8 +981,10 @@ concurrency in all three modules that hand out numbers.
 
 **Foundation work wanted along the way:**
 
-- Authentication and authorisation. The tenant currently comes from an `X-Tenant-Id` header;
-  `ITenantContext` is the seam where a validated token replaces it.
+- Single sign-on. Users live in the `access` schema and this system issues its own tokens, which
+  is right for an on-premises install and wrong for a customer who already has an identity
+  provider. `IAccessTokenIssuer` and the API's validation parameters are the two places that
+  change.
 - A proper vehicle taxonomy. Fitment is deliberately flat for now; the industry shapes are
   **TecDoc** in Europe and **ACES/PIES** in North America.
 - Full-text and fuzzy part search using PostgreSQL `pg_trgm`, for partial and mistyped numbers.

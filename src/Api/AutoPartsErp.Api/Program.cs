@@ -1,9 +1,14 @@
 using System.Globalization;
+using System.Text;
 using AutoPartsErp.Api.Infrastructure;
 using AutoPartsErp.IntegrationEvents.Catalog;
 using AutoPartsErp.Modules.Abstractions.DependencyInjection;
 using AutoPartsErp.Modules.Abstractions.Http;
 using AutoPartsErp.Modules.Abstractions.Modules;
+using AutoPartsErp.Modules.Access.Infrastructure.Persistence;
+using AutoPartsErp.Modules.Access.Infrastructure.Persistence.Seed;
+using AutoPartsErp.Modules.Access.Infrastructure.Security;
+using AutoPartsErp.Modules.Access.Presentation;
 using AutoPartsErp.Modules.Catalog.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Catalog.Infrastructure.Persistence.Seed;
 using AutoPartsErp.Modules.Catalog.Presentation;
@@ -25,7 +30,10 @@ using AutoPartsErp.Modules.Sales.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Sales.Presentation;
 using AutoPartsErp.Persistence;
 using AutoPartsErp.SharedKernel.Abstractions;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
 
@@ -62,6 +70,55 @@ try
     builder.Services.AddProblemDetails();
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
+    // ---------------------------------------------------------------------------------
+    // Who is calling, and what they may do
+    //
+    // The signing key is read here as well as inside the Access module, and deliberately not
+    // shared through a service: validation has to be configured before the container is built,
+    // and a deployment where the issuer and the validator disagree about the key is one where
+    // every token this system mints is rejected by this system.
+    // ---------------------------------------------------------------------------------
+    AccessOptions access = builder.Configuration
+        .GetSection(AccessOptions.SectionName)
+        .Get<AccessOptions>() ?? new AccessOptions();
+
+    builder.Services
+        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(options =>
+        {
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer = access.Issuer,
+                ValidateAudience = true,
+                ValidAudience = access.Audience,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes(
+                        string.IsNullOrWhiteSpace(access.SigningKey)
+                            ? new string('0', 32)
+                            : access.SigningKey)),
+
+                // Zero, not the default five minutes. That default exists for clocks that drift
+                // between separate machines; here the issuer and the validator are the same
+                // process, and it would silently add five minutes to the life of every token -
+                // to a lifetime deliberately set at fifteen.
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.Zero,
+            };
+        });
+
+    // Fail closed. Every endpoint requires an authenticated caller unless it says otherwise, so
+    // a route added later without a thought about who may call it is refused rather than open.
+    // The three that say otherwise are sign-in, refresh and sign-out, which cannot require a
+    // token because they are where one comes from.
+    builder.Services.AddAuthorization(options =>
+        options.FallbackPolicy = new AuthorizationPolicyBuilder()
+            .RequireAuthenticatedUser()
+            .Build());
+
+    builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen(options =>
     {
@@ -76,6 +133,32 @@ try
         {
             options.IncludeXmlComments(file, includeControllerXmlComments: true);
         }
+
+        // So the Swagger page can be used at all now that everything needs a token: sign in
+        // through /api/access/sign-in, paste the access token here, and the rest of the page
+        // works. Without it every "Try it out" returns 401 and the documentation becomes
+        // something to read rather than something to use.
+        options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+        {
+            Name = "Authorization",
+            Type = SecuritySchemeType.Http,
+            Scheme = "bearer",
+            BearerFormat = "JWT",
+            In = ParameterLocation.Header,
+            Description = "Paste the access token from /api/access/sign-in. No 'Bearer ' prefix.",
+        });
+
+        options.AddSecurityRequirement(new OpenApiSecurityRequirement
+        {
+            [new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer",
+                },
+            }] = [],
+        });
     });
 
     builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
@@ -84,6 +167,7 @@ try
         .AllowAnyMethod()));
 
     builder.Services.AddHealthChecks()
+        .AddDbContextCheck<AccessDbContext>("access-database")
         .AddDbContextCheck<CatalogDbContext>("catalog-database")
         .AddDbContextCheck<InventoryDbContext>("inventory-database")
         .AddDbContextCheck<PartnersDbContext>("partners-database")
@@ -101,6 +185,7 @@ try
     // ---------------------------------------------------------------------------------
     builder.Services.AddErpModules(
         builder.Configuration,
+        new AccessModule(),
         new PartnersModule(),
         new InventoryModule(),
         new CatalogModule(),
@@ -129,7 +214,13 @@ try
 
     app.UseCors();
 
-    app.MapHealthChecks("/health");
+    // Order matters and is not interchangeable: authentication works out who the caller is,
+    // authorization decides whether they may proceed, and swapping them means deciding before
+    // knowing - which the framework answers by refusing everybody.
+    app.UseAuthentication();
+    app.UseAuthorization();
+
+    app.MapHealthChecks("/health").AllowAnonymous();
 
     app.MapGet("/", (IModuleRegistry registry) => Results.Ok(new
     {
@@ -139,6 +230,7 @@ try
         docs = "/swagger",
     }))
     .WithName("Root")
+    .AllowAnonymous()
     .ExcludeFromDescription();
 
     app.MapErpModules();
@@ -176,7 +268,14 @@ static async Task MigrateAndSeedAsync(WebApplication app)
 {
     using IServiceScope scope = app.Services.CreateScope();
 
-    // Partners has no dependencies, so it goes first and simply gets out of the way.
+    // Access first, and it is the one module whose seeding is not a development convenience.
+    // A database with no users is a system nobody can sign in to, and the screen that would
+    // create the first user is behind the sign-in.
+    var accessContext = scope.ServiceProvider.GetRequiredService<AccessDbContext>();
+    await accessContext.Database.MigrateAsync();
+    await scope.ServiceProvider.GetRequiredService<AccessSeeder>().SeedAsync();
+
+    // Partners has no dependencies, so it goes next and simply gets out of the way.
     var partners = scope.ServiceProvider.GetRequiredService<PartnersDbContext>();
     await partners.Database.MigrateAsync();
     await scope.ServiceProvider.GetRequiredService<PartnersSeeder>().SeedAsync();
