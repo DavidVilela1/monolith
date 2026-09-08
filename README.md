@@ -8,7 +8,7 @@ about:
 | Module | Schema | Order | What it owns |
 |---|---|---|---|
 | **Partners** | `partners` | 1 | Customers and suppliers, addresses, contacts, credit limits, trading status |
-| **Inventory** | `inventory` | 5 | Warehouses, stock balances, reservations, expected deliveries, stock valuation, the movement ledger |
+| **Inventory** | `inventory` | 5 | Warehouses, stock balances, reservations, expected deliveries, valuation, counts, the movement ledger |
 | **Catalog** | `catalog` | 10 | Parts, brands, categories, cross-references, vehicle fitment |
 | **Pricing** | `pricing` | 12 | Price lists, quantity breaks, customer agreements, price resolution |
 | **Purchasing** | `purchasing` | 15 | Purchase orders, goods receipt, replenishment suggestions |
@@ -17,7 +17,7 @@ about:
 | **Finance** | `finance` | 30 | The sales ledger: open items, receipts matched to the documents they pay, ageing |
 
 They share no code beyond two contract assemblies, and no module references another module's
-projects. 564 tests, all green — 531 that need nothing but the compiler, and 33 that need a real
+projects. 581 tests, all green — 548 that need nothing but the compiler, and 33 that need a real
 PostgreSQL because what they check does not exist until there is one.
 
 ---
@@ -133,6 +133,15 @@ GET /api/inventory/stock/parts/{partId}
 
 ### The ledger: every movement, with the balance and the value that followed it
 GET /api/inventory/stock/parts/{partId}/movements
+
+### Count a warehouse. Open the sheet, walk the aisle, hand it to somebody
+### else to accept. Posting is a separate call so it can be a separate person.
+POST /api/inventory/counts
+{ "warehouseId": "...", "countedOn": "2026-09-08" }
+PUT  /api/inventory/counts/{stockCountId}/lines/{lineId}
+{ "countedQuantity": 9 }
+POST /api/inventory/counts/{stockCountId}/submit
+POST /api/inventory/counts/{stockCountId}/post
 
 ### What this customer pays for ten of these, and why
 GET /api/pricing/quote?partId={partId}&quantity=10&customerId={customerId}
@@ -440,6 +449,32 @@ lookup instead of a full replay.
 through their source document; an adjustment is someone overriding the system, and in six months
 that sentence is the only thing that will explain it.
 
+**A physical count is a document, not a command.** Correcting stock used to be one call: type a
+number, the balance becomes that number, done. That is the mechanism by which stock quietly
+disappears from a distributor — nothing to review, no way to tell a real difference from stock
+that legitimately moved, and the person who miscounted signing off their own miscount. A
+`StockCount` closes all three. It snapshots what the system believed **before** anybody walked the
+aisle, records who counted each line and when, and separates submitting from posting so the
+figures can be accepted by somebody else. The ad-hoc adjustment survives — a part dropped on the
+floor this morning does not need a sheet — but the two are now different reference types in the
+ledger rather than one bucket.
+
+**An empty shelf and an unvisited shelf are different answers.** The counted quantity is nullable:
+zero means the shelf was empty, null means nobody looked, and posting skips the second. A design
+that used zero for both would write off every part the counter did not reach before going home,
+and the write-off would look exactly like a real count. The sheet reports its uncounted line
+count for the same reason — four hundred counted and sixty not is not a finished count of the
+warehouse, however complete the totals look.
+
+**Counting does not freeze the warehouse**, because in a parts distributor nothing ever stops.
+Posting applies each counted figure against the **live** balance, so the correction is always
+"make it what was found"; the snapshot stays on the line, so a difference between the two is
+visible afterwards. That is what separates a stock loss from a sale nobody had entered yet.
+
+**A sheet posts all at once or not at all.** A line that cannot be applied — most often a count
+below what is already reserved — fails the whole posting. A partly posted count is the worst
+outcome available: some balances corrected, some not, and a sheet that claims it was applied.
+
 **Negative stock is a per-warehouse decision.** Off by default, because negative stock describes
 something physically impossible and every downstream valuation inherits the lie.
 
@@ -719,6 +754,7 @@ AutoPartsErp.sln
 | `ReservationSweeper` | `Inventory.Infrastructure` | Returns lapsed reservations to available |
 | `DocumentSeries` | `Invoicing.Domain` | The only thing that hands out a document number, one at a time |
 | `SignatureSource` | `Invoicing.Domain` | Builds the exact string the tax authority prescribes for signing |
+| `StockCount` | `Inventory.Domain` | A counted warehouse: the snapshot, the findings, and who accepted them |
 
 ---
 
@@ -803,9 +839,11 @@ concurrency in all three modules that hand out numbers.
   movement enum and nothing produces them.
 - Storage bins are recorded but never used: `StockMovement.InBin` has no caller, so no movement
   says where in the warehouse anything went.
-- A stock count is a single command with no document behind it — no count sheet, no variance
-  report, no second pair of eyes. The ledger records the adjustment and the reason, which is the
-  floor rather than the goal.
+- A count sheet records who counted and who posted, but nothing stops them being the same person.
+  Real four-eyes needs the authorisation this system does not have yet; `ICurrentUser` is where
+  it would be enforced.
+- A count sheet covers a whole warehouse. Cycle counting by category or by bin needs Inventory to
+  ask Catalog which parts are in a category, which is a query contract that does not exist yet.
 
 **Foundation work wanted along the way:**
 

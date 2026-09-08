@@ -152,6 +152,34 @@ public readonly record struct PurchaseOrderLineRef(Guid Value)
     public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
 }
 
+/// <summary>Identity of a <see cref="Counting.StockCount"/>.</summary>
+/// <param name="Value">The underlying identifier.</param>
+public readonly record struct StockCountId(Guid Value)
+{
+    /// <summary>The unset identifier.</summary>
+    public static readonly StockCountId Empty = new(Guid.Empty);
+
+    /// <summary>Generates a new identifier.</summary>
+    public static StockCountId New() => new(OrderedGuid.Create());
+
+    /// <inheritdoc />
+    public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
+}
+
+/// <summary>Identity of a <see cref="Counting.StockCountLine"/>.</summary>
+/// <param name="Value">The underlying identifier.</param>
+public readonly record struct StockCountLineId(Guid Value)
+{
+    /// <summary>The unset identifier.</summary>
+    public static readonly StockCountLineId Empty = new(Guid.Empty);
+
+    /// <summary>Generates a new identifier.</summary>
+    public static StockCountLineId New() => new(OrderedGuid.Create());
+
+    /// <inheritdoc />
+    public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
+}
+
 /// <summary>Creates time-ordered <see cref="Guid"/> values so inserts stay at the right edge of the index.</summary>
 internal static class OrderedGuid
 {

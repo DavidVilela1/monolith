@@ -154,6 +154,80 @@ public static class InventoryErrors
                 "A reorder point cannot be negative and a reorder quantity must be greater than zero.");
     }
 
+    /// <summary>Failures relating to a <see cref="Counting.StockCount"/>.</summary>
+    public static class Count
+    {
+        /// <summary>The sheet does not exist.</summary>
+        public static Error NotFound(string identifier) =>
+            Error.NotFound("inventory.count.not_found", $"No stock count matches '{identifier}'.");
+
+        /// <summary>A sheet number is required.</summary>
+        public static readonly Error NumberRequired =
+            Error.Validation("inventory.count.number_required", "A count number is required.");
+
+        /// <summary>The sheet is no longer accepting counts.</summary>
+        public static readonly Error NotOpen =
+            Error.DomainRule(
+                "inventory.count.not_open",
+                "That count sheet is not open. Reopen it if the figures need changing.");
+
+        /// <summary>The sheet is not waiting to be accepted.</summary>
+        public static readonly Error NotSubmitted =
+            Error.DomainRule(
+                "inventory.count.not_submitted",
+                "That count sheet has not been submitted for review.");
+
+        /// <summary>The sheet has already been posted or abandoned.</summary>
+        public static readonly Error AlreadyClosed =
+            Error.DomainRule(
+                "inventory.count.already_closed",
+                "That count sheet is closed. A posted count is corrected by counting again, not "
+                + "by editing the sheet that recorded it.");
+
+        /// <summary>A sheet with no lines counts nothing.</summary>
+        public static readonly Error NoLines =
+            Error.DomainRule("inventory.count.no_lines", "There is nothing on that count sheet.");
+
+        /// <summary>Nobody counted anything.</summary>
+        public static readonly Error NothingCounted =
+            Error.DomainRule(
+                "inventory.count.nothing_counted",
+                "No line on that sheet has been counted. Submitting it would ask somebody to "
+                + "accept differences nobody looked for.");
+
+        /// <summary>The line is not on this sheet.</summary>
+        public static Error LineNotFound(string identifier) =>
+            Error.NotFound(
+                "inventory.count.line_not_found", $"Line '{identifier}' is not on that count sheet.");
+
+        /// <summary>The part is already on the sheet.</summary>
+        public static Error PartAlreadyOnSheet(string sku) =>
+            Error.Conflict(
+                "inventory.count.part_already_on_sheet",
+                $"'{sku}' is already on that sheet. Counting one part twice on one sheet gives "
+                + "two answers and no way to choose between them.");
+
+        /// <summary>The counted figure is in a different unit from the balance.</summary>
+        public static Error UnitMismatch(string sku, string unit) =>
+            Error.Validation(
+                "inventory.count.unit_mismatch",
+                $"'{sku}' is stocked in '{unit}'. A count in any other unit would be a different "
+                + "number about a different thing.");
+
+        /// <summary>A cancelled sheet has to say why.</summary>
+        public static readonly Error CancelReasonRequired =
+            Error.Validation(
+                "inventory.count.cancel_reason_required",
+                "Say why the count was abandoned. Somebody will ask what happened to it.");
+
+        /// <summary>A part on the sheet has no balance to correct.</summary>
+        public static Error NoStockRecord(string sku) =>
+            Error.NotFound(
+                "inventory.count.no_stock_record",
+                $"'{sku}' has no stock record in that warehouse any more, so there is nothing to "
+                + "correct. The sheet was opened before it was removed.");
+    }
+
     /// <summary>Failures relating to a <see cref="AutoPartsErp.Modules.Inventory.Domain.Stock.StockMovement"/>.</summary>
     public static class Movement
     {

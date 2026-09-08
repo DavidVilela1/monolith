@@ -1,4 +1,5 @@
 using AutoPartsErp.Modules.Inventory.Domain;
+using AutoPartsErp.Modules.Inventory.Domain.Counting;
 using AutoPartsErp.Modules.Inventory.Domain.Stock;
 using AutoPartsErp.Modules.Inventory.Domain.Warehouses;
 using AutoPartsErp.Persistence;
@@ -44,6 +45,9 @@ public sealed class InventoryDbContext : ModuleDbContext, IInventoryUnitOfWork
     /// <summary>Named places inside a warehouse.</summary>
     public DbSet<StorageBin> StorageBins => Set<StorageBin>();
 
+    /// <summary>Physical count sheets and what they found.</summary>
+    public DbSet<StockCount> StockCounts => Set<StockCount>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -63,6 +67,9 @@ public sealed class InventoryDbContext : ModuleDbContext, IInventoryUnitOfWork
 
         modelBuilder.Entity<StorageBin>()
             .HasQueryFilter(bin => !bin.IsDeleted && bin.TenantId == CurrentTenantId);
+
+        modelBuilder.Entity<StockCount>()
+            .HasQueryFilter(count => count.TenantId == CurrentTenantId);
 
         base.OnModelCreating(modelBuilder);
     }

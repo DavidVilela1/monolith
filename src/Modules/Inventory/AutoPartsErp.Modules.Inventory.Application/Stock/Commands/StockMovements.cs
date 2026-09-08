@@ -268,7 +268,7 @@ public sealed class AdjustStockCommandValidator : IValidator<AdjustStockCommand>
         if (string.IsNullOrWhiteSpace(instance.ReferenceNumber))
         {
             failures.Add(new ValidationFailure(
-                nameof(instance.ReferenceNumber), "required", "A count or adjustment number is required."));
+                nameof(instance.ReferenceNumber), "required", "An adjustment reference is required."));
         }
 
         // Deliberately stricter than the other movements. Receipts and issues explain themselves
@@ -324,8 +324,13 @@ public sealed class AdjustStockCommandHandler : ICommandHandler<AdjustStockComma
             return Result.FromError(context.Error);
         }
 
+        // Adjustment, not StockCount. This is somebody correcting one balance by hand — a part
+        // dropped on the floor, a picking error found at the counter — and it is a different fact
+        // from a sheet that was walked, snapshotted and signed off. Marking both as StockCount
+        // would put them in one bucket in the ledger, which is exactly the distinction the count
+        // sheet exists to make.
         Result<MovementReference> reference = MovementReference.Create(
-            ReferenceType.StockCount, request.ReferenceNumber, request.Note);
+            ReferenceType.Adjustment, request.ReferenceNumber, request.Note);
 
         if (reference.IsFailure)
         {

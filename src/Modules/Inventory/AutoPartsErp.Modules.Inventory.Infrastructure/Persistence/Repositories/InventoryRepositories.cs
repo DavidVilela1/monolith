@@ -1,6 +1,11 @@
+using System.Globalization;
+using AutoPartsErp.ModuleContracts.Catalog;
+using AutoPartsErp.Modules.Inventory.Application.Counting;
 using AutoPartsErp.Modules.Inventory.Domain;
+using AutoPartsErp.Modules.Inventory.Domain.Counting;
 using AutoPartsErp.Modules.Inventory.Domain.Stock;
 using AutoPartsErp.Modules.Inventory.Domain.Warehouses;
+using AutoPartsErp.SharedKernel.ValueObjects;
 using Microsoft.EntityFrameworkCore;
 
 namespace AutoPartsErp.Modules.Inventory.Infrastructure.Persistence.Repositories;
@@ -255,5 +260,149 @@ public sealed class StorageBinRepository : IStorageBinRepository
     {
         ArgumentNullException.ThrowIfNull(aggregate);
         _context.StorageBins.Remove(aggregate);
+    }
+}
+
+/// <summary>Write-side access to count sheets.</summary>
+public sealed class StockCountRepository : IStockCountRepository
+{
+    private const string NumberKey = "stock-count";
+    private const string NumberPrefix = "SC";
+
+    private readonly InventoryDbContext _context;
+
+    /// <summary>Initializes the repository.</summary>
+    public StockCountRepository(InventoryDbContext context)
+    {
+        _context = context;
+    }
+
+    /// <inheritdoc />
+    public Task<StockCount?> GetByIdAsync(
+        StockCountId id,
+        CancellationToken cancellationToken = default) =>
+        _context.StockCounts.FirstOrDefaultAsync(count => count.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> ExistsAsync(StockCountId id, CancellationToken cancellationToken = default) =>
+        _context.StockCounts.AnyAsync(count => count.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The lines are an owned collection, so EF loads them with the sheet whether asked to or
+    /// not. This method exists to say so at the call site rather than to change the query — a
+    /// reader who sees <c>GetByIdAsync</c> before posting a count has every right to wonder
+    /// whether the lines came with it.
+    /// </remarks>
+    public Task<StockCount?> GetWithLinesAsync(
+        StockCountId id,
+        CancellationToken cancellationToken = default) =>
+        GetByIdAsync(id, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<string> NextCountNumberAsync(
+        int year,
+        CancellationToken cancellationToken = default)
+    {
+        int next = await _context
+            .TakeNextNumberAsync(NumberKey, year, cancellationToken)
+            .ConfigureAwait(false);
+
+        return string.Create(CultureInfo.InvariantCulture, $"{NumberPrefix}-{year}-{next:D5}");
+    }
+
+    /// <inheritdoc />
+    public void Add(StockCount aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.StockCounts.Add(aggregate);
+    }
+
+    /// <inheritdoc />
+    public void Remove(StockCount aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.StockCounts.Remove(aggregate);
+    }
+}
+
+/// <summary>
+/// Reads what is in a warehouse, flat, for putting on a count sheet.
+/// <para>
+/// Four columns and no aggregates. A warehouse holding forty thousand parts would otherwise mean
+/// forty thousand <c>StockItem</c> graphs, each dragging its reservations and its expected
+/// deliveries along, to write one number per part onto a sheet.
+/// </para>
+/// </summary>
+public sealed class StockCountScope : IStockCountScope
+{
+    private readonly InventoryDbContext _context;
+    private readonly ICatalogDirectory _catalog;
+
+    /// <summary>Initializes the reader.</summary>
+    public StockCountScope(InventoryDbContext context, ICatalogDirectory catalog)
+    {
+        _context = context;
+        _catalog = catalog;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// <para>
+    /// The SKU and the name come from Catalog, in one call for the whole sheet rather than one
+    /// per part. They are snapshotted onto the lines and never refreshed: a sheet is a document
+    /// somebody may be holding on paper in an aisle, and a description that changes underneath it
+    /// makes the paper and the screen disagree about what was counted.
+    /// </para>
+    /// <para>
+    /// A part the catalogue no longer recognizes still goes on the sheet, with its identifier in
+    /// place of a SKU. It is on the shelf either way, and leaving it off would mean the one part
+    /// nobody can identify is also the one part nobody counts.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlyList<CountableStock>> ListAsync(
+        WarehouseId warehouseId,
+        bool includeZeroBalances,
+        CancellationToken cancellationToken = default)
+    {
+        IQueryable<StockItem> query = _context.StockItems
+            .AsNoTracking()
+            .Where(item => item.WarehouseId == warehouseId);
+
+        if (!includeZeroBalances)
+        {
+            query = query.Where(item => item.OnHand.Value != 0m);
+        }
+
+        var rows = await query
+            .OrderBy(item => item.Part)
+            .Select(item => new
+            {
+                item.Part,
+                OnHand = item.OnHand.Value,
+                item.Unit,
+            })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (rows.Count == 0)
+        {
+            return [];
+        }
+
+        IReadOnlyDictionary<Guid, PartDescriptor> parts = await _catalog
+            .GetManyAsync([.. rows.Select(row => row.Part.Value)], cancellationToken)
+            .ConfigureAwait(false);
+
+        return [.. rows.Select(row =>
+        {
+            bool known = parts.TryGetValue(row.Part.Value, out PartDescriptor? part);
+
+            return new CountableStock(
+                row.Part,
+                known ? part!.Sku : row.Part.Value.ToString("D", CultureInfo.InvariantCulture),
+                known ? part!.Name : string.Empty,
+                Quantity.Create(row.OnHand, row.Unit).Value);
+        })];
     }
 }

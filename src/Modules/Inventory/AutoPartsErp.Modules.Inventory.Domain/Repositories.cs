@@ -1,3 +1,4 @@
+using AutoPartsErp.Modules.Inventory.Domain.Counting;
 using AutoPartsErp.Modules.Inventory.Domain.Stock;
 using AutoPartsErp.Modules.Inventory.Domain.Warehouses;
 using AutoPartsErp.SharedKernel.Abstractions;
@@ -83,6 +84,24 @@ public interface IStockMovementRepository
 
     /// <summary>Stages several movements, for operations that move more than one line at once.</summary>
     void AddRange(IEnumerable<StockMovement> movements);
+}
+
+/// <summary>Write-side access to count sheets.</summary>
+public interface IStockCountRepository : IRepository<StockCount, StockCountId>
+{
+    /// <summary>
+    /// Takes the next count number for the year.
+    /// <para>
+    /// Through the module's shared counter, like every other number this system hands out.
+    /// A count sheet does not need to be gapless the way an invoice does — nobody outside the
+    /// company ever sees one — but two sheets sharing a number is still two people arguing about
+    /// which "SC-2026-00014" they are holding.
+    /// </para>
+    /// </summary>
+    Task<string> NextCountNumberAsync(int year, CancellationToken cancellationToken = default);
+
+    /// <summary>Loads a sheet with its lines, or null when there is no such sheet.</summary>
+    Task<StockCount?> GetWithLinesAsync(StockCountId id, CancellationToken cancellationToken = default);
 }
 
 /// <summary>The Inventory module's unit of work.</summary>

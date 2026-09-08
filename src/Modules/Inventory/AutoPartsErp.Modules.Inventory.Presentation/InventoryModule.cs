@@ -2,6 +2,7 @@ using AutoPartsErp.ModuleContracts.Inventory;
 using AutoPartsErp.Modules.Abstractions.DependencyInjection;
 using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Inventory.Application.Abstractions;
+using AutoPartsErp.Modules.Inventory.Application.Counting;
 using AutoPartsErp.Modules.Inventory.Domain;
 using AutoPartsErp.Modules.Inventory.Infrastructure.Contracts;
 using AutoPartsErp.Modules.Inventory.Infrastructure.Persistence;
@@ -75,6 +76,12 @@ public sealed class InventoryModule : IModule
         services.AddScoped<IStockMovementRepository, StockMovementRepository>();
         services.AddScoped<IWarehouseRepository, WarehouseRepository>();
         services.AddScoped<IStorageBinRepository, StorageBinRepository>();
+        services.AddScoped<IStockCountRepository, StockCountRepository>();
+
+        // Reads what is in a warehouse for a count sheet. Registered as the application's
+        // abstraction rather than the concrete reader, because it asks Catalog a question and
+        // the Application project must not know that Catalog exists.
+        services.AddScoped<IStockCountScope, StockCountScope>();
         services.AddScoped<IInventoryReadStore, InventoryReadStore>();
         services.AddScoped<InventorySeeder>();
 
@@ -100,6 +107,7 @@ public sealed class InventoryModule : IModule
             .WithTags("Inventory");
 
         new StockEndpoints().Map(group);
+        new StockCountEndpoints().Map(group);
         new WarehouseEndpoints().Map(group);
     }
 }

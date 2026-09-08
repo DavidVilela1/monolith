@@ -65,7 +65,7 @@ public sealed class StockEndpoints : IEndpointGroup
 
         stock.MapPost("/adjust", AdjustAsync)
             .WithName("AdjustStock")
-            .WithSummary("Correct a balance to a counted figure. A written reason is required.")
+            .WithSummary("Correct one balance by hand. A written reason is required. For a counted warehouse, open a count sheet instead.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
