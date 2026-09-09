@@ -328,6 +328,30 @@ A message that fails ten times is not deleted and not marked processed. It sits 
 its error, which is the honest state for something the system could not deliver and a person now
 has to look at.
 
+**A sweep claims its batch before delivering it.** One statement takes the next batch with
+`FOR UPDATE SKIP LOCKED` and stamps a lease on it, so a second host running the same sweep steps
+over those rows and takes the next ones instead of delivering everything a second time. The lease
+is written into `next_attempt_at_utc` — the column that already means "do not look at this
+before" — which is what makes a killed host recover on its own: nothing has to notice the crash,
+the messages simply become visible again when the lease runs out.
+
+**Delivered rows are deleted eventually; undelivered ones never are.** Housekeeping keeps thirty
+days of delivered messages and ninety days of inbox records. The two numbers are different on
+purpose, and the longer one is the inbox: an inbox row is what stops a redelivery being applied
+twice, so it has to outlive the publisher's copy of the message it guards against. The host
+refuses to start if they are configured the other way round.
+
+| `Erp:Outbox` | What it is for |
+|---|---|
+| `PollInterval` | How long to wait after a sweep that found nothing. Five seconds. |
+| `BatchSize` | Messages claimed per sweep. Fifty. |
+| `MaxAttempts` | Failures before a message is left for a person. Ten. |
+| `MaxBackoff` | The longest gap between retries. Ten minutes. |
+| `ClaimLease` | How long a claimed batch stays invisible to other hosts. Five minutes. |
+| `ProcessedRetention` | How long a delivered message is kept. Thirty days; zero keeps everything. |
+| `HandledRetention` | How long an inbox record is kept. Ninety days, and never less than the above. |
+| `RetentionInterval` | How often housekeeping runs. Six hours. |
+
 #### Query contracts
 
 Six so far, each implemented by the module that owns the data and registered by that module.
@@ -881,8 +905,10 @@ AutoPartsErp.sln
 | `IPipelineBehavior` | `SharedKernel/Messaging` | Cross-cutting steps; logging and validation ship with it |
 | `Result` / `Error` | `SharedKernel/Results` | Expected failures as values with stable codes |
 | `ModuleDbContext` | `Persistence` | Dispatches domain events and drains them into the outbox, in the transaction |
-| `OutboxProcessor<T>` | `Persistence/Outbox` | One background sweep per module, draining that module's table |
+| `OutboxProcessor<T>` | `Persistence/Outbox` | One background sweep per module, claiming and draining that module's table |
+| `OutboxRetentionService<T>` | `Persistence/Outbox` | Deletes delivered messages and old inbox records; never anything still owed |
 | `InboxMessage` | `Persistence/Inbox` | What a consumer has already handled, so redelivery is free |
+| `DatabaseExceptionHandler` | `Api/Infrastructure` | Turns a lost race into 409 instead of 500 |
 | `IntegrationEvents` | `src/Shared` | Facts. What one module announces to anyone listening |
 | `ModuleContracts` | `src/Shared` | Questions. What one module answers on demand |
 | `StockItem` | `Inventory.Domain` | The consistency boundary for every stock change |
@@ -925,9 +951,11 @@ works: who we trade with, what we stock, what we sell, what it costs, what we bu
 
 ## Roadmap
 
-**Done:** all eight modules. Transactional outbox and consumer inbox. Six module query
+**Done:** all nine modules, including authentication and per-route permissions. Transactional
+outbox and consumer inbox, safe on more than one host and pruned on a schedule. Six module query
 contracts. Invoicing end to end, including partial invoicing over the Sales bridge and the SAF-T
-(PT) export. An integration suite against real PostgreSQL. Document numbering that survives
+(PT) export. Stock valued at moving weighted average, with count sheets and inter-warehouse
+transfers. An integration suite against real PostgreSQL. Document numbering that survives
 concurrency in all three modules that hand out numbers.
 
 **Next, in rough dependency order:**
@@ -938,10 +966,11 @@ concurrency in all three modules that hand out numbers.
 2. **Accounts payable, the general ledger, VAT returns and period close.** Finance covers what
    customers owe and nothing else yet: there is no supplier invoice to owe anything against,
    because Purchasing has an order and a goods receipt and no document between them.
-3. **Stock valuation and costing** — FIFO or weighted average over the movement ledger, which
-   already carries a unit cost column for it. Also what a margin floor in Pricing would need.
-4. **Returns and core credits** — the other half of a parts business, and the reason
+3. **Returns and core credits** — the other half of a parts business, and the reason
    `RequiresCoreReturn` exists on a part already.
+4. **Margin, and a floor under it.** Inventory knows what stock cost and Pricing knows what it
+   sells for, and nothing puts the two numbers on the same line. Until it does, nobody can be
+   stopped from selling below cost.
 
 **Known issues:**
 
@@ -956,14 +985,12 @@ concurrency in all three modules that hand out numbers.
   route that sets payment terms. Both name a decision the business makes and the software does
   not yet offer. They grant nothing until it does.
 
-- A malformed `warehouseId` in a request body returns 500 rather than 400. Bad client input
-  should never surface as a server error.
 - Purchase order lines have no concurrency token of their own, so two people editing different
   lines of the same order can still conflict at the aggregate level.
-- The outbox assumes a single instance. Two hosts sweeping the same table would deliver some
-  messages twice — safe, because consumers are idempotent, but wasteful. `FOR UPDATE SKIP LOCKED`
-  is the fix.
-- Nothing prunes delivered outbox and inbox rows. They grow forever until a retention job exists.
+- Losing a race now returns 409 rather than 500, but the message is generic: it says something
+  with that value already exists without saying which field. The constraint name is in the log
+  and not in the response, because mapping index names to field names is a table somebody has to
+  maintain and get wrong.
 - The SAF-T `HashControl` field carries the signing key's version, which is what the AT's thinner
   guidance on it appears to want. If a validator disagrees, `Erp:Invoicing:PrivateKeyVersion` is
   the setting to change.

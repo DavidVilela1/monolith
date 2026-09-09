@@ -48,9 +48,8 @@ public sealed class InboxMessageConfiguration : IEntityTypeConfiguration<InboxMe
         builder.Property(message => message.HandlerName).HasMaxLength(300);
         builder.Property(message => message.HandledAtUtc).IsRequired();
 
-        // Nothing prunes this table yet. It grows one row per handled message per handler, so a
-        // job that deletes rows older than the outbox retention is on the list before this sees
-        // real volume.
+        // What OutboxRetentionService prunes by. Not partial, unlike the outbox's: every row in
+        // here is a candidate eventually, so there is no subset worth indexing separately.
         builder.HasIndex(message => message.HandledAtUtc)
             .HasDatabaseName("ix_inbox_messages_handled_at");
     }

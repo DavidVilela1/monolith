@@ -81,11 +81,18 @@ public sealed class OutboxMessageConfiguration : IEntityTypeConfiguration<Outbox
         builder.Property(message => message.OccurredAtUtc).IsRequired();
         builder.Property(message => message.Error).HasMaxLength(MaxErrorLength);
 
-        // The processor's poll, and the only query that runs against this table in normal
+        // The processor's claim, and the only query that runs against this table in normal
         // operation. Partial, so the index stays the size of the backlog rather than the size
         // of every event the system has ever published.
         builder.HasIndex(message => new { message.NextAttemptAtUtc, message.OccurredAtUtc })
             .HasFilter("processed_at_utc IS NULL")
             .HasDatabaseName("ix_outbox_messages_pending");
+
+        // Retention's delete, which reads the other side of that filter, has no index and is a
+        // scan stopped early by its LIMIT. Cheap while retention is doing its job, because the
+        // rows it wants are the oldest ones and there are never many left. The day that stops
+        // being true, an index on processed_at_utc is the answer - it is not here already
+        // because it would cover the whole table and be paid for on every message written, to
+        // speed up a statement that runs four times a day.
     }
 }

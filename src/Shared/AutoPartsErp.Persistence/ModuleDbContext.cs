@@ -111,25 +111,214 @@ public abstract class ModuleDbContext : DbContext
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sequenceKey);
 
-        // Read from the model rather than passed in, so that a module which changes its schema
-        // name changes it in one place and this follows.
-        string schema = Model.GetDefaultSchema()
-            ?? throw new InvalidOperationException(
-                $"{GetType().Name} has no default schema, so the numbering table cannot be "
-                + "located. Every module context sets one with HasDefaultSchema.");
-
         // ON CONFLICT DO UPDATE rather than a SELECT ... FOR UPDATE followed by an UPDATE: it is
         // the same row lock in one round trip instead of two, and it removes the case where the
         // row does not exist yet, which is the case a lock cannot cover because there is nothing
         // to lock. The counter is left pointing one past what was returned.
         string sql =
-            $"INSERT INTO \"{schema}\".\"number_sequences\" "
+            $"INSERT INTO \"{DefaultSchema}\".\"number_sequences\" "
             + "(\"tenant_id\", \"sequence_key\", \"year\", \"next_number\") "
             + "VALUES (@tenant, @key, @year, 2) "
             + "ON CONFLICT (\"tenant_id\", \"sequence_key\", \"year\") "
             + "DO UPDATE SET \"next_number\" = \"number_sequences\".\"next_number\" + 1 "
             + "RETURNING \"next_number\" - 1";
 
+        object? taken = await ExecuteRawAsync<object?>(
+            sql,
+            command =>
+            {
+                AddParameter(command, "tenant", CurrentTenantId);
+                AddParameter(command, "key", sequenceKey);
+                AddParameter(command, "year", year);
+            },
+            (command, token) => command.ExecuteScalarAsync(token),
+            cancellationToken).ConfigureAwait(false);
+
+        return taken is null or DBNull
+            ? throw new InvalidOperationException(
+                $"The {sequenceKey} counter returned no number, which should not be reachable: "
+                + "the statement either inserts a row or updates one.")
+            : Convert.ToInt32(taken, CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Takes ownership of a batch of undelivered outbox messages, so that no other sweep will
+    /// pick them up while this one is working through them.
+    /// <para>
+    /// One statement, and the reason more than one instance of the host can now run. The inner
+    /// select takes <c>FOR UPDATE SKIP LOCKED</c>, which is PostgreSQL's answer to exactly this:
+    /// rows another transaction is already holding are stepped over rather than waited for, so
+    /// two sweeps running at the same moment take two disjoint batches instead of both taking
+    /// the same one. Without it a second instance delivered every message a second time — safe,
+    /// because consumers deduplicate through the inbox, and wasteful, which is a different
+    /// complaint but still a complaint.
+    /// </para>
+    /// <para>
+    /// The claim is a lease rather than a flag, written into <c>next_attempt_at_utc</c> — the
+    /// column that already means "do not look at this before". A sweep that finishes normally
+    /// overwrites it; a host that is killed mid-batch leaves it, and the messages become visible
+    /// again when the lease runs out. Nothing has to notice the crash for the work to resume,
+    /// which is the property a flag with no expiry would not have.
+    /// </para>
+    /// </summary>
+    /// <param name="batchSize">The most messages to claim.</param>
+    /// <param name="maxAttempts">Messages that have failed this many times are left alone.</param>
+    /// <param name="now">The current time.</param>
+    /// <param name="lease">How long the claim holds if this sweep never comes back.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// The claimed message identities, which may be fewer than <paramref name="batchSize"/>
+    /// because another sweep held some of them.
+    /// </returns>
+    public async Task<Guid[]> ClaimOutboxMessagesAsync(
+        int batchSize,
+        int maxAttempts,
+        DateTimeOffset now,
+        TimeSpan lease,
+        CancellationToken cancellationToken = default)
+    {
+        string table = $"\"{DefaultSchema}\".\"outbox_messages\"";
+
+        string sql =
+            $"UPDATE {table} SET \"next_attempt_at_utc\" = @leaseUntil "
+            + $"WHERE \"id\" IN (SELECT \"id\" FROM {table} "
+            + "WHERE \"processed_at_utc\" IS NULL "
+            + "AND \"attempts\" < @maxAttempts "
+            + "AND (\"next_attempt_at_utc\" IS NULL OR \"next_attempt_at_utc\" <= @now) "
+            + "ORDER BY \"occurred_at_utc\" "
+            + "LIMIT @batchSize "
+            + "FOR UPDATE SKIP LOCKED) "
+            + "RETURNING \"id\"";
+
+        return await ExecuteRawAsync<Guid[]>(
+            sql,
+            command =>
+            {
+                AddParameter(command, "leaseUntil", now.Add(lease));
+                AddParameter(command, "maxAttempts", maxAttempts);
+                AddParameter(command, "now", now);
+                AddParameter(command, "batchSize", batchSize);
+            },
+            async (command, token) =>
+            {
+                var claimed = new List<Guid>(batchSize);
+
+                await using DbDataReader reader =
+                    await command.ExecuteReaderAsync(token).ConfigureAwait(false);
+
+                while (await reader.ReadAsync(token).ConfigureAwait(false))
+                {
+                    claimed.Add(reader.GetGuid(0));
+                }
+
+                return claimed.ToArray();
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Deletes delivered outbox messages older than a cut-off, up to a limit.
+    /// <para>
+    /// Only rows with a <c>processed_at_utc</c>. Anything still owed delivery stays, however old
+    /// it is, because an undelivered message that a person has not looked at for a month is the
+    /// one thing in this table nobody should lose to housekeeping.
+    /// </para>
+    /// <para>
+    /// Bounded by <paramref name="batchSize"/> and meant to be called in a loop. A single
+    /// unbounded delete on a table that has been growing for a year is one long transaction, one
+    /// enormous write-ahead log entry, and a lock held over the rows the sweep wants.
+    /// </para>
+    /// </summary>
+    /// <param name="cutoffUtc">Messages processed before this are eligible.</param>
+    /// <param name="batchSize">The most rows to delete in this call.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>How many rows were deleted.</returns>
+    public async Task<int> PurgeProcessedOutboxAsync(
+        DateTimeOffset cutoffUtc,
+        int batchSize,
+        CancellationToken cancellationToken = default)
+    {
+        string table = $"\"{DefaultSchema}\".\"outbox_messages\"";
+
+        string sql =
+            $"DELETE FROM {table} WHERE \"id\" IN "
+            + $"(SELECT \"id\" FROM {table} "
+            + "WHERE \"processed_at_utc\" IS NOT NULL AND \"processed_at_utc\" < @cutoff "
+            + "LIMIT @batchSize)";
+
+        return await ExecuteRawAsync<int>(
+            sql,
+            command =>
+            {
+                AddParameter(command, "cutoff", cutoffUtc);
+                AddParameter(command, "batchSize", batchSize);
+            },
+            (command, token) => command.ExecuteNonQueryAsync(token),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Deletes inbox records older than a cut-off, up to a limit.
+    /// <para>
+    /// These are what stop a redelivered message being handled twice, so deleting one trades a
+    /// guarantee for space. The trade is only safe well after the publisher has thrown its own
+    /// copy away, which is why the two retentions are not the same number and why the longer one
+    /// belongs here.
+    /// </para>
+    /// </summary>
+    /// <param name="cutoffUtc">Records handled before this are eligible.</param>
+    /// <param name="batchSize">The most rows to delete in this call.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>How many rows were deleted.</returns>
+    public async Task<int> PurgeHandledInboxAsync(
+        DateTimeOffset cutoffUtc,
+        int batchSize,
+        CancellationToken cancellationToken = default)
+    {
+        string table = $"\"{DefaultSchema}\".\"inbox_messages\"";
+
+        string sql =
+            $"DELETE FROM {table} WHERE (\"message_id\", \"handler_name\") IN "
+            + "(SELECT \"message_id\", \"handler_name\" "
+            + $"FROM {table} WHERE \"handled_at_utc\" < @cutoff "
+            + "LIMIT @batchSize)";
+
+        return await ExecuteRawAsync<int>(
+            sql,
+            command =>
+            {
+                AddParameter(command, "cutoff", cutoffUtc);
+                AddParameter(command, "batchSize", batchSize);
+            },
+            (command, token) => command.ExecuteNonQueryAsync(token),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The module's schema, read from the model rather than passed in, so that a module which
+    /// changes its schema name changes it in one place and every statement here follows.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The context declared no default schema.</exception>
+    private string DefaultSchema =>
+        Model.GetDefaultSchema()
+        ?? throw new InvalidOperationException(
+            $"{GetType().Name} has no default schema, so its tables cannot be located. "
+            + "Every module context sets one with HasDefaultSchema.");
+
+    /// <summary>
+    /// Runs one hand-written statement on this context's connection and transaction.
+    /// <para>
+    /// The statements above are hand-written because each of them is a thing EF Core cannot
+    /// express and the database can: an upsert that returns, a claim that skips locked rows, a
+    /// bounded delete. What they share is the plumbing around them, and that is all this is.
+    /// </para>
+    /// </summary>
+    private async Task<TResult> ExecuteRawAsync<TResult>(
+        string sql,
+        Action<DbCommand> bindParameters,
+        Func<DbCommand, CancellationToken, Task<TResult>> execute,
+        CancellationToken cancellationToken)
+    {
         DbConnection connection = Database.GetDbConnection();
         bool openedHere = false;
 
@@ -145,26 +334,18 @@ public abstract class ModuleDbContext : DbContext
             command.CommandText = sql;
 
             // Enlisted by hand, because a command created from the connection knows nothing about
-            // the context's transaction. Without this the increment would commit on its own, and
-            // rolling the operation back would leave the number spent - which is the behaviour
-            // this method documents as belonging to the no-transaction case, arrived at by
-            // accident in the case that asked for better.
+            // the context's transaction. Without this a numbering increment would commit on its
+            // own, and rolling the operation back would leave the number spent - which is the
+            // behaviour TakeNextNumberAsync documents as belonging to the no-transaction case,
+            // arrived at by accident in the case that asked for better.
             if (Database.CurrentTransaction is { } transaction)
             {
                 command.Transaction = transaction.GetDbTransaction();
             }
 
-            AddParameter(command, "tenant", CurrentTenantId);
-            AddParameter(command, "key", sequenceKey);
-            AddParameter(command, "year", year);
+            bindParameters(command);
 
-            object? taken = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-
-            return taken is null or DBNull
-                ? throw new InvalidOperationException(
-                    $"The {sequenceKey} counter returned no number, which should not be reachable: "
-                    + "the statement either inserts a row or updates one.")
-                : Convert.ToInt32(taken, CultureInfo.InvariantCulture);
+            return await execute(command, cancellationToken).ConfigureAwait(false);
         }
         finally
         {

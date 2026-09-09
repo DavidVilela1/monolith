@@ -35,6 +35,44 @@ public sealed class OutboxOptions
 
     /// <summary>The longest gap between retries, however many have failed.</summary>
     public TimeSpan MaxBackoff { get; set; } = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// How long a claimed batch stays invisible to other sweeps.
+    /// <para>
+    /// Long enough that a slow batch is never stolen from underneath the instance working on it,
+    /// short enough that a host killed mid-batch does not strand its messages for an afternoon.
+    /// Being wrong in the short direction costs a duplicate delivery, which the inbox already
+    /// absorbs; being wrong in the long direction costs a delay.
+    /// </para>
+    /// </summary>
+    public TimeSpan ClaimLease { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// How long a delivered message is kept before housekeeping deletes it.
+    /// <para>
+    /// Not zero, because "was this event published, and when?" is a question somebody asks the
+    /// week after a wrong stock figure, not the same afternoon. Zero or less keeps everything
+    /// for ever, which is the setting for an installation that would rather buy disk.
+    /// </para>
+    /// </summary>
+    public TimeSpan ProcessedRetention { get; set; } = TimeSpan.FromDays(30);
+
+    /// <summary>
+    /// How long a record of having handled a message is kept.
+    /// <para>
+    /// Deliberately longer than <see cref="ProcessedRetention"/>. This row is what stops a
+    /// redelivery being applied twice, and the only redelivery it can still face is a person
+    /// reaching into the publisher's table and resetting a message that never went out. Keeping
+    /// it well past the point where the publisher's copy is gone is what makes that safe.
+    /// </para>
+    /// </summary>
+    public TimeSpan HandledRetention { get; set; } = TimeSpan.FromDays(90);
+
+    /// <summary>How often housekeeping runs.</summary>
+    public TimeSpan RetentionInterval { get; set; } = TimeSpan.FromHours(6);
+
+    /// <summary>Rows deleted per statement, so one pass is many small locks rather than one long one.</summary>
+    public int RetentionBatchSize { get; set; } = 1000;
 }
 
 /// <summary>
@@ -50,11 +88,10 @@ public sealed class OutboxOptions
 /// again. Consumers are expected to cope, and the inbox table is how they do.
 /// </para>
 /// <para>
-/// <b>One instance.</b> The sweep selects pending rows with no lock and no lease, so two copies
-/// of the API would each deliver every message. The inbox makes that survivable rather than
-/// harmless, and a second instance would still double the work. Running more than one means
-/// claiming rows first — <c>FOR UPDATE SKIP LOCKED</c>, or an owner column — and that is worth
-/// doing when there is a reason to scale out, not before.
+/// <b>Safe to run on more than one host.</b> Each sweep claims its batch before delivering any of
+/// it, taking a lease no other sweep will step on — see
+/// <see cref="ModuleDbContext.ClaimOutboxMessagesAsync"/> for how. Two instances therefore share
+/// the backlog rather than each working through all of it.
 /// </para>
 /// </summary>
 /// <typeparam name="TContext">The module context whose outbox this drains.</typeparam>
@@ -110,7 +147,10 @@ public sealed class OutboxProcessor<TContext> : BackgroundService
                     typeof(TContext).Name);
             }
 
-            // A full batch probably means there is more waiting, so come straight back.
+            // A full batch probably means there is more waiting, so come straight back. A short
+            // one is now ambiguous — it can also mean another host held some of the rows this
+            // sweep asked for — and the cost of reading it the cautious way is one poll interval
+            // in a case where somebody else is already doing the work.
             TimeSpan delay = handled >= _options.BatchSize ? TimeSpan.Zero : _options.PollInterval;
 
             if (delay > TimeSpan.Zero)
@@ -142,21 +182,25 @@ public sealed class OutboxProcessor<TContext> : BackgroundService
             scope.ServiceProvider.GetRequiredService<IIntegrationEventDispatcher>();
 
         DateTimeOffset now = _clock.UtcNow;
-        int maxAttempts = _options.MaxAttempts;
 
-        List<OutboxMessage> pending = await context.OutboxMessages
-            .Where(message => message.ProcessedAtUtc == null
-                && message.Attempts < maxAttempts
-                && (message.NextAttemptAtUtc == null || message.NextAttemptAtUtc <= now))
-            .OrderBy(message => message.OccurredAtUtc)
-            .Take(_options.BatchSize)
-            .ToListAsync(cancellationToken)
+        // Claim first, deliver second. The claim is one statement that hands this sweep a batch
+        // nobody else will touch; without it two hosts read the same rows and deliver everything
+        // twice.
+        Guid[] claimed = await context
+            .ClaimOutboxMessagesAsync(
+                _options.BatchSize, _options.MaxAttempts, now, _options.ClaimLease, cancellationToken)
             .ConfigureAwait(false);
 
-        if (pending.Count == 0)
+        if (claimed.Length == 0)
         {
             return 0;
         }
+
+        List<OutboxMessage> pending = await context.OutboxMessages
+            .Where(message => claimed.Contains(message.Id))
+            .OrderBy(message => message.OccurredAtUtc)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
 
         foreach (OutboxMessage message in pending)
         {

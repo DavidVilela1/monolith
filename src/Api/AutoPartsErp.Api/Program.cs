@@ -68,6 +68,10 @@ try
     builder.Services.AddErpPersistence(builder.Configuration);
 
     builder.Services.AddProblemDetails();
+
+    // Order is the contract here. The database handler is narrow and returns false for anything
+    // it does not recognize; the global one handles everything and must therefore be last.
+    builder.Services.AddExceptionHandler<DatabaseExceptionHandler>();
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
     // ---------------------------------------------------------------------------------

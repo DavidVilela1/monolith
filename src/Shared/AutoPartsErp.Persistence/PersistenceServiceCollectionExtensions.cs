@@ -45,17 +45,36 @@ public static class PersistenceServiceCollectionExtensions
             .Validate(
                 options => options.MaxBackoff > TimeSpan.Zero,
                 $"{OutboxOptions.SectionName}:MaxBackoff must be greater than zero.")
+            .Validate(
+                options => options.ClaimLease > TimeSpan.Zero,
+                $"{OutboxOptions.SectionName}:ClaimLease must be greater than zero.")
+            .Validate(
+                options => options.RetentionInterval > TimeSpan.Zero,
+                $"{OutboxOptions.SectionName}:RetentionInterval must be greater than zero.")
+            .Validate(
+                options => options.RetentionBatchSize > 0,
+                $"{OutboxOptions.SectionName}:RetentionBatchSize must be greater than zero.")
+
+            // Not clamped silently here as well as in the service, because a number somebody
+            // typed and a number the code quietly ignores are different kinds of wrong. Refusing
+            // to start says which one this is.
+            .Validate(
+                options => options.ProcessedRetention <= TimeSpan.Zero
+                    || options.HandledRetention >= options.ProcessedRetention,
+                $"{OutboxOptions.SectionName}:HandledRetention must be at least as long as "
+                + "ProcessedRetention: an inbox record deleted while the publisher can still "
+                + "hand the message back is a message that gets handled twice.")
             .ValidateOnStart();
 
         return services;
     }
 
     /// <summary>
-    /// Starts an outbox sweep for one module.
+    /// Starts an outbox sweep and its housekeeping for one module.
     /// <para>
-    /// One per module rather than one for the whole application, because each module's outbox is
-    /// a table in its own schema — which is what let the row be written in the same transaction
-    /// as the change it describes.
+    /// One pair per module rather than one for the whole application, because each module's
+    /// outbox is a table in its own schema — which is what let the row be written in the same
+    /// transaction as the change it describes.
     /// </para>
     /// </summary>
     /// <typeparam name="TContext">The module's database context.</typeparam>
@@ -66,6 +85,7 @@ public static class PersistenceServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddHostedService<OutboxProcessor<TContext>>();
+        services.AddHostedService<OutboxRetentionService<TContext>>();
 
         return services;
     }
