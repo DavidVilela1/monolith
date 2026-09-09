@@ -46,6 +46,7 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
         PriceSource = priceSource;
         DispatchedQuantity = Quantity.Zero(quantity.Unit);
         InvoicedQuantity = Quantity.Zero(quantity.Unit);
+        ReturnedQuantity = Quantity.Zero(quantity.Unit);
         CreatedBy = string.Empty;
     }
 
@@ -126,6 +127,20 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
     /// </para>
     /// </summary>
     public Quantity InvoicedQuantity { get; private set; } = null!;
+
+    /// <summary>
+    /// How much of this line the customer has sent back.
+    /// <para>
+    /// Counted against what was dispatched, never against what was ordered — goods that never
+    /// left cannot come back. It is not subtracted from the dispatched figure either: what went
+    /// out went out, and a line that quietly un-dispatched itself would make the order look
+    /// outstanding again and put it back on the picking list.
+    /// </para>
+    /// </summary>
+    public Quantity ReturnedQuantity { get; private set; } = null!;
+
+    /// <summary>How much of what went out is still with the customer.</summary>
+    public Quantity ReturnableQuantity => DispatchedQuantity - ReturnedQuantity;
 
     /// <summary>What has gone out and not yet been charged for.</summary>
     public Quantity BillableQuantity => DispatchedQuantity - InvoicedQuantity;
@@ -275,6 +290,41 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
         UnitPrice = unitPrice;
         DiscountPercent = discountPercent;
         PriceSource = null;
+
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Records goods coming back against this line.
+    /// <para>
+    /// The only rule here is arithmetic: no more can come back than went out and has not already
+    /// come back. Whether they should have been taken back at all — the box is open, it was sold
+    /// nine months ago, it is not the part we sold them — is a conversation at a counter, not an
+    /// invariant, and a system that refused those would be overruled by somebody typing an
+    /// adjustment instead.
+    /// </para>
+    /// </summary>
+    internal Result RecordReturn(Quantity returned)
+    {
+        ArgumentNullException.ThrowIfNull(returned);
+
+        if (returned.Unit != Quantity.Unit)
+        {
+            return SalesErrors.Line.UnitMismatch;
+        }
+
+        if (returned.Value <= 0m)
+        {
+            return SalesErrors.Line.QuantityNotPositive;
+        }
+
+        if (returned > ReturnableQuantity)
+        {
+            return SalesErrors.Return.ExceedsDispatched(
+                ReturnableQuantity.Value, returned.Value, Quantity.Unit.Code);
+        }
+
+        ReturnedQuantity = ReturnedQuantity.Add(returned);
 
         return Result.Success();
     }

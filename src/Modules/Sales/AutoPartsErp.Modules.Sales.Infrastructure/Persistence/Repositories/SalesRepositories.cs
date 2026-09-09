@@ -2,6 +2,7 @@ using System.Globalization;
 using AutoPartsErp.Modules.Sales.Domain;
 using AutoPartsErp.Modules.Sales.Domain.Customers;
 using AutoPartsErp.Modules.Sales.Domain.Orders;
+using AutoPartsErp.Modules.Sales.Domain.Returns;
 using Microsoft.EntityFrameworkCore;
 
 namespace AutoPartsErp.Modules.Sales.Infrastructure.Persistence.Repositories;
@@ -86,6 +87,69 @@ public sealed class SalesOrderRepository : ISalesOrderRepository
     {
         ArgumentNullException.ThrowIfNull(aggregate);
         _context.SalesOrders.Remove(aggregate);
+    }
+}
+
+/// <summary>Write-side access to customer returns. Lines are owned, so they load with the return.</summary>
+public sealed class CustomerReturnRepository : ICustomerReturnRepository
+{
+    private const string NumberPrefix = "RET";
+
+    /// <summary>Identifies this run of numbers in the module's counter table.</summary>
+    private const string NumberKey = "customer-return";
+
+    private readonly SalesDbContext _context;
+
+    /// <summary>Initializes the repository.</summary>
+    public CustomerReturnRepository(SalesDbContext context)
+    {
+        _context = context;
+    }
+
+    /// <inheritdoc />
+    public Task<CustomerReturn?> GetByIdAsync(
+        CustomerReturnId id,
+        CancellationToken cancellationToken = default) =>
+        _context.CustomerReturns.FirstOrDefaultAsync(
+            customerReturn => customerReturn.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> ExistsAsync(CustomerReturnId id, CancellationToken cancellationToken = default) =>
+        _context.CustomerReturns.AnyAsync(customerReturn => customerReturn.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<CustomerReturn?> GetByNumberAsync(
+        string returnNumber,
+        CancellationToken cancellationToken = default)
+    {
+        string normalized = returnNumber?.Trim().ToUpperInvariant() ?? string.Empty;
+
+        return _context.CustomerReturns.FirstOrDefaultAsync(
+            customerReturn => customerReturn.Number == normalized, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<string> NextReturnNumberAsync(int year, CancellationToken cancellationToken = default)
+    {
+        int next = await _context
+            .TakeNextNumberAsync(NumberKey, year, cancellationToken)
+            .ConfigureAwait(false);
+
+        return string.Create(CultureInfo.InvariantCulture, $"{NumberPrefix}-{year}-{next:D5}");
+    }
+
+    /// <inheritdoc />
+    public void Add(CustomerReturn aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.CustomerReturns.Add(aggregate);
+    }
+
+    /// <inheritdoc />
+    public void Remove(CustomerReturn aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.CustomerReturns.Remove(aggregate);
     }
 }
 

@@ -295,4 +295,107 @@ public static class SalesErrors
                 "sales.customer.currency_mismatch",
                 "That amount is not in the currency this account trades in.");
     }
+
+    /// <summary>Failures relating to a <see cref="Returns.CustomerReturn"/>.</summary>
+    public static class Return
+    {
+        /// <summary>The return does not exist.</summary>
+        public static Error NotFound(string identifier) =>
+            Error.NotFound("sales.return.not_found", $"No customer return matches '{identifier}'.");
+
+        /// <summary>A return number is required.</summary>
+        public static readonly Error NumberRequired =
+            Error.Validation("sales.return.number_required", "A return number is required.");
+
+        /// <summary>The return number is too long to store.</summary>
+        public static readonly Error NumberTooLong =
+            Error.Validation("sales.return.number_too_long", "That return number is too long.");
+
+        /// <summary>Goods come back against the order they went out on.</summary>
+        public static readonly Error OrderRequired =
+            Error.Validation(
+                "sales.return.order_required",
+                "Say which order the goods went out on. A return with no order behind it cannot " +
+                "be priced, and nobody can tell whether the goods were ever sold.");
+
+        /// <summary>A customer is required.</summary>
+        public static readonly Error CustomerRequired =
+            Error.Validation("sales.return.customer_required", "A customer is required.");
+
+        /// <summary>A warehouse is required.</summary>
+        public static readonly Error WarehouseRequired =
+            Error.Validation(
+                "sales.return.warehouse_required", "Say which warehouse the goods are coming back to.");
+
+        /// <summary>A reason is required.</summary>
+        public static readonly Error ReasonRequired =
+            Error.Validation(
+                "sales.return.reason_required",
+                "Say why the goods are coming back. It decides whether they go on the shelf.");
+
+        /// <summary>The currency is not one this system knows.</summary>
+        public static readonly Error CurrencyUnknown =
+            Error.Validation("sales.return.currency_unknown", "That is not a supported currency.");
+
+        /// <summary>The line is priced in a different currency from the return.</summary>
+        public static readonly Error CurrencyMismatch =
+            Error.Validation(
+                "sales.return.currency_mismatch",
+                "That price is not in the currency the return is in.");
+
+        /// <summary>Only a draft return may be changed.</summary>
+        public static readonly Error NotEditable =
+            Error.DomainRule(
+                "sales.return.not_editable",
+                "Only a draft return can be changed. Once the goods are booked in the stock has " +
+                "moved.");
+
+        /// <summary>The return has no lines.</summary>
+        public static readonly Error NoLines =
+            Error.DomainRule("sales.return.no_lines", "A return with no lines cannot be received.");
+
+        /// <summary>The goods are already booked in.</summary>
+        public static readonly Error AlreadyReceived =
+            Error.DomainRule(
+                "sales.return.already_received",
+                "Those goods have already been booked in. Correct a mistake with a movement, not " +
+                "by receiving them twice.");
+
+        /// <summary>The return has been called off.</summary>
+        public static readonly Error AlreadyClosed =
+            Error.DomainRule("sales.return.already_closed", "That return has been called off.");
+
+        /// <summary>Cancelling needs an explanation.</summary>
+        public static readonly Error ClosureReasonRequired =
+            Error.Validation("sales.return.closure_reason_required", "Say why the return is being called off.");
+
+        /// <summary>A return line names a line of the original order.</summary>
+        public static readonly Error OrderLineRequired =
+            Error.Validation(
+                "sales.return.order_line_required", "Say which line of the order the goods came from.");
+
+        /// <summary>The line is not on this return.</summary>
+        public static Error LineNotFound(string identifier) =>
+            Error.NotFound("sales.return.line_not_found", $"No line on this return matches '{identifier}'.");
+
+        /// <summary>That order line is already on this return.</summary>
+        public static Error LineAlreadyOnReturn(string identifier) =>
+            Error.DomainRule(
+                "sales.return.line_already_on_return",
+                $"Order line '{identifier}' is already on this return. Change the quantity on the " +
+                "line that is there rather than adding a second one.");
+
+        /// <summary>What happens to the goods has to be decided.</summary>
+        public static readonly Error DispositionRequired =
+            Error.Validation(
+                "sales.return.disposition_required",
+                "Say whether the goods go back on the shelf or are written off.");
+
+        /// <summary>More is coming back than ever went out.</summary>
+        public static Error ExceedsDispatched(decimal available, decimal wanted, string unit) =>
+            Error.DomainRule(
+                "sales.return.exceeds_dispatched",
+                $"Only {available} {unit} of that line went out and has not already come back, " +
+                $"and {wanted} {unit} is being returned. Goods that never left cannot come back.");
+    }
 }

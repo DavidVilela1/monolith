@@ -84,6 +84,43 @@ public sealed record GoodsDispatchedIntegrationEvent(
     Guid TenantId) : IntegrationEvent;
 
 /// <summary>
+/// A customer sent goods back and they are physically here. Inventory puts them on the shelf.
+/// <para>
+/// The mirror of <see cref="GoodsDispatchedIntegrationEvent"/>, and deliberately the same shape:
+/// the same order number, the same line, the same part and warehouse. That is not tidiness — it
+/// is what lets Inventory find the movement these goods left on and put them back at what they
+/// cost rather than at whatever the shelf averages today.
+/// </para>
+/// <para>
+/// Raised only for goods that go back into stock. A returned part that was scrapped is credited
+/// to the customer and written off, and there is nothing for a balance to do about a part that
+/// went in the bin — booking it in and adjusting it straight out would put two movements in the
+/// ledger for stock that was never on a shelf.
+/// </para>
+/// </summary>
+/// <param name="CustomerReturnId">The return document.</param>
+/// <param name="ReturnNumber">Its number, which becomes the stock movement reference.</param>
+/// <param name="SalesOrderId">The order the goods went out on.</param>
+/// <param name="OrderNumber">Its number, which is how the original issue is found in the ledger.</param>
+/// <param name="SalesOrderLineId">The line they went out on.</param>
+/// <param name="PartId">The part coming back.</param>
+/// <param name="WarehouseId">Where it is going.</param>
+/// <param name="Quantity">How much, on this return.</param>
+/// <param name="UnitCode">The unit that quantity is in.</param>
+/// <param name="TenantId">The owning tenant.</param>
+public sealed record GoodsReturnedIntegrationEvent(
+    Guid CustomerReturnId,
+    string ReturnNumber,
+    Guid SalesOrderId,
+    string OrderNumber,
+    Guid SalesOrderLineId,
+    Guid PartId,
+    Guid WarehouseId,
+    decimal Quantity,
+    string UnitCode,
+    Guid TenantId) : IntegrationEvent;
+
+/// <summary>
 /// An order was called off before anything went out. Inventory gives back whatever it was
 /// holding for it.
 /// </summary>

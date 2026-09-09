@@ -69,6 +69,7 @@ public sealed class SalesModule : IModule
 
         services.AddScoped<ISalesOrderRepository, SalesOrderRepository>();
         services.AddScoped<ICustomerAccountRepository, CustomerAccountRepository>();
+        services.AddScoped<ICustomerReturnRepository, CustomerReturnRepository>();
         services.AddScoped<ISalesReadStore, SalesReadStore>();
 
         // What Sales tells Invoicing about an order that is ready to be billed. The only one of
@@ -90,5 +91,6 @@ public sealed class SalesModule : IModule
 
         new SalesOrderEndpoints().Map(group);
         new CustomerAccountEndpoints().Map(group);
+        new CustomerReturnEndpoints().Map(group);
     }
 }

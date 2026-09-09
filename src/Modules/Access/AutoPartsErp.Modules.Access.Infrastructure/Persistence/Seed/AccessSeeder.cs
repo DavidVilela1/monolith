@@ -145,6 +145,7 @@ public sealed class AccessSeeder
                 Permissions.Sales.Manage,
                 Permissions.Sales.Confirm,
                 Permissions.Sales.Dispatch,
+                Permissions.Sales.Return,
                 Permissions.Invoicing.Read,
                 Permissions.Invoicing.Draft,
                 Permissions.Invoicing.Issue,

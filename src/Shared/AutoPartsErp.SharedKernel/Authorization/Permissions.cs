@@ -151,6 +151,17 @@ public static class Permissions
         public const string Dispatch = "sales.order.dispatch";
 
         /// <summary>
+        /// Take goods back from a customer, and decide whether they go back on the shelf.
+        /// <para>
+        /// Apart from <see cref="Manage"/> because a return is not an order. It puts stock back
+        /// into a balance and commits the company to crediting somebody, and it is the one act at
+        /// a counter where the person doing it and the person deciding what the goods are worth
+        /// are usually the same person.
+        /// </para>
+        /// </summary>
+        public const string Return = "sales.return.manage";
+
+        /// <summary>
         /// Confirm an order that takes the account past its credit limit.
         /// <para>
         /// The limit, and only the limit. A limit is a number somebody chose, and a manager
@@ -240,7 +251,8 @@ public static class Permissions
         Partners.Read, Partners.Manage, Partners.ManageCredit,
         Pricing.Quote, Pricing.Read, Pricing.Manage,
         Purchasing.Read, Purchasing.Manage, Purchasing.Submit, Purchasing.Receive,
-        Sales.Read, Sales.Manage, Sales.Confirm, Sales.Dispatch, Sales.OverrideCredit,
+        Sales.Read, Sales.Manage, Sales.Confirm, Sales.Dispatch, Sales.Return,
+        Sales.OverrideCredit,
         Invoicing.Read, Invoicing.Draft, Invoicing.Issue, Invoicing.Void,
         Invoicing.ManageSeries, Invoicing.ExportSaft,
         Finance.Read, Finance.RecordReceipt,

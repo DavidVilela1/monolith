@@ -1,5 +1,6 @@
 using AutoPartsErp.Modules.Sales.Domain.Customers;
 using AutoPartsErp.Modules.Sales.Domain.Orders;
+using AutoPartsErp.Modules.Sales.Domain.Returns;
 using AutoPartsErp.SharedKernel.Abstractions;
 
 namespace AutoPartsErp.Modules.Sales.Domain;
@@ -40,6 +41,25 @@ public interface ICustomerAccountRepository : IRepository<CustomerAccount, Custo
 {
     /// <summary>Loads an account by code, the way the counter looks one up.</summary>
     Task<CustomerAccount?> GetByCodeAsync(string code, CancellationToken cancellationToken = default);
+}
+
+/// <summary>Write-side access to customer returns.</summary>
+public interface ICustomerReturnRepository : IRepository<CustomerReturn, CustomerReturnId>
+{
+    /// <summary>Loads a return together with its lines, or null when there is no such return.</summary>
+    Task<CustomerReturn?> GetByNumberAsync(string returnNumber, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Takes the next return number for the given year, e.g. "RET-2026-00014".
+    /// <para>
+    /// From the same counter every other number in this module comes from, and spent as soon as
+    /// it is taken. A gap in the run of returns is untidy and nothing worse; nobody outside the
+    /// company ever sees one.
+    /// </para>
+    /// </summary>
+    /// <param name="year">The year to number within.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<string> NextReturnNumberAsync(int year, CancellationToken cancellationToken = default);
 }
 
 /// <summary>The Sales module's unit of work.</summary>

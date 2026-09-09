@@ -1,6 +1,7 @@
 using AutoPartsErp.Modules.Sales.Domain;
 using AutoPartsErp.Modules.Sales.Domain.Customers;
 using AutoPartsErp.Modules.Sales.Domain.Orders;
+using AutoPartsErp.Modules.Sales.Domain.Returns;
 using AutoPartsErp.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -40,6 +41,9 @@ public sealed class SalesDbContext : ModuleDbContext, ISalesUnitOfWork
     /// <summary>What Sales knows about each customer.</summary>
     public DbSet<CustomerAccount> CustomerAccounts => Set<CustomerAccount>();
 
+    /// <summary>Goods customers have sent back, with their lines.</summary>
+    public DbSet<CustomerReturn> CustomerReturns => Set<CustomerReturn>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -53,6 +57,12 @@ public sealed class SalesDbContext : ModuleDbContext, ISalesUnitOfWork
 
         modelBuilder.Entity<CustomerAccount>()
             .HasQueryFilter(account => account.TenantId == CurrentTenantId);
+
+        // No soft delete here, unlike orders. A return is either raised, received or called off,
+        // and a fourth state that means "pretend this never happened" would be a way to make
+        // credited stock disappear from every report that looks for it.
+        modelBuilder.Entity<CustomerReturn>()
+            .HasQueryFilter(customerReturn => customerReturn.TenantId == CurrentTenantId);
 
         base.OnModelCreating(modelBuilder);
     }

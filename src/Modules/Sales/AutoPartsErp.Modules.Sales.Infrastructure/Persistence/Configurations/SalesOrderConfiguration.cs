@@ -169,6 +169,9 @@ public sealed class SalesOrderConfiguration : IEntityTypeConfiguration<SalesOrde
             line.OwnsOne(l => l.InvoicedQuantity, quantity => MapQuantity(quantity, "invoiced_quantity"));
             line.Navigation(l => l.InvoicedQuantity).IsRequired();
 
+            line.OwnsOne(l => l.ReturnedQuantity, quantity => MapQuantity(quantity, "returned_quantity"));
+            line.Navigation(l => l.ReturnedQuantity).IsRequired();
+
             line.OwnsOne(l => l.UnitPrice, price =>
             {
                 price.Property(m => m.Amount)

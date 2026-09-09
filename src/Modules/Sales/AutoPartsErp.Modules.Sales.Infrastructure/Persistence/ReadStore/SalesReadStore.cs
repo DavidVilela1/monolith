@@ -3,6 +3,7 @@ using AutoPartsErp.Modules.Sales.Application.Contracts;
 using AutoPartsErp.Modules.Sales.Domain;
 using AutoPartsErp.Modules.Sales.Domain.Customers;
 using AutoPartsErp.Modules.Sales.Domain.Orders;
+using AutoPartsErp.Modules.Sales.Domain.Returns;
 using AutoPartsErp.SharedKernel.Abstractions;
 using AutoPartsErp.SharedKernel.Paging;
 using Microsoft.EntityFrameworkCore;
@@ -217,6 +218,128 @@ public sealed class SalesReadStore : ISalesReadStore
 
         return PagedResult<CustomerAccountDto>.Create(items, page.Page, page.PageSize, total);
     }
+
+    /// <inheritdoc />
+    public async Task<CustomerReturnDetail?> GetReturnAsync(
+        Guid customerReturnId,
+        CancellationToken cancellationToken = default)
+    {
+        var id = new CustomerReturnId(customerReturnId);
+
+        CustomerReturn? found = await _context.CustomerReturns
+            .AsNoTracking()
+            .FirstOrDefaultAsync(candidate => candidate.Id == id, cancellationToken)
+            .ConfigureAwait(false);
+
+        return found is null ? null : MapReturnDetail(found);
+    }
+
+    /// <inheritdoc />
+    public async Task<PagedResult<CustomerReturnSummary>> SearchReturnsAsync(
+        string? term,
+        Guid? customerId,
+        string? status,
+        PageRequest page,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        IQueryable<CustomerReturn> query = _context.CustomerReturns.AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(term))
+        {
+            string upper = term.Trim().ToUpperInvariant();
+
+            query = query.Where(customerReturn =>
+                EF.Functions.Like(customerReturn.Number, $"{upper}%")
+                || EF.Functions.Like(customerReturn.OrderNumber, $"{upper}%")
+                || EF.Functions.Like(customerReturn.CustomerCode, $"{upper}%"));
+        }
+
+        if (customerId is { } customer)
+        {
+            var reference = new CustomerRef(customer);
+            query = query.Where(customerReturn => customerReturn.CustomerId == reference);
+        }
+
+        if (!string.IsNullOrWhiteSpace(status)
+            && Enum.TryParse(status, ignoreCase: true, out CustomerReturnStatus parsed)
+            && parsed != CustomerReturnStatus.Unknown)
+        {
+            query = query.Where(customerReturn => customerReturn.Status == parsed);
+        }
+
+        int total = await query.CountAsync(cancellationToken).ConfigureAwait(false);
+
+        if (total == 0)
+        {
+            return PagedResult<CustomerReturnSummary>.Empty(page.Page, page.PageSize);
+        }
+
+        List<CustomerReturn> rows = await query
+            .OrderByDescending(customerReturn => customerReturn.Number)
+            .Skip(page.Skip)
+            .Take(page.PageSize)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        List<CustomerReturnSummary> items = [.. rows.Select(MapReturnSummary)];
+
+        return PagedResult<CustomerReturnSummary>.Create(items, page.Page, page.PageSize, total);
+    }
+
+    private static CustomerReturnSummary MapReturnSummary(CustomerReturn customerReturn) =>
+        new(
+            customerReturn.Id.Value,
+            customerReturn.Number,
+            customerReturn.SalesOrderId.Value,
+            customerReturn.OrderNumber,
+            customerReturn.CustomerId.Value,
+            customerReturn.CustomerCode,
+            customerReturn.CustomerName,
+            customerReturn.Status.ToString(),
+            customerReturn.Reason,
+            customerReturn.ReceivedOn,
+            customerReturn.GrossTotal.Amount,
+            customerReturn.CurrencyCode,
+            customerReturn.Lines.Count);
+
+    private static CustomerReturnDetail MapReturnDetail(CustomerReturn customerReturn) => new()
+    {
+        Id = customerReturn.Id.Value,
+        ReturnNumber = customerReturn.Number,
+        SalesOrderId = customerReturn.SalesOrderId.Value,
+        OrderNumber = customerReturn.OrderNumber,
+        CustomerId = customerReturn.CustomerId.Value,
+        CustomerCode = customerReturn.CustomerCode,
+        CustomerName = customerReturn.CustomerName,
+        ToWarehouseId = customerReturn.ToWarehouseId.Value,
+        Status = customerReturn.Status.ToString(),
+        Reason = customerReturn.Reason,
+        ReceivedOn = customerReturn.ReceivedOn,
+        ClosureReason = customerReturn.ClosureReason,
+        NetTotal = customerReturn.NetTotal.Amount,
+        VatTotal = customerReturn.VatTotal.Amount,
+        GrossTotal = customerReturn.GrossTotal.Amount,
+        CurrencyCode = customerReturn.CurrencyCode,
+        IsDraft = customerReturn.IsDraft,
+        Lines = [.. customerReturn.Lines.Select(line => new CustomerReturnLineDto(
+            line.Id.Value,
+            line.SalesOrderLineId.Value,
+            line.PartId.Value,
+            line.Sku,
+            line.Description,
+            line.Quantity.Value,
+            line.Quantity.Unit.Code,
+            line.UnitPrice.Amount,
+            line.DiscountPercent,
+            line.NetTotal.Amount,
+            line.VatRatePercent,
+            line.VatAmount.Amount,
+            line.GrossTotal.Amount,
+            line.Disposition.ToString(),
+            line.ConditionNote))],
+    };
 
     private static CustomerAccountDto MapCustomer(CustomerAccount account) => new(
         account.Id.Value,

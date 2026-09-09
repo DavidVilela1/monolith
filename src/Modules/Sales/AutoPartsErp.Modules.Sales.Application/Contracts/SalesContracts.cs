@@ -138,6 +138,126 @@ public sealed record SalesOrderLineDto(
     bool IsFullyDispatched,
     string? PriceSource);
 
+/// <summary>One row in a list of customer returns.</summary>
+/// <param name="Id">The return.</param>
+/// <param name="ReturnNumber">Its number.</param>
+/// <param name="SalesOrderId">The order the goods went out on.</param>
+/// <param name="OrderNumber">Its number.</param>
+/// <param name="CustomerId">Who sent them back.</param>
+/// <param name="CustomerCode">Their short code.</param>
+/// <param name="CustomerName">Their name.</param>
+/// <param name="Status">Draft, Received or Cancelled.</param>
+/// <param name="Reason">Why the goods came back.</param>
+/// <param name="ReceivedOn">The day they turned up.</param>
+/// <param name="GrossTotal">What the customer is owed for them.</param>
+/// <param name="CurrencyCode">Currency of that figure.</param>
+/// <param name="LineCount">How many lines it has.</param>
+public sealed record CustomerReturnSummary(
+    Guid Id,
+    string ReturnNumber,
+    Guid SalesOrderId,
+    string OrderNumber,
+    Guid CustomerId,
+    string CustomerCode,
+    string CustomerName,
+    string Status,
+    string Reason,
+    DateOnly? ReceivedOn,
+    decimal GrossTotal,
+    string CurrencyCode,
+    int LineCount);
+
+/// <summary>The full picture of one customer return.</summary>
+public sealed record CustomerReturnDetail
+{
+    /// <summary>The return.</summary>
+    public required Guid Id { get; init; }
+
+    /// <summary>Its number.</summary>
+    public required string ReturnNumber { get; init; }
+
+    /// <summary>The order the goods went out on.</summary>
+    public required Guid SalesOrderId { get; init; }
+
+    /// <summary>Its number.</summary>
+    public required string OrderNumber { get; init; }
+
+    /// <summary>Who sent them back.</summary>
+    public required Guid CustomerId { get; init; }
+
+    /// <summary>Their short code.</summary>
+    public required string CustomerCode { get; init; }
+
+    /// <summary>Their name.</summary>
+    public required string CustomerName { get; init; }
+
+    /// <summary>Where the goods are coming back to.</summary>
+    public required Guid ToWarehouseId { get; init; }
+
+    /// <summary>Draft, Received or Cancelled.</summary>
+    public required string Status { get; init; }
+
+    /// <summary>Why the goods came back.</summary>
+    public required string Reason { get; init; }
+
+    /// <summary>The day they turned up.</summary>
+    public DateOnly? ReceivedOn { get; init; }
+
+    /// <summary>Why it was called off.</summary>
+    public string? ClosureReason { get; init; }
+
+    /// <summary>What the customer is owed, before VAT.</summary>
+    public required decimal NetTotal { get; init; }
+
+    /// <summary>The VAT to be credited.</summary>
+    public required decimal VatTotal { get; init; }
+
+    /// <summary>What the credit note will come to.</summary>
+    public required decimal GrossTotal { get; init; }
+
+    /// <summary>Currency of all three.</summary>
+    public required string CurrencyCode { get; init; }
+
+    /// <summary>True while lines may still be added or taken off.</summary>
+    public required bool IsDraft { get; init; }
+
+    /// <summary>Its lines.</summary>
+    public required IReadOnlyList<CustomerReturnLineDto> Lines { get; init; }
+}
+
+/// <summary>One part coming back.</summary>
+/// <param name="Id">The line.</param>
+/// <param name="SalesOrderLineId">The line of the original order it came from.</param>
+/// <param name="PartId">The part.</param>
+/// <param name="Sku">Its SKU, as it was on the order.</param>
+/// <param name="Description">Its description, as it was on the order.</param>
+/// <param name="Quantity">How much is coming back.</param>
+/// <param name="UnitCode">The unit that quantity is in.</param>
+/// <param name="UnitPrice">What they paid per unit.</param>
+/// <param name="DiscountPercent">The discount they had.</param>
+/// <param name="NetTotal">What they are credited for the line, before VAT.</param>
+/// <param name="VatRatePercent">The VAT rate on the original line.</param>
+/// <param name="VatAmount">The VAT on the line.</param>
+/// <param name="GrossTotal">What the line adds to the credit.</param>
+/// <param name="Disposition">BackToStock or Scrap.</param>
+/// <param name="ConditionNote">What state it arrived in.</param>
+public sealed record CustomerReturnLineDto(
+    Guid Id,
+    Guid SalesOrderLineId,
+    Guid PartId,
+    string Sku,
+    string Description,
+    decimal Quantity,
+    string UnitCode,
+    decimal UnitPrice,
+    decimal DiscountPercent,
+    decimal NetTotal,
+    decimal VatRatePercent,
+    decimal VatAmount,
+    decimal GrossTotal,
+    string Disposition,
+    string? ConditionNote);
+
 /// <summary>What Sales knows about a customer.</summary>
 /// <param name="Id">The customer, which is also their partner id.</param>
 /// <param name="Code">Their short code.</param>

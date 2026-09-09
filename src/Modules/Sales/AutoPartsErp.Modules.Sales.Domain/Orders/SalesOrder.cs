@@ -485,6 +485,43 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
     }
 
     /// <summary>
+    /// Records goods coming back against one of this order's lines.
+    /// <para>
+    /// Called by the return, not by a person. Two aggregates change in the same transaction — the
+    /// return and this order — which is a rule usually worth keeping and is broken here for the
+    /// same reason it is broken when an order is confirmed: "how much of this line is still with
+    /// the customer" has to move at the same instant as the document that says so, or the figure
+    /// is a lie for as long as the two are apart. They live in the same module and the same
+    /// transaction, and splitting them across an event would buy purity and pay for it with a
+    /// number nobody can trust.
+    /// </para>
+    /// <para>
+    /// The order's own status does not move. A dispatched order with a return against it is still
+    /// a dispatched order; treating it as outstanding again would put it back on the picking list
+    /// and promise the customer goods they have just sent back.
+    /// </para>
+    /// </summary>
+    /// <param name="lineId">The line the goods went out on.</param>
+    /// <param name="returned">How much is coming back.</param>
+    public Result RecordReturn(SalesOrderLineId lineId, Quantity returned)
+    {
+        ArgumentNullException.ThrowIfNull(returned);
+
+        SalesOrderLine? line = FindLine(lineId);
+
+        if (line is null)
+        {
+            return SalesErrors.Line.NotFound(lineId.ToString());
+        }
+
+        return line.RecordReturn(returned);
+    }
+
+    /// <summary>How much of one line is still with the customer, for a screen building a return.</summary>
+    /// <param name="lineId">The line.</param>
+    public Quantity? ReturnableOn(SalesOrderLineId lineId) => FindLine(lineId)?.ReturnableQuantity;
+
+    /// <summary>
     /// Records goods leaving against one line.
     /// <para>
     /// Sales does not move stock itself. It raises <see cref="GoodsDispatchedDomainEvent"/>,

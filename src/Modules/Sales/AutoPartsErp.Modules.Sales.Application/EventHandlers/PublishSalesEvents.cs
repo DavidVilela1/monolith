@@ -1,5 +1,6 @@
 using AutoPartsErp.IntegrationEvents.Sales;
 using AutoPartsErp.Modules.Sales.Domain.Orders.Events;
+using AutoPartsErp.Modules.Sales.Domain.Returns.Events;
 using AutoPartsErp.SharedKernel.Abstractions;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Primitives;
@@ -110,6 +111,49 @@ public sealed class PublishGoodsDispatched : IDomainEventHandler<GoodsDispatched
                 domainEvent.SalesOrderId.Value,
                 domainEvent.OrderNumber,
                 domainEvent.LineId.Value,
+                domainEvent.PartId.Value,
+                domainEvent.WarehouseId.Value,
+                domainEvent.Quantity,
+                domainEvent.UnitCode,
+                _tenantContext.TenantId),
+            cancellationToken);
+    }
+}
+
+/// <summary>
+/// Tells Inventory that returned goods are back and belong on a shelf again.
+/// <para>
+/// The translation step, and the reason there is one: <c>GoodsReturnedDomainEvent</c> names
+/// Sales' own identifier types and changes whenever the return aggregate changes. Inventory sees
+/// a record of primitives instead, and neither module has to know the other exists.
+/// </para>
+/// </summary>
+public sealed class PublishGoodsReturned : IDomainEventHandler<GoodsReturnedDomainEvent>
+{
+    private readonly IEventBus _eventBus;
+    private readonly ITenantContext _tenantContext;
+
+    /// <summary>Initializes the handler.</summary>
+    public PublishGoodsReturned(IEventBus eventBus, ITenantContext tenantContext)
+    {
+        _eventBus = eventBus;
+        _tenantContext = tenantContext;
+    }
+
+    /// <inheritdoc />
+    public Task HandleAsync(
+        GoodsReturnedDomainEvent domainEvent,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(domainEvent);
+
+        return _eventBus.PublishAsync(
+            new GoodsReturnedIntegrationEvent(
+                domainEvent.CustomerReturnId.Value,
+                domainEvent.ReturnNumber,
+                domainEvent.SalesOrderId.Value,
+                domainEvent.OrderNumber,
+                domainEvent.SalesOrderLineId.Value,
                 domainEvent.PartId.Value,
                 domainEvent.WarehouseId.Value,
                 domainEvent.Quantity,

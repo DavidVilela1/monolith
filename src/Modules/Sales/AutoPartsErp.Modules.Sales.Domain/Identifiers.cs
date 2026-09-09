@@ -36,6 +36,40 @@ public readonly record struct SalesOrderLineId(Guid Value)
     public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
 }
 
+/// <summary>Identity of a <see cref="Returns.CustomerReturn"/>.</summary>
+/// <param name="Value">The underlying identifier.</param>
+public readonly record struct CustomerReturnId(Guid Value)
+{
+    /// <summary>The unset identifier.</summary>
+    public static readonly CustomerReturnId Empty = new(Guid.Empty);
+
+    /// <summary>Generates a new identifier.</summary>
+    public static CustomerReturnId New() => new(OrderedGuid.Create());
+
+    /// <summary>True when the identifier has not been set.</summary>
+    public bool IsEmpty => Value == Guid.Empty;
+
+    /// <inheritdoc />
+    public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
+}
+
+/// <summary>Identity of a <see cref="Returns.CustomerReturnLine"/>.</summary>
+/// <param name="Value">The underlying identifier.</param>
+public readonly record struct CustomerReturnLineId(Guid Value)
+{
+    /// <summary>The unset identifier.</summary>
+    public static readonly CustomerReturnLineId Empty = new(Guid.Empty);
+
+    /// <summary>Generates a new identifier.</summary>
+    public static CustomerReturnLineId New() => new(OrderedGuid.Create());
+
+    /// <summary>True when the identifier has not been set.</summary>
+    public bool IsEmpty => Value == Guid.Empty;
+
+    /// <inheritdoc />
+    public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
+}
+
 /// <summary>
 /// A customer, as Sales knows them.
 /// <para>

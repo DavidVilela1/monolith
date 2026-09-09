@@ -37,6 +37,24 @@ public interface ISalesReadStore
         string? status,
         PageRequest page,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Loads one customer return in full, or null when it does not exist.</summary>
+    Task<CustomerReturnDetail?> GetReturnAsync(
+        Guid customerReturnId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Searches returns by number, order number or customer code.</summary>
+    /// <param name="term">Free text.</param>
+    /// <param name="customerId">Restrict to one customer.</param>
+    /// <param name="status">Restrict to Draft, Received or Cancelled.</param>
+    /// <param name="page">Which page to return.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<PagedResult<CustomerReturnSummary>> SearchReturnsAsync(
+        string? term,
+        Guid? customerId,
+        string? status,
+        PageRequest page,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>What to look for when searching sales orders.</summary>
