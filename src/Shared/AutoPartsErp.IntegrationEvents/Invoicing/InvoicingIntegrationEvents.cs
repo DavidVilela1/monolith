@@ -104,6 +104,35 @@ public sealed record SalesOrderBilledIntegrationEvent(
     Guid TenantId) : IntegrationEvent;
 
 /// <summary>
+/// A credit note was issued for goods a customer sent back.
+/// <para>
+/// Separate from <see cref="InvoiceIssuedIntegrationEvent"/> for the same reason
+/// <see cref="SalesOrderBilledIntegrationEvent"/> is: one consumer needs it and nobody else does.
+/// Sales marks the return credited so a returns list can stop showing goods that were paid for
+/// months ago as still owing somebody money.
+/// </para>
+/// <para>
+/// Raised on issue, never on draft. A draft credit note can be abandoned, and a return that
+/// counted an abandoned draft against itself could never be credited by anybody.
+/// </para>
+/// </summary>
+/// <param name="CustomerReturnId">The return the goods came back on.</param>
+/// <param name="InvoiceId">The credit note.</param>
+/// <param name="DocumentNumber">Its number, as printed.</param>
+/// <param name="DocumentDate">The date on it.</param>
+/// <param name="GrossTotal">What the customer was given back.</param>
+/// <param name="CurrencyCode">Currency of that figure.</param>
+/// <param name="TenantId">The owning tenant.</param>
+public sealed record CustomerReturnCreditedIntegrationEvent(
+    Guid CustomerReturnId,
+    Guid InvoiceId,
+    string DocumentNumber,
+    DateOnly DocumentDate,
+    decimal GrossTotal,
+    string CurrencyCode,
+    Guid TenantId) : IntegrationEvent;
+
+/// <summary>
 /// A document that had charged for part of a sales order was voided.
 /// <para>
 /// What it charged for becomes billable again. A voided document keeps its number and its place

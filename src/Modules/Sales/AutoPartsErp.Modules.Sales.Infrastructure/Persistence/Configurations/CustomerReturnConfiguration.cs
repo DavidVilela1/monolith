@@ -87,6 +87,15 @@ public sealed class CustomerReturnConfiguration : IEntityTypeConfiguration<Custo
 
         builder.Property(customerReturn => customerReturn.ReceivedOn).HasColumnName("received_on");
 
+        // The credit note's number rather than its identity. A returns screen wants to print
+        // "NC SERIE2026/12", and fetching that from Invoicing per row is a join across a module
+        // boundary to render a list.
+        builder.Property(customerReturn => customerReturn.CreditNoteNumber)
+            .HasColumnName("credit_note_number")
+            .HasMaxLength(60);
+
+        builder.Property(customerReturn => customerReturn.CreditedOn).HasColumnName("credited_on");
+
         builder.Property(customerReturn => customerReturn.ClosureReason)
             .HasMaxLength(CustomerReturn.MaxNotesLength);
 

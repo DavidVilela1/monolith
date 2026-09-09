@@ -300,6 +300,7 @@ public sealed class SalesReadStore : ISalesReadStore
             customerReturn.Status.ToString(),
             customerReturn.Reason,
             customerReturn.ReceivedOn,
+            customerReturn.CreditNoteNumber,
             customerReturn.GrossTotal.Amount,
             customerReturn.CurrencyCode,
             customerReturn.Lines.Count);
@@ -317,6 +318,8 @@ public sealed class SalesReadStore : ISalesReadStore
         Status = customerReturn.Status.ToString(),
         Reason = customerReturn.Reason,
         ReceivedOn = customerReturn.ReceivedOn,
+        CreditNoteNumber = customerReturn.CreditNoteNumber,
+        CreditedOn = customerReturn.CreditedOn,
         ClosureReason = customerReturn.ClosureReason,
         NetTotal = customerReturn.NetTotal.Amount,
         VatTotal = customerReturn.VatTotal.Amount,

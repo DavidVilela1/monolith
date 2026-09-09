@@ -361,6 +361,13 @@ public static class SalesErrors
                 "Those goods have already been booked in. Correct a mistake with a movement, not " +
                 "by receiving them twice.");
 
+        /// <summary>The goods are not back yet.</summary>
+        public static readonly Error NotReceived =
+            Error.DomainRule(
+                "sales.return.not_received",
+                "Those goods are not booked in. A credit is recorded against a return that has " +
+                "arrived, not one somebody says is coming.");
+
         /// <summary>The return has been called off.</summary>
         public static readonly Error AlreadyClosed =
             Error.DomainRule("sales.return.already_closed", "That return has been called off.");

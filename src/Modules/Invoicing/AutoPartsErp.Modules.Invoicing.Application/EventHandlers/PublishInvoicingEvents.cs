@@ -64,6 +64,11 @@ public sealed class PublishInvoiceIssued : IDomainEventHandler<InvoiceIssuedDoma
         // A second event, for the one consumer that needs the lines. Sales has to know how much
         // of each of its lines was charged for; nobody else does, and putting the lines on the
         // event above would send an order's internals to every consumer of every document.
+        //
+        // Credit note lines carry no sales order line - DraftCreditNote copies the line it
+        // credits, not the line the original was drawn from - so BilledLines comes back empty for
+        // one and no billing is recorded. That is what stops crediting an order looking like
+        // invoicing more of it.
         IReadOnlyList<BilledOrderLine> billed = BilledLines(invoice);
 
         if (invoice?.SalesOrderId is { } salesOrderId && billed.Count > 0)
@@ -75,6 +80,22 @@ public sealed class PublishInvoiceIssued : IDomainEventHandler<InvoiceIssuedDoma
                     domainEvent.DocumentNumber,
                     domainEvent.DocumentDate,
                     billed,
+                    _tenantContext.TenantId),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        // And a third, for the return this credit note came from, when it came from one. Most
+        // credit notes do not: a wrong price or a wrong customer involves no goods at all.
+        if (invoice?.CustomerReturnId is { } customerReturnId)
+        {
+            await _eventBus.PublishAsync(
+                new CustomerReturnCreditedIntegrationEvent(
+                    customerReturnId.Value,
+                    domainEvent.InvoiceId.Value,
+                    domainEvent.DocumentNumber,
+                    domainEvent.DocumentDate,
+                    domainEvent.GrossTotal,
+                    domainEvent.CurrencyCode,
                     _tenantContext.TenantId),
                 cancellationToken).ConfigureAwait(false);
         }

@@ -95,6 +95,18 @@ public sealed class DocumentEndpoints : IEndpointGroup
             .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
+        group.MapPost("/documents/from-return", DrawFromReturnAsync)
+            .WithName("DrawCreditNoteFromReturn")
+            .RequirePermission(Permissions.Invoicing.Void)
+            .WithSummary(
+                "Draft a credit note for goods a customer sent back. Names the return and the "
+                + "document that charged for the goods; the lines are matched on the order line "
+                + "both of them carry.")
+            .Produces<Guid>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
         group.MapPost("/documents/{invoiceId:guid}/issue", IssueAsync)
             .WithName("IssueDocument")
             .RequirePermission(Permissions.Invoicing.Issue)
@@ -222,6 +234,16 @@ public sealed class DocumentEndpoints : IEndpointGroup
         Result<Guid> result = await dispatcher.SendAsync(
             new DraftCreditNoteCommand(invoiceId, body.Reason, body.Lines, body.DocumentDate),
             cancellationToken);
+
+        return result.ToCreated(id => $"/api/invoicing/documents/{id}");
+    }
+
+    private static async Task<IResult> DrawFromReturnAsync(
+        IDispatcher dispatcher,
+        DrawCreditNoteFromReturnCommand command,
+        CancellationToken cancellationToken)
+    {
+        Result<Guid> result = await dispatcher.SendAsync(command, cancellationToken);
 
         return result.ToCreated(id => $"/api/invoicing/documents/{id}");
     }

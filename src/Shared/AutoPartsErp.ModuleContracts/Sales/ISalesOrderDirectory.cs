@@ -25,7 +25,74 @@ public interface ISalesOrderDirectory
     Task<BillableOrder?> GetBillableAsync(
         Guid salesOrderId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// One customer return as Invoicing needs to see it, or null when there is no such return in
+    /// this tenant.
+    /// <para>
+    /// The same shape of question as the one above, asked about the other direction. Invoicing
+    /// draws the credit note; what came back, how much of it, and against which line of which
+    /// order are facts Sales owns.
+    /// </para>
+    /// <para>
+    /// Every line comes back, including the scrapped ones. A part written off is still a part the
+    /// customer is owed money for — what happened to it afterwards is a fact about a shelf, not
+    /// about the debt.
+    /// </para>
+    /// </summary>
+    /// <param name="customerReturnId">The return.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<CreditableReturn?> GetCreditableReturnAsync(
+        Guid customerReturnId,
+        CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// A customer return, seen from the credit note that is about to be drawn from it.
+/// </summary>
+/// <param name="CustomerReturnId">The return.</param>
+/// <param name="ReturnNumber">Its number, which goes on the credit note as the reference.</param>
+/// <param name="SalesOrderId">The order the goods went out on.</param>
+/// <param name="CustomerId">Who is owed the money.</param>
+/// <param name="CurrencyCode">The currency every figure on it is in.</param>
+/// <param name="Status">Draft, Received or Cancelled.</param>
+/// <param name="CanCredit">
+/// True when a credit note may be drawn: the goods are physically back and the return was not
+/// called off. Sales owns that judgement, because Sales owns the return — Invoicing testing
+/// <c>Status == "Received"</c> for itself would be Invoicing reimplementing a rule it does not
+/// own.
+/// </param>
+/// <param name="Lines">What is coming back, at the price it went out at.</param>
+public sealed record CreditableReturn(
+    Guid CustomerReturnId,
+    string ReturnNumber,
+    Guid SalesOrderId,
+    Guid CustomerId,
+    string CurrencyCode,
+    string Status,
+    bool CanCredit,
+    IReadOnlyList<CreditableReturnLine> Lines);
+
+/// <summary>
+/// One part coming back, as the credit note will bill it.
+/// </summary>
+/// <param name="SalesOrderLineId">
+/// The line of the original order. It is how Invoicing finds the document line to credit: an
+/// invoice line carries the order line it charged for, so matching on it is what makes crediting
+/// the right line of the right document possible without either module knowing the other's keys.
+/// </param>
+/// <param name="PartId">The part.</param>
+/// <param name="Sku">Its SKU as the order recorded it.</param>
+/// <param name="Description">Its description as the order recorded it.</param>
+/// <param name="Quantity">How much is coming back.</param>
+/// <param name="UnitCode">The unit it was sold in.</param>
+public sealed record CreditableReturnLine(
+    Guid SalesOrderLineId,
+    Guid PartId,
+    string Sku,
+    string Description,
+    decimal Quantity,
+    string UnitCode);
 
 /// <summary>
 /// An order, seen from the invoice that is about to be drawn from it.

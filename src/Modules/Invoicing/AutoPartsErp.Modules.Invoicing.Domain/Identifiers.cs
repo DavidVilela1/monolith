@@ -102,6 +102,28 @@ public readonly record struct SalesOrderRef(Guid Value)
 }
 
 /// <summary>
+/// The customer return a credit note was drawn from.
+/// <para>
+/// Null on most credit notes, and that is not an omission. A credit can be raised because a price
+/// was wrong, because the document went to the wrong company, or because a discount was agreed
+/// after the fact — none of which involve a part coming back. This is set only when goods did
+/// come back, and it is how a second credit for the same return is refused.
+/// </para>
+/// </summary>
+/// <param name="Value">The return's identifier in Sales.</param>
+public readonly record struct CustomerReturnRef(Guid Value)
+{
+    /// <summary>The unset reference.</summary>
+    public static readonly CustomerReturnRef Empty = new(Guid.Empty);
+
+    /// <summary>True when the reference has not been set.</summary>
+    public bool IsEmpty => Value == Guid.Empty;
+
+    /// <inheritdoc />
+    public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
+}
+
+/// <summary>
 /// A line of the sales order a document was drawn from.
 /// <para>
 /// Carried so that Sales can be told which of its lines a document charged for, and how much of

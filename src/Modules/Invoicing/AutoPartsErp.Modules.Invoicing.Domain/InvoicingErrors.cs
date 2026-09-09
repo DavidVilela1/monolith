@@ -419,6 +419,40 @@ public static class InvoicingErrors
                 "invoicing.credit.reason_too_long",
                 "That reason is longer than the document can carry.");
 
+        /// <summary>Sales has no such return.</summary>
+        public static Error ReturnNotFound(string identifier) =>
+            Error.NotFound(
+                "invoicing.credit.return_not_found", $"No customer return matches '{identifier}'.");
+
+        /// <summary>The goods are not back yet, or the return was called off.</summary>
+        public static Error ReturnNotCreditable(string returnNumber, string status) =>
+            Error.DomainRule(
+                "invoicing.credit.return_not_creditable",
+                $"Return {returnNumber} is {status}. A customer is credited for goods that are " +
+                "back, not for goods somebody says are coming.");
+
+        /// <summary>The return has already produced a credit note.</summary>
+        public static Error ReturnAlreadyCredited(string returnNumber) =>
+            Error.Conflict(
+                "invoicing.credit.return_already_credited",
+                $"Return {returnNumber} already has a credit note. Crediting it again would give " +
+                "the money back twice.");
+
+        /// <summary>The document names a different order from the one the goods went out on.</summary>
+        public static Error ReturnNotOnDocument(string returnNumber, string documentNumber) =>
+            Error.DomainRule(
+                "invoicing.credit.return_not_on_document",
+                $"Return {returnNumber} is against a different order from the one " +
+                $"{documentNumber} was raised for. Credit the document that charged for these goods.");
+
+        /// <summary>A returned line was never charged for on this document.</summary>
+        public static Error ReturnedLineNotBilled(string sku, string documentNumber) =>
+            Error.DomainRule(
+                "invoicing.credit.returned_line_not_billed",
+                $"{documentNumber} never charged for {sku}. It was billed on another document, or " +
+                "not yet at all - and a credit for something nobody was charged for is money out " +
+                "of the door.");
+
         /// <summary>The quantity is not positive.</summary>
         public static readonly Error QuantityNotPositive =
             Error.Validation(

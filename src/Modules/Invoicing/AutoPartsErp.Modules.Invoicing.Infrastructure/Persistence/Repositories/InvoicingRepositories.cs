@@ -180,6 +180,18 @@ public sealed class InvoiceRepository : IInvoiceRepository
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Drafts included. A draft is a credit note somebody is in the middle of, and the second
+    /// person reaching for the same return should be told so rather than find out when both are
+    /// issued.
+    /// </remarks>
+    public Task<bool> HasCreditNoteForReturnAsync(
+        CustomerReturnRef customerReturnId,
+        CancellationToken cancellationToken = default) =>
+        _context.Invoices.AnyAsync(
+            invoice => invoice.CustomerReturnId == customerReturnId, cancellationToken);
+
+    /// <inheritdoc />
     public async Task<string?> GetLastSignatureAsync(
         DocumentSeriesId seriesId,
         CancellationToken cancellationToken = default)

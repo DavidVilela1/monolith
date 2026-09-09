@@ -106,6 +106,17 @@ public sealed class Invoice : AggregateRoot<InvoiceId>, IAuditable, ITenantScope
     public InvoiceId? CreditedInvoiceId { get; private set; }
 
     /// <summary>
+    /// The customer return this credit note was drawn from, when goods actually came back.
+    /// <para>
+    /// Null on a credit raised for a wrong price or a wrong customer, which are most of them. It
+    /// is here for two things: refusing a second credit note for the same return, and answering
+    /// "what did we give back for those goods" from the return rather than from a person's memory
+    /// of which document it was.
+    /// </para>
+    /// </summary>
+    public CustomerReturnRef? CustomerReturnId { get; private set; }
+
+    /// <summary>
     /// That document's number, e.g. <c>FT SERIE2026/35</c>.
     /// <para>
     /// Stored rather than resolved, because it goes on every line of the credit note in the SAF-T
@@ -317,11 +328,16 @@ public sealed class Invoice : AggregateRoot<InvoiceId>, IAuditable, ITenantScope
     /// </param>
     /// <param name="reason">Why. Required, and it goes on every line of the SAF-T export.</param>
     /// <param name="documentDate">The date on the credit note.</param>
+    /// <param name="customerReturnId">
+    /// The return the goods came back on, when they did. Left null for a credit raised over a
+    /// wrong price or a wrong customer, which is most of them.
+    /// </param>
     public static Result<Invoice> DraftCreditNote(
         Invoice original,
         IReadOnlyDictionary<InvoiceLineId, Quantity> quantities,
         string? reason,
-        DateOnly documentDate)
+        DateOnly documentDate,
+        CustomerReturnRef? customerReturnId = null)
     {
         ArgumentNullException.ThrowIfNull(original);
         ArgumentNullException.ThrowIfNull(quantities);
@@ -372,6 +388,7 @@ public sealed class Invoice : AggregateRoot<InvoiceId>, IAuditable, ITenantScope
             CreditedInvoiceId = original.Id,
             CreditedDocumentNumber = original.DocumentNumber,
             CreditReason = trimmedReason,
+            CustomerReturnId = customerReturnId,
         };
 
         foreach (InvoiceLine line in original.Lines)

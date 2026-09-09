@@ -146,9 +146,10 @@ public sealed record SalesOrderLineDto(
 /// <param name="CustomerId">Who sent them back.</param>
 /// <param name="CustomerCode">Their short code.</param>
 /// <param name="CustomerName">Their name.</param>
-/// <param name="Status">Draft, Received or Cancelled.</param>
+/// <param name="Status">Draft, Received, Credited or Cancelled.</param>
 /// <param name="Reason">Why the goods came back.</param>
 /// <param name="ReceivedOn">The day they turned up.</param>
+/// <param name="CreditNoteNumber">The credit note that gave the money back, once there is one.</param>
 /// <param name="GrossTotal">What the customer is owed for them.</param>
 /// <param name="CurrencyCode">Currency of that figure.</param>
 /// <param name="LineCount">How many lines it has.</param>
@@ -163,6 +164,7 @@ public sealed record CustomerReturnSummary(
     string Status,
     string Reason,
     DateOnly? ReceivedOn,
+    string? CreditNoteNumber,
     decimal GrossTotal,
     string CurrencyCode,
     int LineCount);
@@ -194,7 +196,7 @@ public sealed record CustomerReturnDetail
     /// <summary>Where the goods are coming back to.</summary>
     public required Guid ToWarehouseId { get; init; }
 
-    /// <summary>Draft, Received or Cancelled.</summary>
+    /// <summary>Draft, Received, Credited or Cancelled.</summary>
     public required string Status { get; init; }
 
     /// <summary>Why the goods came back.</summary>
@@ -202,6 +204,12 @@ public sealed record CustomerReturnDetail
 
     /// <summary>The day they turned up.</summary>
     public DateOnly? ReceivedOn { get; init; }
+
+    /// <summary>The credit note that gave the money back, once one has been issued.</summary>
+    public string? CreditNoteNumber { get; init; }
+
+    /// <summary>The day it was issued.</summary>
+    public DateOnly? CreditedOn { get; init; }
 
     /// <summary>Why it was called off.</summary>
     public string? ClosureReason { get; init; }

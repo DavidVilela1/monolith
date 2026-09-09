@@ -155,6 +155,47 @@ public sealed class CustomerReturnTests
         returned.Receive(Today).Error.Code.Should().Be("sales.return.already_closed");
     }
 
+    /// <summary>
+    /// Told by Invoicing after the credit note is issued, not decided here. The document exists
+    /// and has been declared to the tax authority; a return that argued with it would be arguing
+    /// with something that already happened.
+    /// </summary>
+    [Fact]
+    public void A_credited_return_records_the_note_that_paid_for_it()
+    {
+        CustomerReturn returned = NewReturn();
+        AddLine(returned, SalesOrderLineId.New());
+        returned.Receive(Today);
+
+        returned.RecordCredited("NC SERIE2026/12", Today.AddDays(1)).IsSuccess.Should().BeTrue();
+
+        returned.Status.Should().Be(CustomerReturnStatus.Credited);
+        returned.IsCredited.Should().BeTrue();
+        returned.CreditNoteNumber.Should().Be("NC SERIE2026/12");
+        returned.CreditedOn.Should().Be(Today.AddDays(1));
+    }
+
+    /// <summary>
+    /// A credit is recorded against goods that are here. Crediting a draft would mean paying
+    /// somebody for a pump they said was coming and never sent.
+    /// </summary>
+    [Fact]
+    public void Only_a_received_return_can_be_credited()
+    {
+        CustomerReturn draft = NewReturn();
+        AddLine(draft, SalesOrderLineId.New());
+
+        draft.RecordCredited("NC SERIE2026/12", Today)
+            .Error.Code.Should().Be("sales.return.not_received");
+
+        CustomerReturn cancelled = NewReturn();
+        AddLine(cancelled, SalesOrderLineId.New());
+        cancelled.Cancel("They found the old one.");
+
+        cancelled.RecordCredited("NC SERIE2026/12", Today)
+            .Error.Code.Should().Be("sales.return.not_received");
+    }
+
     private static Result<CustomerReturn> Raise(string? reason = "Wrong part supplied.") =>
         CustomerReturn.Raise(
             "RET-2026-00014",

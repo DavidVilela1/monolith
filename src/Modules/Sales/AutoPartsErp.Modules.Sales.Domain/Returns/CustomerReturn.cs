@@ -112,6 +112,12 @@ public sealed class CustomerReturn : AggregateRoot<CustomerReturnId>, IAuditable
     /// <summary>The day the goods actually turned up.</summary>
     public DateOnly? ReceivedOn { get; private set; }
 
+    /// <summary>The credit note that gave the money back, once one has been issued.</summary>
+    public string? CreditNoteNumber { get; private set; }
+
+    /// <summary>The day it was issued.</summary>
+    public DateOnly? CreditedOn { get; private set; }
+
     /// <summary>Why it was called off.</summary>
     public string? ClosureReason { get; private set; }
 
@@ -142,7 +148,11 @@ public sealed class CustomerReturn : AggregateRoot<CustomerReturnId>, IAuditable
     /// <summary>True once the goods are back and nothing further will move.</summary>
     public bool IsClosed => Status
         is CustomerReturnStatus.Received
+        or CustomerReturnStatus.Credited
         or CustomerReturnStatus.Cancelled;
+
+    /// <summary>True once the customer has had their money back.</summary>
+    public bool IsCredited => Status == CustomerReturnStatus.Credited;
 
     /// <summary>What the customer is owed for the goods, before VAT.</summary>
     public Money NetTotal => Sum(line => line.NetTotal);
@@ -341,7 +351,7 @@ public sealed class CustomerReturn : AggregateRoot<CustomerReturnId>, IAuditable
             return SalesErrors.Return.AlreadyClosed;
         }
 
-        if (Status == CustomerReturnStatus.Received)
+        if (Status is CustomerReturnStatus.Received or CustomerReturnStatus.Credited)
         {
             return SalesErrors.Return.AlreadyReceived;
         }
@@ -382,6 +392,35 @@ public sealed class CustomerReturn : AggregateRoot<CustomerReturnId>, IAuditable
                 line.Quantity.Value,
                 line.Quantity.Unit.Code));
         }
+
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Records that a credit note has been issued for these goods.
+    /// <para>
+    /// Told by Invoicing, after the fact. The return does not decide when somebody is credited
+    /// and cannot refuse it — the document exists, it has been declared to the tax authority, and
+    /// a return that argued with it would be arguing with something that already happened.
+    /// </para>
+    /// <para>
+    /// The number is stored rather than the document's identity. A person looking at a return
+    /// wants to read "NC SERIE2026/12", and a screen that had to fetch it from another module to
+    /// show a returns list would fetch it once per row.
+    /// </para>
+    /// </summary>
+    /// <param name="creditNoteNumber">The credit note's number, as printed.</param>
+    /// <param name="creditedOn">The date on it.</param>
+    public Result RecordCredited(string? creditNoteNumber, DateOnly creditedOn)
+    {
+        if (Status != CustomerReturnStatus.Received)
+        {
+            return SalesErrors.Return.NotReceived;
+        }
+
+        Status = CustomerReturnStatus.Credited;
+        CreditNoteNumber = Trim(creditNoteNumber, MaxNumberLength);
+        CreditedOn = creditedOn;
 
         return Result.Success();
     }
@@ -448,6 +487,17 @@ public enum CustomerReturnStatus
 
     /// <summary>Called off before anything arrived.</summary>
     Cancelled = 3,
+
+    /// <summary>
+    /// The goods are back and a credit note has been issued for them.
+    /// <para>
+    /// After <c>Cancelled</c> in the numbering rather than beside <c>Received</c>, because the
+    /// values are stored as text and the order of the members is not what anything reads.
+    /// Renumbering the two before it to make the list look tidy would silently change what every
+    /// existing row means the day somebody switches this to an integer column.
+    /// </para>
+    /// </summary>
+    Credited = 4,
 }
 
 /// <summary>What was decided about a returned part.</summary>

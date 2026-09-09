@@ -160,6 +160,12 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
             .HasColumnName("credit_reason")
             .HasMaxLength(Invoice.MaxVoidReasonLength);
 
+        // The return the goods came back on, when they did. Same converter shape again.
+        builder.Property(invoice => invoice.CustomerReturnId)
+            .HasConversion(new ValueConverter<CustomerReturnRef, Guid>(
+                customerReturn => customerReturn.Value, value => new CustomerReturnRef(value)))
+            .HasColumnName("customer_return_id");
+
         builder.Property(invoice => invoice.SeriesId)
             .HasConversion(new ValueConverter<DocumentSeriesId, Guid>(
                 series => series.Value, value => new DocumentSeriesId(value)))
@@ -387,5 +393,15 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         builder.HasIndex(invoice => new { invoice.TenantId, invoice.CreditedInvoiceId })
             .HasFilter("credited_invoice_id IS NOT NULL")
             .HasDatabaseName("ix_invoices_tenant_credited");
+
+        // "Has this return already been credited?" - asked before every credit note drawn from
+        // goods coming back, and the check that stops a customer being paid twice for one
+        // alternator. Unique as well as filtered, so that two people reaching for the same return
+        // at the same moment are separated by the database rather than by the order two reads
+        // happened to fall in.
+        builder.HasIndex(invoice => new { invoice.TenantId, invoice.CustomerReturnId })
+            .IsUnique()
+            .HasFilter("customer_return_id IS NOT NULL")
+            .HasDatabaseName("ux_invoices_tenant_customer_return");
     }
 }

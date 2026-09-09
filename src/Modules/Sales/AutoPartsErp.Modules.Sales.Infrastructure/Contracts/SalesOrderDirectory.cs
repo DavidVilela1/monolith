@@ -1,6 +1,7 @@
 using AutoPartsErp.ModuleContracts.Sales;
 using AutoPartsErp.Modules.Sales.Domain;
 using AutoPartsErp.Modules.Sales.Domain.Orders;
+using AutoPartsErp.Modules.Sales.Domain.Returns;
 using AutoPartsErp.Modules.Sales.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -71,6 +72,47 @@ public sealed class SalesOrderDirectory : ISalesOrderDirectory
             order.Status.ToString(),
             order.InvoicingStatus.ToString(),
             order.CanInvoice,
+            lines);
+    }
+
+    /// <inheritdoc />
+    public async Task<CreditableReturn?> GetCreditableReturnAsync(
+        Guid customerReturnId,
+        CancellationToken cancellationToken = default)
+    {
+        var id = new CustomerReturnId(customerReturnId);
+
+        CustomerReturn? found = await _context.CustomerReturns
+            .AsNoTracking()
+            .FirstOrDefaultAsync(candidate => candidate.Id == id, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (found is null)
+        {
+            return null;
+        }
+
+        // Every line, scrapped ones included. What happened to the goods afterwards is a fact
+        // about a shelf; the customer is owed money for all of it either way.
+        List<CreditableReturnLine> lines =
+        [
+            .. found.Lines.Select(line => new CreditableReturnLine(
+                line.SalesOrderLineId.Value,
+                line.PartId.Value,
+                line.Sku,
+                line.Description,
+                line.Quantity.Value,
+                line.Quantity.Unit.Code)),
+        ];
+
+        return new CreditableReturn(
+            found.Id.Value,
+            found.Number,
+            found.SalesOrderId.Value,
+            found.CustomerId.Value,
+            found.CurrencyCode,
+            found.Status.ToString(),
+            found.Status == CustomerReturnStatus.Received && lines.Count > 0,
             lines);
     }
 }

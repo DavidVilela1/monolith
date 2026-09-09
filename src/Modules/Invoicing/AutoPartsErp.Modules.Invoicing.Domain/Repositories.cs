@@ -58,6 +58,21 @@ public interface IInvoiceRepository : IRepository<Invoice, InvoiceId>
     Task<string?> GetLastSignatureAsync(
         DocumentSeriesId seriesId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when a credit note has already been drawn for a customer return.
+    /// <para>
+    /// Drafts count. A draft is a credit note somebody is in the middle of, and the second person
+    /// to reach for the same return should be told it is already being dealt with rather than
+    /// find out when both are issued and the customer has been credited twice for one alternator.
+    /// A draft that turns out to be a mistake is abandoned, which unblocks the return.
+    /// </para>
+    /// </summary>
+    /// <param name="customerReturnId">The return.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<bool> HasCreditNoteForReturnAsync(
+        CustomerReturnRef customerReturnId,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
