@@ -154,6 +154,21 @@ public sealed class SalesOrderConfiguration : IEntityTypeConfiguration<SalesOrde
                 .HasColumnName("part_id")
                 .IsRequired();
 
+            // Goods or the deposit charged against the old unit. Stored as text like every other
+            // enum here, because the column is read by a person far more often than by code.
+            line.Property(l => l.Kind)
+                .HasConversion<string>()
+                .HasColumnName("kind")
+                .HasMaxLength(20)
+                .IsRequired();
+
+            // Nullable: only a deposit line points at anything. Same converter shape the module
+            // uses for every other nullable identifier.
+            line.Property(l => l.CoreForLineId)
+                .HasConversion(new ValueConverter<SalesOrderLineId, Guid>(
+                    id => id.Value, value => new SalesOrderLineId(value)))
+                .HasColumnName("core_for_line_id");
+
             line.Property(l => l.Sku).HasMaxLength(SalesOrderLine.MaxSkuLength).IsRequired();
 
             line.Property(l => l.Description)

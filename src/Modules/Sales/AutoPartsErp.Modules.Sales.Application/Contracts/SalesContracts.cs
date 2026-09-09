@@ -120,9 +120,13 @@ public sealed record SalesOrderDetail
 /// The price list the price came from, or null when it was typed by hand. This is the answer to
 /// "why did we charge that?" three weeks later.
 /// </param>
+/// <param name="Kind">Goods, or CoreDeposit for the sum held against a returnable old unit.</param>
+/// <param name="CoreForLineId">The goods line a deposit belongs to. Null on a goods line.</param>
 public sealed record SalesOrderLineDto(
     Guid Id,
     Guid PartId,
+    string Kind,
+    Guid? CoreForLineId,
     string Sku,
     string Description,
     decimal Quantity,

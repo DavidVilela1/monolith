@@ -103,6 +103,60 @@ public sealed class AddSalesOrderLineTests
         line.PriceSource.Should().Be("TRADE");
     }
 
+    /// <summary>
+    /// The deposit comes from the catalogue, not from the caller, and it arrives as its own line.
+    /// A part sold on a core without one is a starter motor the company gave the old unit away
+    /// on, found weeks later when nobody brings it back and nobody was ever charged.
+    /// </summary>
+    [Fact]
+    public async Task A_part_sold_on_a_core_arrives_with_its_deposit()
+    {
+        SalesOrder order = NewOrder();
+
+        var handler = new AddSalesOrderLineCommandHandler(
+            new FakeOrders(order),
+            new FakeCatalogue(
+                Describe(sellable: true, requiresCoreReturn: true),
+                new CoreCharge(30.00m, "EUR")),
+            new FakePricing(Quote(24.50m, 5m)),
+            new FakeUnitOfWork());
+
+        Result<Guid> result = await handler.HandleAsync(
+            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 2m));
+
+        result.IsSuccess.Should().BeTrue();
+
+        order.Lines.Should().HaveCount(2);
+
+        SalesOrderLine deposit = order.CoreDepositFor(new SalesOrderLineId(result.Value))!;
+
+        deposit.UnitPrice.Amount.Should().Be(30.00m);
+        deposit.Quantity.Value.Should().Be(2m);
+        deposit.DiscountPercent.Should().Be(0m);
+    }
+
+    /// <summary>
+    /// A part cannot be activated with a core and no charge, so this is one somebody changed after
+    /// it went live. Refused rather than sold without the deposit.
+    /// </summary>
+    [Fact]
+    public async Task A_core_part_with_no_deposit_in_the_catalogue_is_refused()
+    {
+        SalesOrder order = NewOrder();
+
+        var handler = new AddSalesOrderLineCommandHandler(
+            new FakeOrders(order),
+            new FakeCatalogue(Describe(sellable: true, requiresCoreReturn: true), coreCharge: null),
+            new FakePricing(Quote(24.50m, 5m)),
+            new FakeUnitOfWork());
+
+        Result<Guid> result = await handler.HandleAsync(
+            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 2m));
+
+        result.Error.Code.Should().Be("sales.core.charge_missing");
+        order.Lines.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task A_part_nothing_prices_is_refused_by_name()
     {
@@ -224,7 +278,10 @@ public sealed class AddSalesOrderLineTests
             "TRADE",
             1m);
 
-    private static PartDescriptor Describe(bool sellable, Guid? supersededBy = null) =>
+    private static PartDescriptor Describe(
+        bool sellable,
+        Guid? supersededBy = null,
+        bool requiresCoreReturn = false) =>
         new(
             PartId,
             "BP-1188",
@@ -232,7 +289,7 @@ public sealed class AddSalesOrderLineTests
             UnitOfMeasure.Set.Code,
             IsSellable: sellable,
             IsPurchasable: sellable,
-            RequiresCoreReturn: false,
+            requiresCoreReturn,
             supersededBy);
 
     private static SalesOrder NewOrder() =>
@@ -248,10 +305,12 @@ public sealed class AddSalesOrderLineTests
     private sealed class FakeCatalogue : ICatalogDirectory
     {
         private readonly PartDescriptor? _descriptor;
+        private readonly CoreCharge? _coreCharge;
 
-        public FakeCatalogue(PartDescriptor? descriptor)
+        public FakeCatalogue(PartDescriptor? descriptor, CoreCharge? coreCharge = null)
         {
             _descriptor = descriptor;
+            _coreCharge = coreCharge;
         }
 
         public bool WasAsked { get; private set; }
@@ -261,6 +320,11 @@ public sealed class AddSalesOrderLineTests
             WasAsked = true;
             return Task.FromResult(_descriptor);
         }
+
+        public Task<CoreCharge?> GetCoreChargeAsync(
+            Guid partId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(_coreCharge);
 
         public Task<IReadOnlyDictionary<Guid, PartDescriptor>> GetManyAsync(
             IReadOnlyCollection<Guid> partIds,

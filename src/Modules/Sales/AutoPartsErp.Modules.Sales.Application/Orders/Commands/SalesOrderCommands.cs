@@ -338,6 +338,33 @@ public sealed class AddSalesOrderLineCommandHandler : ICommandHandler<AddSalesOr
             priceSource = quoted.PriceListCode;
         }
 
+        // The deposit, for a part sold on a returnable core. Asked only when the catalogue says
+        // there is one, so an ordinary part costs no extra round trip.
+        Money? coreDeposit = null;
+
+        if (part.RequiresCoreReturn)
+        {
+            CoreCharge? charge = await _catalogue
+                .GetCoreChargeAsync(part.PartId, cancellationToken)
+                .ConfigureAwait(false);
+
+            // A part cannot be activated with a core and no charge, so this is a part somebody
+            // changed after it went live. Refused rather than sold without the deposit: the
+            // alternative is a starter motor whose old unit nobody is holding money against.
+            if (charge is null)
+            {
+                return Result.Failure<Guid>(SalesErrors.Core.ChargeMissing(part.Sku));
+            }
+
+            if (!string.Equals(charge.CurrencyCode, order.CurrencyCode, StringComparison.OrdinalIgnoreCase))
+            {
+                return Result.Failure<Guid>(SalesErrors.Line.PriceCurrencyMismatch(
+                    part.Sku, order.CurrencyCode, charge.CurrencyCode));
+            }
+
+            coreDeposit = Money.Of(charge.Amount, order.Currency);
+        }
+
         Result<SalesOrderLineId> line = order.AddLine(
             new PartRef(part.PartId),
             part.Sku,
@@ -346,7 +373,8 @@ public sealed class AddSalesOrderLineCommandHandler : ICommandHandler<AddSalesOr
             Money.Of(unitPrice, order.Currency),
             discountPercent,
             request.VatRatePercent,
-            priceSource);
+            priceSource,
+            coreDeposit);
 
         if (line.IsFailure)
         {

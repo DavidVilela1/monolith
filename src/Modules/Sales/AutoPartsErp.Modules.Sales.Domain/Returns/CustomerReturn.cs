@@ -519,4 +519,20 @@ public enum ReturnDisposition
     /// </para>
     /// </summary>
     Scrap = 2,
+
+    /// <summary>
+    /// The old unit coming back against a deposit.
+    /// <para>
+    /// Its own answer rather than <see cref="Scrap"/>, because it is not waste: a returned core
+    /// goes back to the remanufacturer and is worth money to somebody. It is not
+    /// <see cref="BackToStock"/> either — a used starter motor is not the remanufactured one that
+    /// was sold, and shelving it would put a part on the shelf that nobody can sell.
+    /// </para>
+    /// <para>
+    /// Nothing reaches Inventory for these, on the same reasoning as a scrapped line. What the
+    /// company does with a pile of old cores is a supplier conversation the system does not have
+    /// yet.
+    /// </para>
+    /// </summary>
+    Core = 3,
 }

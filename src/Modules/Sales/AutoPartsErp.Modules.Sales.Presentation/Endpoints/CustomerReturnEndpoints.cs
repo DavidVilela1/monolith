@@ -185,7 +185,7 @@ public sealed class CustomerReturnEndpoints : IEndpointGroup
 /// <summary>Body of an add-return-line request.</summary>
 /// <param name="SalesOrderLineId">The line of the original order the goods came from.</param>
 /// <param name="Quantity">How much is coming back.</param>
-/// <param name="Disposition">BackToStock or Scrap.</param>
+/// <param name="Disposition">BackToStock or Scrap for goods, Core for a returned old unit.</param>
 /// <param name="ConditionNote">What state it arrived in.</param>
 public sealed record AddCustomerReturnLineRequest(
     Guid SalesOrderLineId,

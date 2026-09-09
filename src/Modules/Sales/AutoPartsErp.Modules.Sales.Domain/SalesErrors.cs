@@ -84,6 +84,33 @@ public static class SalesErrors
         public static Error NotFound(string identifier) =>
             Error.NotFound("sales.line.not_found", $"Line '{identifier}' is not on this order.");
 
+        /// <summary>A deposit is not a figure to negotiate.</summary>
+        public static readonly Error CoreDepositNotPositive =
+            Error.Validation(
+                "sales.line.core_deposit_not_positive",
+                "A core deposit has to be worth something. Zero is a part sold without a core.");
+
+        /// <summary>A deposit line is changed through the part it belongs to.</summary>
+        public static readonly Error CoreDepositFollowsItsPart =
+            Error.DomainRule(
+                "sales.line.core_deposit_follows_its_part",
+                "A core deposit is not changed on its own. It is one deposit per unit of the part " +
+                "it is charged against, and it follows that line.");
+
+        /// <summary>A deposit line is priced by the catalogue, not by a person.</summary>
+        public static readonly Error CoreDepositNotPriceable =
+            Error.DomainRule(
+                "sales.line.core_deposit_not_priceable",
+                "A core deposit is a sum held and given back unchanged, not a price. Discounting " +
+                "it would mean giving back more than was taken.");
+
+        /// <summary>A deposit line is removed with the part it belongs to.</summary>
+        public static readonly Error CoreDepositNotRemovable =
+            Error.DomainRule(
+                "sales.line.core_deposit_not_removable",
+                "A core deposit cannot be taken off on its own. Remove the part and the deposit " +
+                "goes with it.");
+
         /// <summary>A part is required.</summary>
         public static readonly Error PartRequired =
             Error.Validation("sales.line.part_required", "A part is required.");
@@ -294,6 +321,32 @@ public static class SalesErrors
             Error.Validation(
                 "sales.customer.currency_mismatch",
                 "That amount is not in the currency this account trades in.");
+    }
+
+    /// <summary>Failures relating to a core deposit line.</summary>
+    public static class Core
+    {
+        /// <summary>A deposit is refunded against the old unit, not put on a shelf.</summary>
+        public static readonly Error DepositNeedsCoreDisposition =
+            Error.DomainRule(
+                "sales.core.deposit_needs_core_disposition",
+                "A core deposit line comes back as the old unit. Return it as Core - a used " +
+                "starter motor is not the remanufactured one that was sold, and it does not go " +
+                "on the shelf.");
+
+        /// <summary>Only a deposit line is a core.</summary>
+        public static readonly Error GoodsCannotBeCore =
+            Error.DomainRule(
+                "sales.core.goods_cannot_be_core",
+                "Only a core deposit line comes back as a core. Say whether the part goes back on " +
+                "the shelf or is written off.");
+
+        /// <summary>The catalogue has no deposit for a part that is sold on a core.</summary>
+        public static Error ChargeMissing(string sku) =>
+            Error.DomainRule(
+                "sales.core.charge_missing",
+                $"{sku} is sold against a returnable core and the catalogue holds no deposit for " +
+                "it. Set the core charge on the part before selling it.");
     }
 
     /// <summary>Failures relating to a <see cref="Returns.CustomerReturn"/>.</summary>

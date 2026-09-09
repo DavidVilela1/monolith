@@ -73,6 +73,29 @@ public sealed class CatalogDirectory : ICatalogDirectory
     }
 
     /// <inheritdoc />
+    public async Task<CoreCharge?> GetCoreChargeAsync(
+        Guid partId,
+        CancellationToken cancellationToken = default)
+    {
+        var id = new PartId(partId);
+
+        // Projected rather than loaded. The caller wants two numbers and the part carries
+        // cross-references and fitments it has no use for.
+        var found = await _context.Parts
+            .AsNoTracking()
+            .Where(part => part.Id == id && part.RequiresCoreReturn)
+            .Select(part => new
+            {
+                Amount = part.CoreCharge!.Amount,
+                Currency = part.CoreCharge!.Currency,
+            })
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return found is null ? null : new CoreCharge(found.Amount, found.Currency.Code);
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyDictionary<Guid, PartDescriptor>> GetManyAsync(
         IReadOnlyCollection<Guid> partIds,
         CancellationToken cancellationToken = default)

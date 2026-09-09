@@ -33,9 +33,13 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
         Money unitPrice,
         decimal discountPercent,
         decimal vatRatePercent,
-        string? priceSource)
+        string? priceSource,
+        SalesOrderLineKind kind = SalesOrderLineKind.Goods,
+        SalesOrderLineId? coreForLineId = null)
         : base(id)
     {
+        Kind = kind;
+        CoreForLineId = coreForLineId;
         PartId = partId;
         Sku = sku;
         Description = description;
@@ -56,6 +60,30 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
     {
     }
 #pragma warning restore CS8618
+
+    /// <summary>
+    /// Whether this line is goods or the deposit charged against the old unit.
+    /// <para>
+    /// A kind rather than a flag on the goods line, because the deposit is a separate thing the
+    /// customer pays and gets back: it prints as its own line, it is credited on its own, and a
+    /// starter motor bought without returning the old one is a customer who paid for both. A
+    /// field on the goods line would have to be untangled from the price on every document.
+    /// </para>
+    /// </summary>
+    public SalesOrderLineKind Kind { get; private set; }
+
+    /// <summary>
+    /// The goods line this deposit belongs to. Null on a goods line.
+    /// <para>
+    /// It is what makes the deposit follow the part: dispatching the starter motor charges the
+    /// deposit, and neither is decided separately. Without it the deposit would be a line nobody
+    /// ever dispatched and therefore a line nobody could ever invoice.
+    /// </para>
+    /// </summary>
+    public SalesOrderLineId? CoreForLineId { get; private set; }
+
+    /// <summary>True when this line is the deposit rather than the part.</summary>
+    public bool IsCoreDeposit => Kind == SalesOrderLineKind.CoreDeposit;
 
     /// <summary>The part being sold.</summary>
     public PartRef PartId { get; private set; }
@@ -233,10 +261,60 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
             Trim(priceSource, MaxPriceSourceLength) is { Length: > 0 } source ? source : null);
     }
 
+    /// <summary>
+    /// Creates the deposit line that belongs to a goods line.
+    /// <para>
+    /// No discount and no price source. A deposit is not a price somebody negotiated — it is a
+    /// sum held against the old unit and given back unchanged, and discounting it would mean
+    /// giving back more than was taken.
+    /// </para>
+    /// </summary>
+    /// <param name="goods">The line the deposit is charged against.</param>
+    /// <param name="unitDeposit">The deposit per unit, as the catalogue holds it.</param>
+    internal static Result<SalesOrderLine> CreateCoreDeposit(SalesOrderLine goods, Money unitDeposit)
+    {
+        ArgumentNullException.ThrowIfNull(goods);
+        ArgumentNullException.ThrowIfNull(unitDeposit);
+
+        if (unitDeposit.Currency != goods.UnitPrice.Currency)
+        {
+            return SalesErrors.Line.CurrencyMismatch;
+        }
+
+        if (!unitDeposit.IsPositive)
+        {
+            return SalesErrors.Line.CoreDepositNotPositive;
+        }
+
+        return new SalesOrderLine(
+            SalesOrderLineId.New(),
+            goods.PartId,
+            goods.Sku,
+            $"Core deposit - {goods.Description}",
+            goods.Quantity,
+            unitDeposit,
+            discountPercent: 0m,
+
+            // The same rate as the part it is charged against. A deposit taken at one rate and
+            // given back at another would leave the company holding the difference, and which
+            // rate applies is a question about the supply, not about the deposit.
+            goods.VatRatePercent,
+            priceSource: null,
+            SalesOrderLineKind.CoreDeposit,
+            goods.Id);
+    }
+
     /// <summary>Changes how much is being sold.</summary>
     internal Result ChangeQuantity(Quantity quantity)
     {
         ArgumentNullException.ThrowIfNull(quantity);
+
+        // Not directly. The deposit is however many units of the part are being sold, and a
+        // deposit for three against two starter motors is a customer owed money nobody took.
+        if (IsCoreDeposit)
+        {
+            return SalesErrors.Line.CoreDepositFollowsItsPart;
+        }
 
         if (quantity.Unit != Quantity.Unit)
         {
@@ -256,6 +334,12 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
         Quantity = quantity;
 
         return Result.Success();
+    }
+
+    /// <summary>Puts the deposit back in step with the part it belongs to.</summary>
+    internal void MatchQuantityTo(Quantity quantity)
+    {
+        Quantity = quantity;
     }
 
     /// <summary>
@@ -422,4 +506,23 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
 
         return trimmed.Length > maxLength ? trimmed[..maxLength] : trimmed;
     }
+}
+
+/// <summary>What a line on a sales order is.</summary>
+public enum SalesOrderLineKind
+{
+    /// <summary>Unspecified. Never persisted.</summary>
+    Unknown = 0,
+
+    /// <summary>A part being sold. The only kind that moves stock.</summary>
+    Goods = 1,
+
+    /// <summary>
+    /// The deposit held against a returnable old unit.
+    /// <para>
+    /// Charged with the goods and given back when the old unit comes in. It is money, not stock:
+    /// nothing is reserved for it, nothing is picked, and the ledger never hears about it.
+    /// </para>
+    /// </summary>
+    CoreDeposit = 2,
 }

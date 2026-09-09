@@ -18,7 +18,7 @@ about:
 | **Finance** | `finance` | 30 | The sales ledger: open items, receipts matched to the documents they pay, ageing |
 
 They share no code beyond two contract assemblies, and no module references another module's
-projects. 659 tests, all green — 621 that need nothing but the compiler, and 38 that need a real
+projects. 670 tests, all green — 632 that need nothing but the compiler, and 38 that need a real
 PostgreSQL because what they check does not exist until there is one.
 
 ---
@@ -788,6 +788,24 @@ sale — those are goods leaving now.
 **Line arithmetic is fixed and rounded at each step.** Extend, discount, net, VAT, each rounded as
 it is computed, because that is the order a customer can check with a calculator.
 
+**A core deposit is a line, not a field.** A remanufactured starter motor is sold twice over: the
+part, and a sum held until the old one comes back. The deposit prints as its own line, is credited
+on its own, and is what a customer pays when they keep the old unit — none of which a number
+tucked onto the goods line can express. Adding a part the catalogue marks as sold on a core adds
+both lines or neither.
+
+**The deposit is money, not stock.** Nothing is reserved for it, nothing is picked, and the ledger
+never hears about it. It is dispatched when the part is, because that is when the deposit is
+charged — without that it would be a line nobody ever dispatched and therefore a line nobody could
+ever invoice, and the company would hand over a starter motor and forget the thirty euros. It
+carries the part's VAT rate: a deposit taken at one rate and given back at another leaves the
+company holding the difference.
+
+**A returned core is its own disposition.** Not back to stock — a used starter motor is not the
+remanufactured one that was sold — and not scrap either, because it goes to the remanufacturer and
+is worth money to somebody. Like a scrapped line, nothing reaches Inventory: what the company does
+with a pile of old cores is a supplier conversation this system does not have yet.
+
 **A return is a document, not a credit note with stock attached.** A credit note can be issued
 because the price was wrong, because the invoice went to the wrong company, or because a discount
 was agreed after the fact — none of which involve a single part moving, and a system that put
@@ -1029,10 +1047,7 @@ concurrency in all three modules that hand out numbers.
 2. **Accounts payable, the general ledger, VAT returns and period close.** Finance covers what
    customers owe and nothing else yet: there is no supplier invoice to owe anything against,
    because Purchasing has an order and a goods receipt and no document between them.
-3. **Core credits.** Nothing charges or refunds the deposit that `RequiresCoreReturn` has been
-   describing on parts since Catalog was written, and a returnable core is half the transaction on
-   a starter motor.
-4. **Margin, and a floor under it.** Inventory knows what stock cost and Pricing knows what it
+3. **Margin, and a floor under it.** Inventory knows what stock cost and Pricing knows what it
    sells for, and nothing puts the two numbers on the same line. Until it does, nobody can be
    stopped from selling below cost.
 

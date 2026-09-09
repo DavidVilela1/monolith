@@ -402,6 +402,8 @@ public sealed class SalesReadStore : ISalesReadStore
         Lines = [.. order.Lines.Select(line => new SalesOrderLineDto(
             line.Id.Value,
             line.PartId.Value,
+            line.Kind.ToString(),
+            line.CoreForLineId?.Value,
             line.Sku,
             line.Description,
             line.Quantity.Value,

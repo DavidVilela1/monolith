@@ -287,6 +287,10 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
     /// <param name="priceSource">
     /// The code of the price list the price came from, or null when it was typed by hand.
     /// </param>
+    /// <param name="coreDeposit">
+    /// The deposit to charge against the old unit, for a part sold on a returnable core. A second
+    /// line is added beside the goods one, and the two travel together from then on.
+    /// </param>
     public Result<SalesOrderLineId> AddLine(
         PartRef partId,
         string? sku,
@@ -295,7 +299,8 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
         Money unitPrice,
         decimal discountPercent = 0m,
         decimal vatRatePercent = 0m,
-        string? priceSource = null)
+        string? priceSource = null,
+        Money? coreDeposit = null)
     {
         ArgumentNullException.ThrowIfNull(quantity);
         ArgumentNullException.ThrowIfNull(unitPrice);
@@ -310,7 +315,10 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
             return SalesErrors.Line.CurrencyMismatch;
         }
 
-        if (_lines.Exists(line => line.PartId == partId))
+        // Goods only. A deposit line carries the same part id as the line it belongs to, and
+        // counting it here would make the second starter motor on an order look like a duplicate
+        // of the first one's deposit.
+        if (_lines.Exists(line => !line.IsCoreDeposit && line.PartId == partId))
         {
             return SalesErrors.Line.DuplicatePart;
         }
@@ -324,10 +332,34 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
             return Result.Failure<SalesOrderLineId>(line.Error);
         }
 
+        if (coreDeposit is not null)
+        {
+            Result<SalesOrderLine> deposit =
+                SalesOrderLine.CreateCoreDeposit(line.Value, coreDeposit);
+
+            if (deposit.IsFailure)
+            {
+                return Result.Failure<SalesOrderLineId>(deposit.Error);
+            }
+
+            // Both or neither. A part added without its deposit is a starter motor the company
+            // gave away the core on, and it is found weeks later when nobody brings the old one
+            // back and nobody was ever charged for it.
+            _lines.Add(line.Value);
+            _lines.Add(deposit.Value);
+
+            return line.Value.Id;
+        }
+
         _lines.Add(line.Value);
 
         return line.Value.Id;
     }
+
+    /// <summary>The deposit line charged against one goods line, when there is one.</summary>
+    /// <param name="lineId">The goods line.</param>
+    public SalesOrderLine? CoreDepositFor(SalesOrderLineId lineId) =>
+        _lines.Find(line => line.IsCoreDeposit && line.CoreForLineId == lineId);
 
     /// <summary>Changes how much of a part is being sold.</summary>
     /// <param name="lineId">The line to change.</param>
@@ -343,9 +375,24 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
 
         SalesOrderLine? line = FindLine(lineId);
 
-        return line is null
-            ? SalesErrors.Line.NotFound(lineId.ToString())
-            : line.ChangeQuantity(quantity);
+        if (line is null)
+        {
+            return SalesErrors.Line.NotFound(lineId.ToString());
+        }
+
+        Result changed = line.ChangeQuantity(quantity);
+
+        if (changed.IsFailure)
+        {
+            return changed;
+        }
+
+        // The deposit follows. One deposit per unit of the part, always — a customer buying three
+        // starter motors leaves three old ones behind, and a deposit that stayed at two is money
+        // the company never took and will be asked to give back anyway.
+        CoreDepositFor(line.Id)?.MatchQuantityTo(quantity);
+
+        return Result.Success();
     }
 
     /// <summary>Changes the price or discount on a line.</summary>
@@ -368,8 +415,13 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
 
         SalesOrderLine? line = FindLine(lineId);
 
-        return line is null
-            ? SalesErrors.Line.NotFound(lineId.ToString())
+        if (line is null)
+        {
+            return SalesErrors.Line.NotFound(lineId.ToString());
+        }
+
+        return line.IsCoreDeposit
+            ? SalesErrors.Line.CoreDepositNotPriceable
             : line.ChangePricing(unitPrice, discountPercent);
     }
 
@@ -386,6 +438,18 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
         if (line is null)
         {
             return SalesErrors.Line.NotFound(lineId.ToString());
+        }
+
+        // A deposit is not removable on its own: an order with a core line and no part on it is a
+        // customer charged thirty euros for nothing.
+        if (line.IsCoreDeposit)
+        {
+            return SalesErrors.Line.CoreDepositNotRemovable;
+        }
+
+        if (CoreDepositFor(line.Id) is { } deposit)
+        {
+            _lines.Remove(deposit);
         }
 
         _lines.Remove(line);
@@ -470,6 +534,14 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
 
         foreach (SalesOrderLine line in _lines)
         {
+            // A deposit is money, not stock. Asking Inventory to hold thirty euros of starter
+            // motor against a line that will never be picked is how a shelf ends up with a
+            // reservation nobody can fulfil and a sweeper eventually releases.
+            if (line.IsCoreDeposit)
+            {
+                continue;
+            }
+
             Raise(new StockReservationRequestedDomainEvent(
                 Id,
                 OrderNumber,
@@ -546,11 +618,23 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
             return SalesErrors.Line.NotFound(lineId.ToString());
         }
 
+        // Nothing to pick. The deposit goes out when the part does, below.
+        if (line.IsCoreDeposit)
+        {
+            return SalesErrors.Line.CoreDepositFollowsItsPart;
+        }
+
         Result result = line.Dispatch(dispatched);
         if (result.IsFailure)
         {
             return result;
         }
+
+        // The deposit is charged as the part leaves, so it is dispatched with it. Without this
+        // the deposit line is never dispatched, never billable, and therefore never invoiced -
+        // the company would hand over a starter motor and forget to charge the thirty euros.
+        // No stock event: there is nothing on a shelf to take off.
+        CoreDepositFor(line.Id)?.Dispatch(dispatched);
 
         Raise(new GoodsDispatchedDomainEvent(
             Id,

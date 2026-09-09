@@ -141,6 +141,12 @@ public sealed class AddPurchaseOrderLineTests
             return Task.FromResult(_descriptor);
         }
 
+        // Purchasing never asks. A core deposit is charged to a customer, not to us.
+        public Task<CoreCharge?> GetCoreChargeAsync(
+            Guid partId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<CoreCharge?>(null);
+
         public Task<IReadOnlyDictionary<Guid, PartDescriptor>> GetManyAsync(
             IReadOnlyCollection<Guid> partIds,
             CancellationToken cancellationToken = default)

@@ -40,6 +40,24 @@ public interface ICatalogDirectory
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The deposit charged against the old unit, for a part sold on a returnable core.
+    /// <para>
+    /// Its own call rather than a field on <see cref="PartDescriptor"/>, which is deliberately
+    /// flat. Money is an amount and a currency and a rounding policy, and putting one on the
+    /// descriptor would push all three across a boundary that every caller crosses for every
+    /// line — when the number is wanted by one caller, for the small minority of parts that
+    /// carry a core, at the moment a line is raised.
+    /// </para>
+    /// <para>
+    /// Null when the part has no core, and also when it does not exist. A part cannot be
+    /// activated with a core and no charge, so a sellable core part always answers.
+    /// </para>
+    /// </summary>
+    /// <param name="partId">The part.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<CoreCharge?> GetCoreChargeAsync(Guid partId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The same, by SKU rather than by id.
     /// <para>
     /// Nobody at a trade counter types a GUID. They read the code off the bin label, and this is
@@ -72,7 +90,9 @@ public interface ICatalogDirectory
 /// <param name="IsPurchasable">Whether the part may go on a new purchase order.</param>
 /// <param name="RequiresCoreReturn">
 /// True for remanufactured parts sold against a returnable core. The document needs to know so
-/// the counter asks for the old unit back.
+/// the counter asks for the old unit back, and so the deposit goes on the order beside the part.
+/// What the deposit is comes from <see cref="ICatalogDirectory.GetCoreChargeAsync"/> rather than
+/// from here, which keeps this record free of money.
 /// </param>
 /// <param name="SupersededByPartId">
 /// The part that replaces this one, once it has been discontinued. Present so a refusal can say
@@ -87,3 +107,10 @@ public sealed record PartDescriptor(
     bool IsPurchasable,
     bool RequiresCoreReturn,
     Guid? SupersededByPartId);
+
+/// <summary>
+/// What a customer pays as a deposit against the old unit, and gets back when they return it.
+/// </summary>
+/// <param name="Amount">The deposit, per unit of the part.</param>
+/// <param name="CurrencyCode">The currency it is expressed in.</param>
+public sealed record CoreCharge(decimal Amount, string CurrencyCode);

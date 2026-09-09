@@ -62,7 +62,9 @@ public sealed class RaiseCustomerReturnCommandValidator : IValidator<RaiseCustom
 /// <param name="CustomerReturnId">The return.</param>
 /// <param name="SalesOrderLineId">The line of the original order.</param>
 /// <param name="Quantity">How much is coming back.</param>
-/// <param name="Disposition">BackToStock or Scrap.</param>
+/// <param name="Disposition">
+/// BackToStock or Scrap for goods, Core for the old unit coming back against a deposit.
+/// </param>
 /// <param name="ConditionNote">What state it arrived in.</param>
 public sealed record AddCustomerReturnLineCommand(
     Guid CustomerReturnId,
@@ -95,7 +97,7 @@ public sealed class AddCustomerReturnLineCommandValidator
         {
             failures.Add(new ValidationFailure(
                 nameof(instance.Disposition), "unknown",
-                "Disposition must be BackToStock or Scrap."));
+                "Disposition must be BackToStock, Scrap or Core."));
         }
 
         return ValueTask.FromResult<IReadOnlyList<ValidationFailure>>(failures);
@@ -269,6 +271,19 @@ public sealed class CustomerReturnCommandHandler
         }
 
         var disposition = Enum.Parse<ReturnDisposition>(request.Disposition, ignoreCase: true);
+
+        // The deposit and the part come back as different things. A deposit line returned to
+        // stock would shelve a used core as if it were the remanufactured part; a part returned
+        // as a core would credit somebody the deposit and leave the part itself uncredited.
+        if (line.IsCoreDeposit && disposition != ReturnDisposition.Core)
+        {
+            return Result.Failure<Guid>(SalesErrors.Core.DepositNeedsCoreDisposition);
+        }
+
+        if (!line.IsCoreDeposit && disposition == ReturnDisposition.Core)
+        {
+            return Result.Failure<Guid>(SalesErrors.Core.GoodsCannotBeCore);
+        }
 
         Result<CustomerReturnLineId> added = customerReturn.AddLine(
             line.Id,
