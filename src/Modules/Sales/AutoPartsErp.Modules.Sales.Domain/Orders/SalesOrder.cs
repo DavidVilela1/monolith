@@ -155,6 +155,18 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
     /// <inheritdoc />
     public string? DeletedBy { get; set; }
 
+    /// <summary>
+    /// True when somebody with the authority to do it confirmed this order past the customer's
+    /// credit limit.
+    /// <para>
+    /// Kept on the order rather than left to a log line, because the question a credit controller
+    /// asks is "which orders went out over the limit", and that is a query. Who and when come
+    /// from the audit columns and the confirmation date; by how much it exceeded does not come
+    /// from anywhere, because the limit is on the account and the account has moved on since.
+    /// </para>
+    /// </summary>
+    public bool CreditLimitOverridden { get; private set; }
+
     /// <summary>The currency the order is priced in.</summary>
     public Currency Currency => Currency.FromCode(CurrencyCode);
 
@@ -412,7 +424,16 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
     /// True when the order was deliberately taken without the stock being there. Travels on to
     /// Inventory so it holds what it can instead of refusing outright.
     /// </param>
-    public Result Confirm(DateOnly today, DateOnly? requiredBy = null, bool allowBackorder = false)
+    /// <param name="creditLimitOverridden">
+    /// True when the account only carried this order because somebody overrode its limit. The
+    /// order records the fact; it does not decide it, and the decision has already been taken by
+    /// the time this is called.
+    /// </param>
+    public Result Confirm(
+        DateOnly today,
+        DateOnly? requiredBy = null,
+        bool allowBackorder = false,
+        bool creditLimitOverridden = false)
     {
         if (Status != SalesOrderStatus.Draft)
         {
@@ -434,6 +455,7 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
         Status = SalesOrderStatus.Confirmed;
         ConfirmedOn = today;
         RequiredBy = requiredBy;
+        CreditLimitOverridden = creditLimitOverridden;
 
         Raise(new SalesOrderConfirmedDomainEvent(
             Id,

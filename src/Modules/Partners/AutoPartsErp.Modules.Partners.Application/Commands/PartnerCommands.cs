@@ -370,6 +370,143 @@ public sealed class GrantCustomerRoleCommandHandler : ICommandHandler<GrantCusto
     }
 }
 
+/// <summary>
+/// Changes what an existing customer is trading on: their credit limit, when they pay, and
+/// which price list they are on.
+/// <para>
+/// Separate from granting the role because they are different acts on different days. Granting
+/// starts a relationship and insists on a billing address before it will; this changes a deal
+/// with somebody the company is already selling to, and the only thing it insists on is that
+/// they are already a customer. It is also the one that announces a moved credit limit, which
+/// is how Sales finds out that an account it is committing orders against has more or less room
+/// than it did this morning.
+/// </para>
+/// </summary>
+/// <param name="PartnerId">The customer.</param>
+/// <param name="CreditLimit">How much they may owe at once.</param>
+/// <param name="CurrencyCode">Currency of the limit.</param>
+/// <param name="PaymentDueInDays">Days they have to pay.</param>
+/// <param name="PaymentMethod">How they pay.</param>
+/// <param name="EndOfMonth">True to count payment days from month end.</param>
+/// <param name="PriceListCode">Which price list they buy on.</param>
+public sealed record ChangeCustomerTermsCommand(
+    Guid PartnerId,
+    decimal CreditLimit,
+    string CurrencyCode,
+    int PaymentDueInDays,
+    string PaymentMethod,
+    bool EndOfMonth = false,
+    string? PriceListCode = null) : ICommand;
+
+/// <summary>Checks the shape of a <see cref="ChangeCustomerTermsCommand"/>.</summary>
+public sealed class ChangeCustomerTermsCommandValidator : IValidator<ChangeCustomerTermsCommand>
+{
+    /// <inheritdoc />
+    public ValueTask<IReadOnlyList<ValidationFailure>> ValidateAsync(
+        ChangeCustomerTermsCommand instance,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(instance);
+
+        var failures = new List<ValidationFailure>();
+
+        if (instance.CreditLimit < 0m)
+        {
+            failures.Add(new ValidationFailure(
+                nameof(instance.CreditLimit), "negative", "A credit limit cannot be negative."));
+        }
+
+        if (!Currency.TryFromCode(instance.CurrencyCode, out _))
+        {
+            failures.Add(new ValidationFailure(
+                nameof(instance.CurrencyCode), "unknown_currency",
+                $"'{instance.CurrencyCode}' is not a supported currency."));
+        }
+
+        if (!Enum.TryParse(instance.PaymentMethod, ignoreCase: true, out PaymentMethod method) ||
+            method == Domain.Partners.PaymentMethod.Unknown)
+        {
+            failures.Add(new ValidationFailure(
+                nameof(instance.PaymentMethod), "unknown",
+                "Payment method must be one of: Cash, Card, BankTransfer, DirectDebit, Cheque."));
+        }
+
+        return ValueTask.FromResult<IReadOnlyList<ValidationFailure>>(failures);
+    }
+}
+
+/// <summary>Changes an existing customer's terms.</summary>
+public sealed class ChangeCustomerTermsCommandHandler : ICommandHandler<ChangeCustomerTermsCommand>
+{
+    private readonly IPartnerRepository _partners;
+    private readonly IPartnersUnitOfWork _unitOfWork;
+
+    /// <summary>Initializes the handler.</summary>
+    public ChangeCustomerTermsCommandHandler(
+        IPartnerRepository partners,
+        IPartnersUnitOfWork unitOfWork)
+    {
+        _partners = partners;
+        _unitOfWork = unitOfWork;
+    }
+
+    /// <inheritdoc />
+    public async Task<Result> HandleAsync(
+        ChangeCustomerTermsCommand request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        Partner? partner = await _partners
+            .GetByIdAsync(new PartnerId(request.PartnerId), cancellationToken)
+            .ConfigureAwait(false);
+
+        if (partner is null)
+        {
+            return PartnerErrors.Partner.NotFound(request.PartnerId.ToString());
+        }
+
+        if (!Enum.TryParse(request.PaymentMethod, ignoreCase: true, out PaymentMethod method) ||
+            method == Domain.Partners.PaymentMethod.Unknown)
+        {
+            return PartnerErrors.Terms.PaymentMethodRequired;
+        }
+
+        Result<PaymentTerms> paymentTerms = PaymentTerms.Create(
+            request.PaymentDueInDays, method, request.EndOfMonth);
+
+        if (paymentTerms.IsFailure)
+        {
+            return Result.FromError(paymentTerms.Error);
+        }
+
+        if (!Currency.TryFromCode(request.CurrencyCode, out Currency currency))
+        {
+            return PartnerErrors.Partner.CountryCodeInvalid;
+        }
+
+        Result<CustomerTerms> terms = CustomerTerms.Create(
+            Money.Of(request.CreditLimit, currency),
+            paymentTerms.Value,
+            request.PriceListCode);
+
+        if (terms.IsFailure)
+        {
+            return Result.FromError(terms.Error);
+        }
+
+        Result changed = partner.ChangeCustomerTerms(terms.Value);
+        if (changed.IsFailure)
+        {
+            return changed;
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        return Result.Success();
+    }
+}
+
 /// <summary>Starts buying from a partner on the given terms.</summary>
 /// <param name="PartnerId">The partner.</param>
 /// <param name="PaymentDueInDays">Days we have to pay them.</param>

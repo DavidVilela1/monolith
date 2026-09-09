@@ -289,6 +289,25 @@ public sealed class SalesOrderConfirmationTests
         Fixture.NewDraft().Confirm(Fixture.Today).Error.Code.Should().Be("sales.order.no_lines");
     }
 
+    /// <summary>
+    /// An order confirmed past the customer's limit says so on its own row, because the question
+    /// a credit controller asks — "which orders went out over the limit?" — is a query, and a log
+    /// line is not one.
+    /// </summary>
+    [Fact]
+    public void An_order_let_through_the_credit_limit_records_that_it_was()
+    {
+        (SalesOrder ordinary, _) = Fixture.DraftWithLine();
+        ordinary.Confirm(Fixture.Today);
+        ordinary.CreditLimitOverridden.Should().BeFalse();
+
+        (SalesOrder overridden, _) = Fixture.DraftWithLine();
+        overridden.Confirm(Fixture.Today, requiredBy: null, allowBackorder: false,
+            creditLimitOverridden: true);
+
+        overridden.CreditLimitOverridden.Should().BeTrue();
+    }
+
     [Fact]
     public void Confirming_records_the_date_and_moves_the_status()
     {

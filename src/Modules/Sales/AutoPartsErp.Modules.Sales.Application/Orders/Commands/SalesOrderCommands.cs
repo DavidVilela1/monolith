@@ -543,10 +543,20 @@ public sealed class RemoveSalesOrderLineCommandHandler : ICommandHandler<RemoveS
 /// the customer rings about goods that were never going to be there.
 /// </para>
 /// </param>
+/// <param name="OverrideCreditLimit">
+/// True to confirm even though the order takes the account past its credit limit.
+/// <para>
+/// Behind its own permission, on its own route, because it is somebody taking responsibility
+/// rather than a checkbox on the ordinary one. It moves the limit for this order and nothing
+/// else: a held or closed account is still refused, since a hold is a decision about the
+/// relationship and undoing it belongs to whoever made it.
+/// </para>
+/// </param>
 public sealed record ConfirmSalesOrderCommand(
     Guid SalesOrderId,
     DateOnly? RequiredBy = null,
-    bool AllowBackorder = false) : ICommand;
+    bool AllowBackorder = false,
+    bool OverrideCreditLimit = false) : ICommand;
 
 /// <summary>
 /// Confirms the order, after the customer's account has agreed to carry it and Inventory has
@@ -634,10 +644,19 @@ public sealed class ConfirmSalesOrderCommandHandler : ICommandHandler<ConfirmSal
             }
         }
 
+        // Asked before the commit, because the commit is what changes the answer. Only an order
+        // that would actually have been refused counts as overridden: somebody reaching for the
+        // override on an order that fits inside the limit has overridden nothing, and marking it
+        // would put orders on the credit controller's list that never belonged there.
+        bool overrode = false;
+
         if (order.ConsumesCredit)
         {
-            // Commit checks the hold and the limit together and reports whichever failed.
-            Result committed = account.Commit(order.GrossTotal);
+            overrode = request.OverrideCreditLimit && order.GrossTotal > account.AvailableCredit;
+
+            // Commit checks the hold and the limit together and reports whichever failed. The
+            // override loosens the limit half only.
+            Result committed = account.Commit(order.GrossTotal, request.OverrideCreditLimit);
             if (committed.IsFailure)
             {
                 return committed;
@@ -655,7 +674,7 @@ public sealed class ConfirmSalesOrderCommandHandler : ICommandHandler<ConfirmSal
         }
 
         Result confirmed = order.Confirm(
-            _clock.TodayUtc, request.RequiredBy, request.AllowBackorder);
+            _clock.TodayUtc, request.RequiredBy, request.AllowBackorder, overrode);
 
         if (confirmed.IsFailure)
         {

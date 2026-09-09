@@ -85,6 +85,47 @@ public sealed class CustomerAccountTests
         committed.Error.Code.Should().Be("sales.customer.credit_limit_exceeded");
     }
 
+    /// <summary>
+    /// The override moves the limit for one order and nothing else. Somebody has decided this
+    /// customer is good for it; the account is not.
+    /// </summary>
+    [Fact]
+    public void An_override_lets_one_order_past_the_limit()
+    {
+        CustomerAccount account = NewAccount(1000m);
+
+        account.Commit(Money.Of(1500m, Currency.Eur), overrideLimit: true)
+            .IsSuccess.Should().BeTrue();
+
+        account.Committed.Amount.Should().Be(1500m);
+        account.AvailableCredit.Amount.Should().Be(0m);
+
+        // The limit itself has not moved, so the next order is refused like any other.
+        account.Commit(Money.Of(1m, Currency.Eur))
+            .Error.Code.Should().Be("sales.customer.credit_limit_exceeded");
+    }
+
+    /// <summary>
+    /// The line the override does not cross. A hold is somebody saying "stop selling to them",
+    /// and an override that waved one order past it would make every hold in the system advisory.
+    /// Lifting a hold is a different permission on a different module, and that is the point.
+    /// </summary>
+    [Fact]
+    public void An_override_does_not_get_past_a_hold_or_a_closed_account()
+    {
+        CustomerAccount held = NewAccount(1000m);
+        held.PlaceOnHold("Overdue.");
+
+        held.Commit(Money.Of(100m, Currency.Eur), overrideLimit: true)
+            .Error.Code.Should().Be("sales.customer.on_hold");
+
+        CustomerAccount closed = NewAccount(1000m);
+        closed.Close();
+
+        closed.Commit(Money.Of(100m, Currency.Eur), overrideLimit: true)
+            .Error.Code.Should().Be("sales.customer.closed");
+    }
+
     [Fact]
     public void Exposure_is_counted_at_confirmation_not_at_invoicing()
     {

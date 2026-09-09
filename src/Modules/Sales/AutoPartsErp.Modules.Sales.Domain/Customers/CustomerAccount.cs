@@ -311,7 +311,16 @@ public sealed class CustomerAccount : AggregateRoot<CustomerRef>, IAuditable, IT
     /// </para>
     /// </summary>
     /// <param name="amount">The order's gross value.</param>
-    public Result Commit(Money amount)
+    /// <param name="overrideLimit">
+    /// True to commit past the limit anyway.
+    /// <para>
+    /// The limit, and nothing else. A held or closed account is refused whatever this says: a
+    /// limit is a number somebody chose and a manager can reasonably decide one order is worth
+    /// exceeding it, whereas a hold is a decision about the relationship and undoing it belongs
+    /// to whoever made it. An override that quietly did both would make a hold a suggestion.
+    /// </para>
+    /// </param>
+    public Result Commit(Money amount, bool overrideLimit = false)
     {
         ArgumentNullException.ThrowIfNull(amount);
 
@@ -326,7 +335,7 @@ public sealed class CustomerAccount : AggregateRoot<CustomerRef>, IAuditable, IT
             return canTrade;
         }
 
-        if (amount > AvailableCredit)
+        if (amount > AvailableCredit && !overrideLimit)
         {
             return SalesErrors.Customer.CreditLimitExceeded(
                 AvailableCredit.Amount, amount.Amount, Currency.Code);

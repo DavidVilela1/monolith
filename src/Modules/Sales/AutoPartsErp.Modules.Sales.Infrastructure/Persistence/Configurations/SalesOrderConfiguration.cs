@@ -80,6 +80,7 @@ public sealed class SalesOrderConfiguration : IEntityTypeConfiguration<SalesOrde
             .IsRequired();
 
         builder.Property(order => order.ConfirmedOn);
+        builder.Property(order => order.CreditLimitOverridden).IsRequired();
         builder.Property(order => order.RequiredBy);
 
         builder.Property(order => order.CustomerReference)

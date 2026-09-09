@@ -272,6 +272,7 @@ public sealed class SalesReadStore : ISalesReadStore
         GrossTotal = order.GrossTotal.Amount,
         IsEditable = order.IsEditable,
         CanDispatch = order.CanDispatch,
+        CreditLimitOverridden = order.CreditLimitOverridden,
         Lines = [.. order.Lines.Select(line => new SalesOrderLineDto(
             line.Id.Value,
             line.PartId.Value,

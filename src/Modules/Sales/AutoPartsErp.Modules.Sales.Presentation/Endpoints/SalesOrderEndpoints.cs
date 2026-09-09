@@ -97,6 +97,22 @@ public sealed class SalesOrderEndpoints : IEndpointGroup
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
+        // A second route rather than a flag on the first, and the reason is the permission. A
+        // check that reads the body cannot be declared on the route, so it would have to live
+        // inside the handler, where it is invisible to anybody reading the endpoint. Two routes
+        // say what they need in the place somebody looks. This one needs both permissions: the
+        // right to confirm, and the right to go past the limit while doing it.
+        group.MapPost("/orders/{salesOrderId:guid}/confirm-over-limit", ConfirmOverLimitAsync)
+            .WithName("ConfirmSalesOrderOverCreditLimit")
+            .RequirePermission(Permissions.Sales.Confirm)
+            .RequirePermission(Permissions.Sales.OverrideCredit)
+            .WithSummary(
+                "Agree the order even though it takes the account past its credit limit. The limit "
+                + "only: an account on hold or closed is still refused. The order records that it "
+                + "was let through.")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
         group.MapPost("/orders/{salesOrderId:guid}/lines/{lineId:guid}/dispatches", DispatchAsync)
             .WithName("DispatchSalesOrderLine")
             .RequirePermission(Permissions.Sales.Dispatch)
@@ -238,6 +254,23 @@ public sealed class SalesOrderEndpoints : IEndpointGroup
         Result result = await dispatcher.SendAsync(
             new ConfirmSalesOrderCommand(
                 salesOrderId, body?.RequiredBy, body?.AllowBackorder ?? false),
+            cancellationToken);
+
+        return result.ToNoContent();
+    }
+
+    private static async Task<IResult> ConfirmOverLimitAsync(
+        IDispatcher dispatcher,
+        Guid salesOrderId,
+        ConfirmSalesRequest? body,
+        CancellationToken cancellationToken)
+    {
+        Result result = await dispatcher.SendAsync(
+            new ConfirmSalesOrderCommand(
+                salesOrderId,
+                body?.RequiredBy,
+                body?.AllowBackorder ?? false,
+                OverrideCreditLimit: true),
             cancellationToken);
 
         return result.ToNoContent();

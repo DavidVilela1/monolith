@@ -1,4 +1,5 @@
 using AutoPartsErp.Modules.Partners.Domain.Partners;
+using AutoPartsErp.Modules.Partners.Domain.Partners.Events;
 using AutoPartsErp.SharedKernel.Results;
 using AutoPartsErp.SharedKernel.ValueObjects;
 
@@ -153,6 +154,41 @@ public sealed class CreditTests
         terms.Error.Code.Should().Be("partners.terms.credit_without_period");
     }
 
+    /// <summary>
+    /// The route that changes a deal with somebody already being sold to. It announces a moved
+    /// limit and stays quiet about anything else, which is what stops Sales rebuilding an account
+    /// every time a price list code is corrected.
+    /// </summary>
+    [Fact]
+    public void Changing_the_terms_announces_a_moved_credit_limit_and_nothing_else()
+    {
+        Partner partner = Fixture.ActiveCustomer();
+        partner.ClearDomainEvents();
+
+        partner.ChangeCustomerTerms(Fixture.AccountTerms(creditLimit: 9000m))
+            .IsSuccess.Should().BeTrue();
+
+        partner.CustomerTerms!.CreditLimit.Amount.Should().Be(9000m);
+        partner.DomainEvents.OfType<CreditLimitChangedDomainEvent>().Should().ContainSingle();
+
+        partner.ClearDomainEvents();
+
+        // Same limit, different payment days: nothing downstream needs to hear about it.
+        partner.ChangeCustomerTerms(Fixture.AccountTerms(creditLimit: 9000m, dueInDays: 60));
+
+        partner.DomainEvents.OfType<CreditLimitChangedDomainEvent>().Should().BeEmpty();
+    }
+
+    /// <summary>Terms are for customers. There is nothing to change on somebody we only buy from.</summary>
+    [Fact]
+    public void Terms_cannot_be_changed_on_a_partner_who_is_not_a_customer()
+    {
+        Partner partner = Fixture.NewPartner();
+
+        partner.ChangeCustomerTerms(Fixture.AccountTerms())
+            .Error.Code.Should().Be("partners.partner.not_a_customer");
+    }
+
     [Fact]
     public void Cash_only_terms_are_valid_with_no_payment_period()
     {
@@ -298,10 +334,10 @@ internal static class Fixture
     public static Address DeliveryAddress(string line1) =>
         Address.Create(AddressKind.Delivery, line1, "4000-200", "Porto", "PT").Value;
 
-    public static CustomerTerms AccountTerms() =>
+    public static CustomerTerms AccountTerms(decimal creditLimit = 5000m, int dueInDays = 30) =>
         CustomerTerms.Create(
-            Money.Of(5000m, Currency.Eur),
-            PaymentTerms.Create(30, PaymentMethod.BankTransfer, endOfMonth: true).Value).Value;
+            Money.Of(creditLimit, Currency.Eur),
+            PaymentTerms.Create(dueInDays, PaymentMethod.BankTransfer, endOfMonth: true).Value).Value;
 
     public static SupplierTerms SupplierTerms() =>
         Domain.Partners.SupplierTerms.Create(

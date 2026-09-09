@@ -220,7 +220,6 @@ public sealed class AccessSeeder
                 Permissions.Invoicing.ExportSaft,
                 Permissions.Finance.Read,
                 Permissions.Finance.RecordReceipt,
-                Permissions.Finance.ManageTerms,
             ]);
 
         _context.Roles.AddRange(administrator, counter, warehouse, warehouseManager, buyer, accounts);

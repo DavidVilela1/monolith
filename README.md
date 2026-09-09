@@ -18,7 +18,7 @@ about:
 | **Finance** | `finance` | 30 | The sales ledger: open items, receipts matched to the documents they pay, ageing |
 
 They share no code beyond two contract assemblies, and no module references another module's
-projects. 628 tests, all green — 594 that need nothing but the compiler, and 34 that need a real
+projects. 637 tests, all green — 599 that need nothing but the compiler, and 38 that need a real
 PostgreSQL because what they check does not exist until there is one.
 
 ---
@@ -504,7 +504,7 @@ returns both.
 so a route added later without a thought about who may call it is refused rather than open. Three
 routes say otherwise — sign in, refresh, sign out — because they are where a token comes from.
 
-**Every one of the 139 routes names the permission it needs.** Not a group-wide check per module:
+**Every one of the 141 routes behind a permission names which one.** Not a group-wide check per module:
 `GET /api/inventory/stock/replenishment` needs `inventory.stock.read` and
 `POST /api/inventory/stock/adjust` needs `inventory.stock.adjust`, and they sit four lines apart
 in the same file. The catalogue lives in the shared kernel rather than in Access, and it has to —
@@ -516,7 +516,7 @@ a way of saying "I am company B" that company A could also say: anybody who coul
 could read anybody's data by changing one header. A claim inside a signed token cannot be edited
 by whoever is holding it.
 
-**Permissions, grouped into roles.** Thirty-six permissions named `module.thing.verb`, and roles
+**Permissions, grouped into roles.** Thirty-five permissions named `module.thing.verb`, and roles
 are named bundles of them. Permissions live on the role rather than on the user, so giving
 somebody an exception means giving them a second role — which keeps "why can she do this?" to a
 list of role names instead of an audit of one person's history.
@@ -532,6 +532,20 @@ every price the company charges — the one document a competitor would most lik
 same argument puts closing a transfer short behind `inventory.stock.adjust` rather than
 `inventory.transfer.manage`: accepting that stock never arrived is writing it off, and the driver
 should not be the one who signs that.
+
+**Going past a credit limit is its own route, not a flag.** `POST /orders/{id}/confirm-over-limit`
+requires both `sales.order.confirm` and `sales.credit.override`, and the order records that it was
+let through. A flag on the ordinary route would have put the check inside a handler, where nobody
+reading the endpoint can see it. The override moves the limit and nothing else: an account on hold
+or closed is still refused, because a limit is a number somebody chose and a hold is a decision
+about the relationship.
+
+**There is no `finance.terms.manage`.** Payment terms sit on the partner, on the same value object
+as the credit limit and written by the same call, and `partners.credit.manage` already names that
+job. Somebody allowed to set ninety-day terms but not the limit has half a lever. That permission
+now also covers granting the customer role, which used to sit behind `partners.partner.manage` —
+the route carries a credit limit, and correcting an address should not decide how much the company
+will let somebody owe.
 
 **Nothing cryptographic is hand-written.** Passwords go through the ASP.NET Core `PasswordHasher`
 (PBKDF2, per-password salt, a version byte for the day the parameters change); tokens are signed
@@ -980,10 +994,9 @@ concurrency in all three modules that hand out numbers.
   every request, is the trade nobody has needed to make yet.
 - Signing out withdraws the refresh handle but cannot withdraw the access token, which stays
   valid for its remaining minutes. That is what a signed token is.
-- Two permissions in the catalogue have no route behind them yet: `sales.credit.override`, which
-  needs a way to let an order through a credit hold, and `finance.terms.manage`, which needs a
-  route that sets payment terms. Both name a decision the business makes and the software does
-  not yet offer. They grant nothing until it does.
+- The confirmation that goes past a credit limit records that it did, and not by how much. The
+  limit lives on the account and the account moves on; reconstructing the gap months later means
+  reading the order total against a limit that has since changed twice.
 
 - Purchase order lines have no concurrency token of their own, so two people editing different
   lines of the same order can still conflict at the aggregate level.

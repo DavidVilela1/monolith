@@ -63,10 +63,23 @@ public sealed class PartnerEndpoints : IEndpointGroup
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem();
 
+        // Behind the credit permission, not the general one. What this route carries is a credit
+        // limit, and somebody who may correct a partner's address should not thereby be able to
+        // decide how much the company will let them owe.
         group.MapPut("/{partnerId:guid}/customer-role", GrantCustomerAsync)
             .WithName("GrantCustomerRole")
-            .RequirePermission(Permissions.Partners.Manage)
+            .RequirePermission(Permissions.Partners.ManageCredit)
             .WithSummary("Start selling to them. Requires a billing address.")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
+        group.MapPut("/{partnerId:guid}/customer-terms", ChangeCustomerTermsAsync)
+            .WithName("ChangeCustomerTerms")
+            .RequirePermission(Permissions.Partners.ManageCredit)
+            .WithSummary(
+                "Change an existing customer's credit limit, payment terms and price list. "
+                + "A moved limit is announced, so Sales stops committing orders against the old one.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
@@ -169,6 +182,28 @@ public sealed class PartnerEndpoints : IEndpointGroup
         Result result = await dispatcher.SendAsync(
             new AddPartnerContactCommand(
                 partnerId, body.Name, body.Role, body.Email, body.Phone, body.IsPrimary),
+            cancellationToken);
+
+        return result.ToNoContent();
+    }
+
+    private static async Task<IResult> ChangeCustomerTermsAsync(
+        IDispatcher dispatcher,
+        Guid partnerId,
+        GrantCustomerRequest body,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+
+        Result result = await dispatcher.SendAsync(
+            new ChangeCustomerTermsCommand(
+                partnerId,
+                body.CreditLimit,
+                body.CurrencyCode,
+                body.PaymentDueInDays,
+                body.PaymentMethod,
+                body.EndOfMonth,
+                body.PriceListCode),
             cancellationToken);
 
         return result.ToNoContent();

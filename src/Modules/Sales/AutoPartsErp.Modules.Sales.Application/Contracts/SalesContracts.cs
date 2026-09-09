@@ -93,6 +93,9 @@ public sealed record SalesOrderDetail
     /// <summary>True when goods may go out against it.</summary>
     public required bool CanDispatch { get; init; }
 
+    /// <summary>True when this order was confirmed past the customer's credit limit.</summary>
+    public bool CreditLimitOverridden { get; init; }
+
     /// <summary>Its lines.</summary>
     public required IReadOnlyList<SalesOrderLineDto> Lines { get; init; }
 }

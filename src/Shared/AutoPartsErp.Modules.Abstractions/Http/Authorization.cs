@@ -38,9 +38,9 @@ public static class AuthorizationEndpointExtensions
     /// </para>
     /// <para>
     /// The policy name is the permission with a prefix. Policies are not registered one by one —
-    /// there is a provider in the API that builds them on demand — because a list of thirty-six
-    /// registrations is a list somebody eventually forgets to add to, and the endpoint whose
-    /// policy was never registered fails closed but at startup, on an unrelated deployment.
+    /// there is a provider in the API that builds them on demand — because a registration per
+    /// permission is a list somebody eventually forgets to add to, and the endpoint whose policy
+    /// was never registered fails closed but at startup, on an unrelated deployment.
     /// </para>
     /// </summary>
     /// <param name="builder">The endpoint or group.</param>

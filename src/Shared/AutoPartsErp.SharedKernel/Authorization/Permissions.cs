@@ -85,7 +85,17 @@ public static class Permissions
         /// <summary>Create and change partners, addresses and contacts.</summary>
         public const string Manage = "partners.partner.manage";
 
-        /// <summary>Set credit limits and put an account on hold.</summary>
+        /// <summary>
+        /// Decide the terms a customer trades on: their credit limit, when they pay, which price
+        /// list they are on, and whether they may order at all.
+        /// <para>
+        /// One permission rather than one for the limit and another for the terms, because they
+        /// are one job and they are one write: the limit and the payment days live on the same
+        /// value object, and somebody allowed to set ninety-day terms but not the limit has half
+        /// a lever. Kept apart from <see cref="Manage"/> for the opposite reason — correcting an
+        /// address and deciding how much the company will let somebody owe are not the same act.
+        /// </para>
+        /// </summary>
         public const string ManageCredit = "partners.credit.manage";
     }
 
@@ -140,7 +150,15 @@ public static class Permissions
         /// <summary>Record that goods went out.</summary>
         public const string Dispatch = "sales.order.dispatch";
 
-        /// <summary>Let an order through a credit hold that would otherwise stop it.</summary>
+        /// <summary>
+        /// Confirm an order that takes the account past its credit limit.
+        /// <para>
+        /// The limit, and only the limit. A limit is a number somebody chose, and a manager
+        /// deciding one order is worth exceeding it is an ordinary Tuesday. An account on hold is
+        /// a decision about the relationship, and lifting it belongs to whoever made it — an
+        /// override that quietly did both would turn every hold into a suggestion.
+        /// </para>
+        /// </summary>
         public const string OverrideCredit = "sales.credit.override";
     }
 
@@ -181,8 +199,10 @@ public static class Permissions
         /// <summary>Record money arriving and match it to documents.</summary>
         public const string RecordReceipt = "finance.receipt.record";
 
-        /// <summary>Set payment terms.</summary>
-        public const string ManageTerms = "finance.terms.manage";
+        // There is no finance.terms.manage. Payment terms sit on the partner, next to the credit
+        // limit and on the same value object, and partners.credit.manage already names that job.
+        // A second permission for the same write would have been a name for a decision nobody
+        // takes separately.
     }
 
     /// <summary>Who may use the system.</summary>
@@ -223,7 +243,7 @@ public static class Permissions
         Sales.Read, Sales.Manage, Sales.Confirm, Sales.Dispatch, Sales.OverrideCredit,
         Invoicing.Read, Invoicing.Draft, Invoicing.Issue, Invoicing.Void,
         Invoicing.ManageSeries, Invoicing.ExportSaft,
-        Finance.Read, Finance.RecordReceipt, Finance.ManageTerms,
+        Finance.Read, Finance.RecordReceipt,
         Access.Read, Access.ManageUsers, Access.ManageRoles,
     };
 
