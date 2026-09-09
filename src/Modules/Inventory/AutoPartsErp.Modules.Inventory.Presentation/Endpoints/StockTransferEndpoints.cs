@@ -1,6 +1,7 @@
 using AutoPartsErp.Modules.Abstractions.Http;
 using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Inventory.Application.Transfers;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Results;
 using Microsoft.AspNetCore.Builder;
@@ -28,6 +29,7 @@ public sealed class StockTransferEndpoints : IEndpointGroup
 
         transfers.MapPost("/", DraftAsync)
             .WithName("DraftStockTransfer")
+            .RequirePermission(Permissions.Inventory.Transfer)
             .WithSummary("Raise an empty transfer between two warehouses.")
             .Produces<Guid>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
@@ -35,17 +37,20 @@ public sealed class StockTransferEndpoints : IEndpointGroup
 
         transfers.MapGet("/in-transit", GetInTransitAsync)
             .WithName("GetTransfersInTransit")
+            .RequirePermission(Permissions.Inventory.Read)
             .WithSummary("Everything on a van right now, newest first.")
             .Produces<IReadOnlyList<StockTransferNote>>();
 
         transfers.MapGet("/{stockTransferId:guid}", GetAsync)
             .WithName("GetStockTransfer")
+            .RequirePermission(Permissions.Inventory.Read)
             .WithSummary("The note, with what has left, arrived and gone missing.")
             .Produces<StockTransferNote>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         transfers.MapPost("/{stockTransferId:guid}/lines", AddLineAsync)
             .WithName("AddTransferLine")
+            .RequirePermission(Permissions.Inventory.Transfer)
             .WithSummary("Put a part on a draft transfer.")
             .Produces<Guid>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
@@ -53,18 +58,21 @@ public sealed class StockTransferEndpoints : IEndpointGroup
 
         transfers.MapDelete("/{stockTransferId:guid}/lines/{lineId:guid}", RemoveLineAsync)
             .WithName("RemoveTransferLine")
+            .RequirePermission(Permissions.Inventory.Transfer)
             .WithSummary("Take a line off a draft transfer.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         transfers.MapPost("/{stockTransferId:guid}/dispatch", DispatchAsync)
             .WithName("DispatchStockTransfer")
+            .RequirePermission(Permissions.Inventory.Transfer)
             .WithSummary("Send it: takes the stock off the sending shelves and puts it on the van.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         transfers.MapPost("/{stockTransferId:guid}/lines/{lineId:guid}/receive", ReceiveAsync)
             .WithName("ReceiveStockTransferLine")
+            .RequirePermission(Permissions.Inventory.Transfer)
             .WithSummary("Book in what turned up, at the value it left with.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem()
@@ -72,6 +80,7 @@ public sealed class StockTransferEndpoints : IEndpointGroup
 
         transfers.MapPost("/{stockTransferId:guid}/close-short", CloseShortAsync)
             .WithName("CloseStockTransferShort")
+            .RequirePermission(Permissions.Inventory.Adjust)
             .WithSummary("Accept that what is still on the van never arrived. A reason is required.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem()
@@ -79,6 +88,7 @@ public sealed class StockTransferEndpoints : IEndpointGroup
 
         transfers.MapPost("/{stockTransferId:guid}/cancel", CancelAsync)
             .WithName("CancelStockTransfer")
+            .RequirePermission(Permissions.Inventory.Transfer)
             .WithSummary("Call off a draft transfer. Only possible before anything has left.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem()

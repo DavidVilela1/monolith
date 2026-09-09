@@ -3,6 +3,7 @@ using AutoPartsErp.Modules.Access.Domain;
 using AutoPartsErp.Modules.Access.Domain.Roles;
 using AutoPartsErp.Modules.Access.Domain.Users;
 using AutoPartsErp.Modules.Access.Infrastructure.Security;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Results;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -139,6 +140,7 @@ public sealed class AccessSeeder
                 Permissions.Inventory.Read,
                 Permissions.Partners.Read,
                 Permissions.Pricing.Quote,
+                Permissions.Pricing.Read,
                 Permissions.Sales.Read,
                 Permissions.Sales.Manage,
                 Permissions.Sales.Confirm,
@@ -208,6 +210,7 @@ public sealed class AccessSeeder
                 Permissions.Partners.Read,
                 Permissions.Partners.ManageCredit,
                 Permissions.Pricing.Quote,
+                Permissions.Pricing.Read,
                 Permissions.Sales.Read,
                 Permissions.Invoicing.Read,
                 Permissions.Invoicing.Draft,

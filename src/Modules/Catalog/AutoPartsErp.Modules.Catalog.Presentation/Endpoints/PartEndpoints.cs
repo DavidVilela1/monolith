@@ -3,6 +3,7 @@ using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Catalog.Application.Contracts;
 using AutoPartsErp.Modules.Catalog.Application.Parts.Commands;
 using AutoPartsErp.Modules.Catalog.Application.Parts.Queries;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Paging;
 using AutoPartsErp.SharedKernel.Results;
@@ -31,28 +32,33 @@ public sealed class PartEndpoints : IEndpointGroup
 
         parts.MapGet("/", SearchAsync)
             .WithName("SearchParts")
+            .RequirePermission(Permissions.Catalog.Read)
             .WithSummary("Search parts by number, cross-reference or description.")
             .Produces<PagedResult<PartSummary>>();
 
         parts.MapGet("/{partId:guid}", GetByIdAsync)
             .WithName("GetPart")
+            .RequirePermission(Permissions.Catalog.Read)
             .WithSummary("Get one part with its cross-references and fitments.")
             .Produces<PartDetail>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         parts.MapGet("/by-sku/{sku}", GetBySkuAsync)
             .WithName("GetPartBySku")
+            .RequirePermission(Permissions.Catalog.Read)
             .WithSummary("Get one part by its stock keeping unit.")
             .Produces<PartDetail>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         parts.MapGet("/for-vehicle", FindForVehicleAsync)
             .WithName("FindPartsForVehicle")
+            .RequirePermission(Permissions.Catalog.Read)
             .WithSummary("Find every part recorded as fitting a given vehicle.")
             .Produces<PagedResult<PartSummary>>();
 
         parts.MapPost("/", CreateAsync)
             .WithName("CreatePart")
+            .RequirePermission(Permissions.Catalog.Manage)
             .WithSummary("Register a new part. It starts as a draft.")
             .Produces<Guid>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
@@ -60,24 +66,28 @@ public sealed class PartEndpoints : IEndpointGroup
 
         parts.MapPost("/{partId:guid}/activate", ActivateAsync)
             .WithName("ActivatePart")
+            .RequirePermission(Permissions.Catalog.Manage)
             .WithSummary("Make a draft part orderable and sellable.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         parts.MapPost("/{partId:guid}/discontinue", DiscontinueAsync)
             .WithName("DiscontinuePart")
+            .RequirePermission(Permissions.Catalog.Manage)
             .WithSummary("Withdraw a part from purchasing, optionally naming its replacement.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         parts.MapPut("/{partId:guid}/core-charge", SetCoreChargeAsync)
             .WithName("SetPartCoreCharge")
+            .RequirePermission(Permissions.Catalog.Manage)
             .WithSummary("Record the refundable deposit on a part sold against a returnable core.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem();
 
         parts.MapPost("/{partId:guid}/cross-references", AddCrossReferenceAsync)
             .WithName("AddPartCrossReference")
+            .RequirePermission(Permissions.Catalog.Manage)
             .WithSummary("Link an OEM or competitor number to this part.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem()
@@ -85,6 +95,7 @@ public sealed class PartEndpoints : IEndpointGroup
 
         parts.MapPost("/{partId:guid}/fitments", AddFitmentAsync)
             .WithName("AddPartFitment")
+            .RequirePermission(Permissions.Catalog.Manage)
             .WithSummary("Record that this part fits a vehicle.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem()

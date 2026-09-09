@@ -2,7 +2,7 @@ using AutoPartsErp.Modules.Abstractions.Http;
 using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Access.Application.Administration;
 using AutoPartsErp.Modules.Access.Application.Authentication;
-using AutoPartsErp.Modules.Access.Domain;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Results;
 using Microsoft.AspNetCore.Authorization;

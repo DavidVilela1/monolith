@@ -480,6 +480,13 @@ returns both.
 so a route added later without a thought about who may call it is refused rather than open. Three
 routes say otherwise — sign in, refresh, sign out — because they are where a token comes from.
 
+**Every one of the 139 routes names the permission it needs.** Not a group-wide check per module:
+`GET /api/inventory/stock/replenishment` needs `inventory.stock.read` and
+`POST /api/inventory/stock/adjust` needs `inventory.stock.adjust`, and they sit four lines apart
+in the same file. The catalogue lives in the shared kernel rather than in Access, and it has to —
+Access decides who holds a permission, the other eight modules decide which one each route needs,
+and no module in this system references another's projects.
+
 **The tenant is a claim, not a header.** There used to be an `X-Tenant-Id` header here, which was
 a way of saying "I am company B" that company A could also say: anybody who could reach the API
 could read anybody's data by changing one header. A claim inside a signed token cannot be edited
@@ -494,6 +501,13 @@ list of role names instead of an audit of one person's history.
 and issuing one, and raising a purchase order and committing the company to it. Every one of those
 splits exists because the two halves are different acts with different consequences, and a single
 permission would make the separation of duties this system keeps writing about unenforceable.
+
+**Quoting a price and reading the price list are different permissions.** Quoting answers one
+question about one part for one customer, which is the counter's whole job. Reading a list is
+every price the company charges — the one document a competitor would most like a copy of. The
+same argument puts closing a transfer short behind `inventory.stock.adjust` rather than
+`inventory.transfer.manage`: accepting that stock never arrived is writing it off, and the driver
+should not be the one who signs that.
 
 **Nothing cryptographic is hand-written.** Passwords go through the ASP.NET Core `PasswordHasher`
 (PBKDF2, per-password salt, a version byte for the day the parameters change); tokens are signed
@@ -937,10 +951,10 @@ concurrency in all three modules that hand out numbers.
   every request, is the trade nobody has needed to make yet.
 - Signing out withdraws the refresh handle but cannot withdraw the access token, which stays
   valid for its remaining minutes. That is what a signed token is.
-- The endpoints of the other eight modules are not yet behind permissions. They require an
-  authenticated caller — the fallback policy sees to that — but any authenticated caller. The
-  `RequirePermission` extension and the whole permission catalogue exist; putting them on eight
-  modules' routes is the next pass.
+- Two permissions in the catalogue have no route behind them yet: `sales.credit.override`, which
+  needs a way to let an order through a credit hold, and `finance.terms.manage`, which needs a
+  route that sets payment terms. Both name a decision the business makes and the software does
+  not yet offer. They grant nothing until it does.
 
 - A malformed `warehouseId` in a request body returns 500 rather than 400. Bad client input
   should never surface as a server error.

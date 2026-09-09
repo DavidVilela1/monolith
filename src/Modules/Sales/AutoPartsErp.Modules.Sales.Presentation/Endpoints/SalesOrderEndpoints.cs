@@ -3,6 +3,7 @@ using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Sales.Application.Contracts;
 using AutoPartsErp.Modules.Sales.Application.Orders.Commands;
 using AutoPartsErp.Modules.Sales.Application.Orders.Queries;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Paging;
 using AutoPartsErp.SharedKernel.Results;
@@ -30,23 +31,27 @@ public sealed class SalesOrderEndpoints : IEndpointGroup
 
         group.MapGet("/orders", SearchAsync)
             .WithName("SearchSalesOrders")
+            .RequirePermission(Permissions.Sales.Read)
             .WithSummary("Search sales orders. Pass outstandingOnly for the picking list.")
             .Produces<PagedResult<SalesOrderSummary>>();
 
         group.MapGet("/orders/{salesOrderId:guid}", GetAsync)
             .WithName("GetSalesOrder")
+            .RequirePermission(Permissions.Sales.Read)
             .WithSummary("Get one sales order with its lines and totals.")
             .Produces<SalesOrderDetail>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/orders/by-number/{orderNumber}", GetByNumberAsync)
             .WithName("GetSalesOrderByNumber")
+            .RequirePermission(Permissions.Sales.Read)
             .WithSummary("Get one sales order by the number the customer quotes on the phone.")
             .Produces<SalesOrderDetail>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/orders", CreateAsync)
             .WithName("CreateSalesOrder")
+            .RequirePermission(Permissions.Sales.Manage)
             .WithSummary("Start an order. Code, name and currency come off the customer's account.")
             .Produces<Guid>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
@@ -55,6 +60,7 @@ public sealed class SalesOrderEndpoints : IEndpointGroup
 
         group.MapPost("/orders/{salesOrderId:guid}/lines", AddLineAsync)
             .WithName("AddSalesOrderLine")
+            .RequirePermission(Permissions.Sales.Manage)
             .WithSummary("Add a part to a draft order.")
             .Produces<Guid>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
@@ -63,24 +69,28 @@ public sealed class SalesOrderEndpoints : IEndpointGroup
 
         group.MapPut("/orders/{salesOrderId:guid}/lines/{lineId:guid}/quantity", ChangeQuantityAsync)
             .WithName("ChangeSalesOrderLineQuantity")
+            .RequirePermission(Permissions.Sales.Manage)
             .WithSummary("Change how much of a part is being sold. Draft only.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         group.MapPut("/orders/{salesOrderId:guid}/lines/{lineId:guid}/pricing", ChangePricingAsync)
             .WithName("ChangeSalesOrderLinePricing")
+            .RequirePermission(Permissions.Sales.Manage)
             .WithSummary("Change the price or discount on a line. Draft only.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         group.MapDelete("/orders/{salesOrderId:guid}/lines/{lineId:guid}", RemoveLineAsync)
             .WithName("RemoveSalesOrderLine")
+            .RequirePermission(Permissions.Sales.Manage)
             .WithSummary("Take a part off a draft order.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         group.MapPost("/orders/{salesOrderId:guid}/confirm", ConfirmAsync)
             .WithName("ConfirmSalesOrder")
+            .RequirePermission(Permissions.Sales.Confirm)
             .WithSummary(
                 "Agree the order. Checks stock, the account's hold and its credit, then claims the stock. "
                 + "Pass allowBackorder to confirm without the stock being there.")
@@ -89,12 +99,14 @@ public sealed class SalesOrderEndpoints : IEndpointGroup
 
         group.MapPost("/orders/{salesOrderId:guid}/lines/{lineId:guid}/dispatches", DispatchAsync)
             .WithName("DispatchSalesOrderLine")
+            .RequirePermission(Permissions.Sales.Dispatch)
             .WithSummary("Record goods leaving. Inventory picks this up and takes them off the shelf.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         group.MapPost("/orders/{salesOrderId:guid}/cancel", CancelAsync)
             .WithName("CancelSalesOrder")
+            .RequirePermission(Permissions.Sales.Manage)
             .WithSummary("Call the order off. Only before anything has gone out.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);

@@ -3,6 +3,7 @@ using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Invoicing.Application.Contracts;
 using AutoPartsErp.Modules.Invoicing.Application.Documents.Commands;
 using AutoPartsErp.Modules.Invoicing.Application.Documents.Queries;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Paging;
 using AutoPartsErp.SharedKernel.Results;
@@ -30,24 +31,28 @@ public sealed class DocumentEndpoints : IEndpointGroup
 
         group.MapGet("/documents", SearchAsync)
             .WithName("SearchDocuments")
+            .RequirePermission(Permissions.Invoicing.Read)
             .WithSummary(
                 "Search issued documents. Pass draftsOnly for the work in progress instead.")
             .Produces<PagedResult<InvoiceSummary>>();
 
         group.MapGet("/documents/{invoiceId:guid}", GetAsync)
             .WithName("GetDocument")
+            .RequirePermission(Permissions.Invoicing.Read)
             .WithSummary("Get one document with its lines, its tax split and everything printed on it.")
             .Produces<InvoiceDetail>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/documents/by-number/{documentNumber}", GetByNumberAsync)
             .WithName("GetDocumentByNumber")
+            .RequirePermission(Permissions.Invoicing.Read)
             .WithSummary("Get one document by the number a customer quotes on the phone.")
             .Produces<InvoiceDetail>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/documents", CreateAsync)
             .WithName("CreateDocument")
+            .RequirePermission(Permissions.Invoicing.Draft)
             .WithSummary(
                 "Start a draft. It takes no number and has no legal standing until it is issued.")
             .Produces<Guid>(StatusCodes.Status201Created)
@@ -56,6 +61,7 @@ public sealed class DocumentEndpoints : IEndpointGroup
 
         group.MapPost("/documents/from-sales-order", DrawFromSalesOrderAsync)
             .WithName("DrawDocumentFromSalesOrder")
+            .RequirePermission(Permissions.Invoicing.Draft)
             .WithSummary(
                 "Draw a draft document from a dispatched sales order. Produces a draft, not an "
                 + "issued document: somebody should see what is about to go to the customer.")
@@ -67,6 +73,7 @@ public sealed class DocumentEndpoints : IEndpointGroup
 
         group.MapPost("/documents/{invoiceId:guid}/lines", AddLineAsync)
             .WithName("AddDocumentLine")
+            .RequirePermission(Permissions.Invoicing.Draft)
             .WithSummary(
                 "Add a line to a draft. The SKU and description are snapshotted from the catalogue "
                 + "as they are today, and never refreshed afterwards.")
@@ -77,6 +84,7 @@ public sealed class DocumentEndpoints : IEndpointGroup
 
         group.MapPost("/documents/{invoiceId:guid}/credit-note", DraftCreditNoteAsync)
             .WithName("DraftCreditNote")
+            .RequirePermission(Permissions.Invoicing.Void)
             .WithSummary(
                 "Draft a credit note against an issued document. The only correct way to reverse "
                 + "one: the original stands, and this cancels some or all of its effect. Omit the "
@@ -89,6 +97,7 @@ public sealed class DocumentEndpoints : IEndpointGroup
 
         group.MapPost("/documents/{invoiceId:guid}/issue", IssueAsync)
             .WithName("IssueDocument")
+            .RequirePermission(Permissions.Invoicing.Issue)
             .WithSummary(
                 "Take a number, sign the document and freeze it. This is the point of no return: "
                 + "afterwards it can only be voided, never changed.")
@@ -98,6 +107,7 @@ public sealed class DocumentEndpoints : IEndpointGroup
 
         group.MapPost("/documents/{invoiceId:guid}/void", VoidAsync)
             .WithName("VoidDocument")
+            .RequirePermission(Permissions.Invoicing.Void)
             .WithSummary(
                 "Void an issued document. It keeps its number, its figures and its place in the "
                 + "signature chain. A reason is required and goes into the SAF-T export.")

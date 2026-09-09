@@ -1,7 +1,14 @@
-namespace AutoPartsErp.Modules.Access.Domain;
+namespace AutoPartsErp.SharedKernel.Authorization;
 
 /// <summary>
 /// Every permission this system recognizes, in one place.
+/// <para>
+/// In the shared kernel rather than in the Access module, and it has to be. Access decides who
+/// holds a permission; the other eight modules decide which permission each of their routes
+/// needs, and they are forbidden from referencing Access's projects — no module in this system
+/// references another's. A catalogue both ends compile against is the only shape that works, and
+/// it sits next to <c>ICurrentUser</c>, which is here for the same reason.
+/// </para>
 /// <para>
 /// Strings rather than an enum, and the strings are the contract. They go into a token, get
 /// stored in a role's row, and are compared by an authorization policy — three places where a
@@ -87,6 +94,16 @@ public static class Permissions
     {
         /// <summary>Ask what a customer pays for something.</summary>
         public const string Quote = "pricing.quote";
+
+        /// <summary>
+        /// Read price lists and customer agreements.
+        /// <para>
+        /// Not the same as quoting, and weaker than maintaining. Quoting answers one question
+        /// about one part for one customer; reading a list is every price the company charges,
+        /// which is the one document a competitor would most like a copy of.
+        /// </para>
+        /// </summary>
+        public const string Read = "pricing.list.read";
 
         /// <summary>Create and change price lists, breaks and customer agreements.</summary>
         public const string Manage = "pricing.list.manage";
@@ -201,7 +218,7 @@ public static class Permissions
         Inventory.Read, Inventory.Move, Inventory.Adjust, Inventory.Count, Inventory.PostCount,
         Inventory.Transfer, Inventory.Configure,
         Partners.Read, Partners.Manage, Partners.ManageCredit,
-        Pricing.Quote, Pricing.Manage,
+        Pricing.Quote, Pricing.Read, Pricing.Manage,
         Purchasing.Read, Purchasing.Manage, Purchasing.Submit, Purchasing.Receive,
         Sales.Read, Sales.Manage, Sales.Confirm, Sales.Dispatch, Sales.OverrideCredit,
         Invoicing.Read, Invoicing.Draft, Invoicing.Issue, Invoicing.Void,

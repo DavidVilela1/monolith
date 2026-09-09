@@ -2,6 +2,7 @@ using AutoPartsErp.Modules.Abstractions.Http;
 using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Purchasing.Application.Contracts;
 using AutoPartsErp.Modules.Purchasing.Application.Replenishment;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Paging;
 using AutoPartsErp.SharedKernel.Results;
@@ -27,11 +28,13 @@ public sealed class ReplenishmentEndpoints : IEndpointGroup
 
         group.MapGet("/suggestions", ListAsync)
             .WithName("ListReplenishmentSuggestions")
+            .RequirePermission(Permissions.Purchasing.Read)
             .WithSummary("Parts that have run low, worst shortfall first. Open ones by default.")
             .Produces<PagedResult<ReplenishmentSuggestionDto>>();
 
         group.MapPost("/suggestions/{suggestionId:guid}/dismiss", DismissAsync)
             .WithName("DismissReplenishmentSuggestion")
+            .RequirePermission(Permissions.Purchasing.Manage)
             .WithSummary("Take a suggestion off the list without buying anything. A reason is required.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem()
@@ -39,6 +42,7 @@ public sealed class ReplenishmentEndpoints : IEndpointGroup
 
         group.MapPost("/suggestions/{suggestionId:guid}/order-line", AddToOrderAsync)
             .WithName("AddSuggestionToPurchaseOrder")
+            .RequirePermission(Permissions.Purchasing.Manage)
             .WithSummary("Add the suggested part to an existing draft order and mark it dealt with.")
             .Produces<Guid>(StatusCodes.Status201Created)
             .ProducesValidationProblem()

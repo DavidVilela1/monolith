@@ -1,6 +1,7 @@
 using AutoPartsErp.Modules.Abstractions.Http;
 using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Inventory.Application.Counting;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Results;
 using Microsoft.AspNetCore.Builder;
@@ -30,6 +31,7 @@ public sealed class StockCountEndpoints : IEndpointGroup
 
         counts.MapPost("/", OpenAsync)
             .WithName("OpenStockCount")
+            .RequirePermission(Permissions.Inventory.Count)
             .WithSummary("Open a count sheet for a warehouse, snapshotting what the system holds.")
             .Produces<Guid>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
@@ -37,12 +39,14 @@ public sealed class StockCountEndpoints : IEndpointGroup
 
         counts.MapGet("/{stockCountId:guid}", GetAsync)
             .WithName("GetStockCount")
+            .RequirePermission(Permissions.Inventory.Read)
             .WithSummary("The sheet, with every line and the differences on it.")
             .Produces<StockCountSheet>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         counts.MapPut("/{stockCountId:guid}/lines/{lineId:guid}", RecordAsync)
             .WithName("RecordStockCount")
+            .RequirePermission(Permissions.Inventory.Count)
             .WithSummary("Record what was found on a shelf. Zero means empty.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem()
@@ -50,24 +54,28 @@ public sealed class StockCountEndpoints : IEndpointGroup
 
         counts.MapPost("/{stockCountId:guid}/submit", SubmitAsync)
             .WithName("SubmitStockCount")
+            .RequirePermission(Permissions.Inventory.Count)
             .WithSummary("Say the counting is finished and the sheet needs reviewing.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         counts.MapPost("/{stockCountId:guid}/reopen", ReopenAsync)
             .WithName("ReopenStockCount")
+            .RequirePermission(Permissions.Inventory.PostCount)
             .WithSummary("Send a submitted sheet back for more counting.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         counts.MapPost("/{stockCountId:guid}/post", PostAsync)
             .WithName("PostStockCount")
+            .RequirePermission(Permissions.Inventory.PostCount)
             .WithSummary("Accept the differences and apply them to stock. Returns how many balances changed.")
             .Produces<int>()
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         counts.MapPost("/{stockCountId:guid}/cancel", CancelAsync)
             .WithName("CancelStockCount")
+            .RequirePermission(Permissions.Inventory.PostCount)
             .WithSummary("Abandon the sheet without touching stock. A reason is required.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem()

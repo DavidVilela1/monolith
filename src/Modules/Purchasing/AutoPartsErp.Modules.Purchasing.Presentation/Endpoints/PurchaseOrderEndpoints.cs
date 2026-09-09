@@ -3,6 +3,7 @@ using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Purchasing.Application.Contracts;
 using AutoPartsErp.Modules.Purchasing.Application.Orders.Commands;
 using AutoPartsErp.Modules.Purchasing.Application.Orders.Queries;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Paging;
 using AutoPartsErp.SharedKernel.Results;
@@ -29,23 +30,27 @@ public sealed class PurchaseOrderEndpoints : IEndpointGroup
 
         group.MapGet("/orders", SearchAsync)
             .WithName("SearchPurchaseOrders")
+            .RequirePermission(Permissions.Purchasing.Read)
             .WithSummary("Search purchase orders. Pass outstandingOnly for the buyer's working list.")
             .Produces<PagedResult<PurchaseOrderSummary>>();
 
         group.MapGet("/orders/{purchaseOrderId:guid}", GetAsync)
             .WithName("GetPurchaseOrder")
+            .RequirePermission(Permissions.Purchasing.Read)
             .WithSummary("Get one purchase order with its lines.")
             .Produces<PurchaseOrderDetail>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/orders/by-number/{orderNumber}", GetByNumberAsync)
             .WithName("GetPurchaseOrderByNumber")
+            .RequirePermission(Permissions.Purchasing.Read)
             .WithSummary("Get one purchase order by the number on the document.")
             .Produces<PurchaseOrderDetail>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/orders", CreateAsync)
             .WithName("CreatePurchaseOrder")
+            .RequirePermission(Permissions.Purchasing.Manage)
             .WithSummary(
                 "Start a draft order. The supplier is verified with Partners and their code read "
                 + "from there; the order number is assigned here.")
@@ -56,6 +61,7 @@ public sealed class PurchaseOrderEndpoints : IEndpointGroup
 
         group.MapPost("/orders/{purchaseOrderId:guid}/lines", AddLineAsync)
             .WithName("AddPurchaseOrderLine")
+            .RequirePermission(Permissions.Purchasing.Manage)
             .WithSummary("Add a part to a draft order.")
             .Produces<Guid>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
@@ -64,42 +70,49 @@ public sealed class PurchaseOrderEndpoints : IEndpointGroup
 
         group.MapPut("/orders/{purchaseOrderId:guid}/lines/{lineId:guid}/quantity", ChangeLineQuantityAsync)
             .WithName("ChangePurchaseOrderLineQuantity")
+            .RequirePermission(Permissions.Purchasing.Manage)
             .WithSummary("Change how much of a part is being ordered. Draft only.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         group.MapDelete("/orders/{purchaseOrderId:guid}/lines/{lineId:guid}", RemoveLineAsync)
             .WithName("RemovePurchaseOrderLine")
+            .RequirePermission(Permissions.Purchasing.Manage)
             .WithSummary("Take a part off a draft order.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         group.MapPost("/orders/{purchaseOrderId:guid}/submit", SubmitAsync)
             .WithName("SubmitPurchaseOrder")
+            .RequirePermission(Permissions.Purchasing.Submit)
             .WithSummary("Send the order to the supplier. This is the point of commitment.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         group.MapPost("/orders/{purchaseOrderId:guid}/confirm", ConfirmAsync)
             .WithName("ConfirmPurchaseOrder")
+            .RequirePermission(Permissions.Purchasing.Manage)
             .WithSummary("Record the supplier's acknowledgement and the date they promised.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         group.MapPost("/orders/{purchaseOrderId:guid}/lines/{lineId:guid}/receipts", ReceiveAsync)
             .WithName("ReceivePurchaseOrderLine")
+            .RequirePermission(Permissions.Purchasing.Receive)
             .WithSummary("Book a delivery in against a line. Inventory picks this up and adds the stock.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         group.MapPost("/orders/{purchaseOrderId:guid}/cancel", CancelAsync)
             .WithName("CancelPurchaseOrder")
+            .RequirePermission(Permissions.Purchasing.Manage)
             .WithSummary("Call off an order before anything arrives. A reason is required.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         group.MapPost("/orders/{purchaseOrderId:guid}/close-short", CloseShortAsync)
             .WithName("ClosePurchaseOrderShort")
+            .RequirePermission(Permissions.Purchasing.Manage)
             .WithSummary("Accept a short delivery and stop chasing the balance.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);

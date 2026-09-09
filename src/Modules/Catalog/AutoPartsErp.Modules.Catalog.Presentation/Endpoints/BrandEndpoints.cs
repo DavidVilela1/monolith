@@ -3,6 +3,7 @@ using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Catalog.Application.Brands;
 using AutoPartsErp.Modules.Catalog.Application.Categories;
 using AutoPartsErp.Modules.Catalog.Application.Contracts;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Results;
 using Microsoft.AspNetCore.Builder;
@@ -23,11 +24,13 @@ public sealed class BrandEndpoints : IEndpointGroup
 
         brands.MapGet("/", ListAsync)
             .WithName("ListBrands")
+            .RequirePermission(Permissions.Catalog.Read)
             .WithSummary("List brands, with the number of parts carrying each one.")
             .Produces<IReadOnlyList<BrandDto>>();
 
         brands.MapPost("/", CreateAsync)
             .WithName("CreateBrand")
+            .RequirePermission(Permissions.Catalog.Manage)
             .WithSummary("Register a new brand.")
             .Produces<Guid>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
@@ -67,11 +70,13 @@ public sealed class CategoryEndpoints : IEndpointGroup
 
         categories.MapGet("/", ListAsync)
             .WithName("ListCategories")
+            .RequirePermission(Permissions.Catalog.Read)
             .WithSummary("List categories, with the number of parts filed under each.")
             .Produces<IReadOnlyList<CategoryDto>>();
 
         categories.MapPost("/", CreateAsync)
             .WithName("CreateCategory")
+            .RequirePermission(Permissions.Catalog.Manage)
             .WithSummary("Create a category in the product hierarchy.")
             .Produces<Guid>(StatusCodes.Status201Created)
             .ProducesValidationProblem()

@@ -44,7 +44,7 @@ public static class AuthorizationEndpointExtensions
     /// </para>
     /// </summary>
     /// <param name="builder">The endpoint or group.</param>
-    /// <param name="permission">The permission required, from the Access module's catalogue.</param>
+    /// <param name="permission">The permission required, from the shared kernel's catalogue.</param>
     /// <typeparam name="TBuilder">Whatever is being decorated.</typeparam>
     public static TBuilder RequirePermission<TBuilder>(this TBuilder builder, string permission)
         where TBuilder : IEndpointConventionBuilder

@@ -2,6 +2,7 @@ using AutoPartsErp.Modules.Access.Domain;
 using AutoPartsErp.Modules.Access.Domain.Roles;
 using AutoPartsErp.Modules.Access.Domain.Users;
 using AutoPartsErp.SharedKernel.Abstractions;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Results;
 

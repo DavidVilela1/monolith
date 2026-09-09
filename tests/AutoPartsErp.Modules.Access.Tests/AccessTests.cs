@@ -2,6 +2,7 @@ using AutoPartsErp.Modules.Access.Domain;
 using AutoPartsErp.Modules.Access.Domain.Roles;
 using AutoPartsErp.Modules.Access.Domain.Sessions;
 using AutoPartsErp.Modules.Access.Domain.Users;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Results;
 
 namespace AutoPartsErp.Modules.Access.Tests;

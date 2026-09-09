@@ -2,6 +2,7 @@ using AutoPartsErp.Modules.Abstractions.Http;
 using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Inventory.Application.Contracts;
 using AutoPartsErp.Modules.Inventory.Application.Warehouses;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Results;
 using Microsoft.AspNetCore.Builder;
@@ -22,11 +23,13 @@ public sealed class WarehouseEndpoints : IEndpointGroup
 
         warehouses.MapGet("/", ListAsync)
             .WithName("ListWarehouses")
+            .RequirePermission(Permissions.Inventory.Read)
             .WithSummary("List warehouses, with how many parts hold stock in each.")
             .Produces<IReadOnlyList<WarehouseDto>>();
 
         warehouses.MapPost("/", CreateAsync)
             .WithName("CreateWarehouse")
+            .RequirePermission(Permissions.Inventory.Configure)
             .WithSummary("Register a warehouse.")
             .Produces<Guid>(StatusCodes.Status201Created)
             .ProducesValidationProblem()

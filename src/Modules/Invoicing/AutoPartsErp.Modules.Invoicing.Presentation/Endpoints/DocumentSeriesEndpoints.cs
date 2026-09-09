@@ -3,6 +3,7 @@ using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Invoicing.Application.Contracts;
 using AutoPartsErp.Modules.Invoicing.Application.Documents.Queries;
 using AutoPartsErp.Modules.Invoicing.Application.Series.Commands;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Paging;
 using AutoPartsErp.SharedKernel.Results;
@@ -30,17 +31,20 @@ public sealed class DocumentSeriesEndpoints : IEndpointGroup
 
         group.MapGet("/series", ListAsync)
             .WithName("ListDocumentSeries")
+            .RequirePermission(Permissions.Invoicing.Read)
             .WithSummary("List document series, newest year first.")
             .Produces<PagedResult<DocumentSeriesDto>>();
 
         group.MapGet("/series/{seriesId:guid}", GetAsync)
             .WithName("GetDocumentSeries")
+            .RequirePermission(Permissions.Invoicing.Read)
             .WithSummary("Get one series, with how many documents it has issued.")
             .Produces<DocumentSeriesDto>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/series", OpenAsync)
             .WithName("OpenDocumentSeries")
+            .RequirePermission(Permissions.Invoicing.ManageSeries)
             .WithSummary(
                 "Open a series. It cannot issue anything until it has been declared to the tax "
                 + "authority and given its validation code.")
@@ -50,6 +54,7 @@ public sealed class DocumentSeriesEndpoints : IEndpointGroup
 
         group.MapPost("/series/{seriesId:guid}/validation-code", ValidateAsync)
             .WithName("ValidateDocumentSeries")
+            .RequirePermission(Permissions.Invoicing.ManageSeries)
             .WithSummary(
                 "Record the validation code the tax authority returned. Accepted once and never "
                 + "changed, because it is baked into every ATCUD the series produces.")
@@ -60,6 +65,7 @@ public sealed class DocumentSeriesEndpoints : IEndpointGroup
 
         group.MapPost("/series/{seriesId:guid}/activate", ActivateAsync)
             .WithName("ActivateDocumentSeries")
+            .RequirePermission(Permissions.Invoicing.ManageSeries)
             .WithSummary("Put the series into service. It must have its validation code first.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound)
@@ -67,6 +73,7 @@ public sealed class DocumentSeriesEndpoints : IEndpointGroup
 
         group.MapPost("/series/{seriesId:guid}/close", CloseAsync)
             .WithName("CloseDocumentSeries")
+            .RequirePermission(Permissions.Invoicing.ManageSeries)
             .WithSummary("Close the series to new documents. One-way, and the tax authority has to be told.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound)

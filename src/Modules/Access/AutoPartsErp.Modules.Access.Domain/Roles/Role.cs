@@ -1,3 +1,4 @@
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Primitives;
 using AutoPartsErp.SharedKernel.Results;
 
@@ -159,7 +160,7 @@ public sealed class Role : AggregateRoot<RoleId>, IAuditable, ITenantScoped
 
         foreach (string permission in permissions)
         {
-            if (!Domain.Permissions.IsKnown(permission))
+            if (!SharedKernel.Authorization.Permissions.IsKnown(permission))
             {
                 return AccessErrors.Role.UnknownPermission(permission);
             }
@@ -168,7 +169,8 @@ public sealed class Role : AggregateRoot<RoleId>, IAuditable, ITenantScoped
         // The administrator role must keep the right to hand out rights. Losing it is not a
         // mistake somebody notices in time - it is noticed by the next person who needs a
         // password reset, from outside a system nobody can get into.
-        if (IsSystem && !permissions.Contains(Domain.Permissions.Access.ManageRoles))
+        if (IsSystem
+            && !permissions.Contains(SharedKernel.Authorization.Permissions.Access.ManageRoles))
         {
             return AccessErrors.Role.SystemRoleCannotLosePermissions;
         }
@@ -202,7 +204,7 @@ public sealed class Role : AggregateRoot<RoleId>, IAuditable, ITenantScoped
 
 /// <summary>One permission carried by a role.</summary>
 /// <param name="Name">
-/// The permission, from the catalogue in <see cref="Permissions"/>. A record with one property
+/// The permission, from the catalogue in <c>Permissions</c>. A record with one property
 /// rather than a bare string because that is what EF maps as a child table, and a child table is
 /// what makes "which roles can issue invoices" a WHERE clause instead of a scan.
 /// </param>

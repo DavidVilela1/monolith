@@ -3,6 +3,7 @@ using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Inventory.Application.Contracts;
 using AutoPartsErp.Modules.Inventory.Application.Stock.Commands;
 using AutoPartsErp.Modules.Inventory.Application.Stock.Queries;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Paging;
 using AutoPartsErp.SharedKernel.Results;
@@ -24,33 +25,39 @@ public sealed class StockEndpoints : IEndpointGroup
 
         stock.MapGet("/parts/{partId:guid}", GetPartStockAsync)
             .WithName("GetPartStock")
+            .RequirePermission(Permissions.Inventory.Read)
             .WithSummary("Stock for a part across every warehouse, with totals.")
             .Produces<PartStockPosition>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         stock.MapGet("/parts/{partId:guid}/warehouses/{warehouseId:guid}", GetBalanceAsync)
             .WithName("GetStockBalance")
+            .RequirePermission(Permissions.Inventory.Read)
             .WithSummary("The balance for one part in one warehouse.")
             .Produces<StockBalance>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         stock.MapGet("/parts/{partId:guid}/movements", GetMovementsAsync)
             .WithName("GetStockMovements")
+            .RequirePermission(Permissions.Inventory.Read)
             .WithSummary("The ledger for a part: every movement, newest first.")
             .Produces<PagedResult<StockMovementDto>>();
 
         stock.MapGet("/parts/{partId:guid}/warehouses/{warehouseId:guid}/reservations", GetReservationsAsync)
             .WithName("GetStockReservations")
+            .RequirePermission(Permissions.Inventory.Read)
             .WithSummary("Claims currently held against a balance.")
             .Produces<IReadOnlyList<ReservationDto>>();
 
         stock.MapGet("/replenishment", GetReplenishmentAsync)
             .WithName("GetReplenishmentList")
+            .RequirePermission(Permissions.Inventory.Read)
             .WithSummary("Everything at or below its reorder point, deepest shortfall first.")
             .Produces<PagedResult<StockBalance>>();
 
         stock.MapPost("/receive", ReceiveAsync)
             .WithName("ReceiveStock")
+            .RequirePermission(Permissions.Inventory.Move)
             .WithSummary("Bring stock into a warehouse against a document.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem()
@@ -58,6 +65,7 @@ public sealed class StockEndpoints : IEndpointGroup
 
         stock.MapPost("/issue", IssueAsync)
             .WithName("IssueStock")
+            .RequirePermission(Permissions.Inventory.Move)
             .WithSummary("Take stock out against a document.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem()
@@ -65,6 +73,7 @@ public sealed class StockEndpoints : IEndpointGroup
 
         stock.MapPost("/adjust", AdjustAsync)
             .WithName("AdjustStock")
+            .RequirePermission(Permissions.Inventory.Adjust)
             .WithSummary("Correct one balance by hand. A written reason is required. For a counted warehouse, open a count sheet instead.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem()
@@ -72,6 +81,7 @@ public sealed class StockEndpoints : IEndpointGroup
 
         stock.MapPost("/reservations", ReserveAsync)
             .WithName("ReserveStock")
+            .RequirePermission(Permissions.Inventory.Move)
             .WithSummary("Hold stock back for a quote or order without moving it.")
             .Produces<Guid>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
@@ -81,6 +91,7 @@ public sealed class StockEndpoints : IEndpointGroup
             "/parts/{partId:guid}/warehouses/{warehouseId:guid}/reservations/{reservationId:guid}",
             ReleaseAsync)
             .WithName("ReleaseReservation")
+            .RequirePermission(Permissions.Inventory.Move)
             .WithSummary("Give a claim back, returning its quantity to available stock.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound);
@@ -89,12 +100,14 @@ public sealed class StockEndpoints : IEndpointGroup
             "/parts/{partId:guid}/warehouses/{warehouseId:guid}/reservations/{reservationId:guid}/fulfil",
             FulfilAsync)
             .WithName("FulfilReservation")
+            .RequirePermission(Permissions.Inventory.Move)
             .WithSummary("Issue the stock a claim was holding: the picker took it.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         stock.MapPut("/parts/{partId:guid}/warehouses/{warehouseId:guid}/replenishment", SetPolicyAsync)
             .WithName("SetReplenishmentPolicy")
+            .RequirePermission(Permissions.Inventory.Configure)
             .WithSummary("Set the reorder point and quantity, or clear both.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem();

@@ -4,6 +4,7 @@ using AutoPartsErp.Modules.Pricing.Application.Contracts;
 using AutoPartsErp.Modules.Pricing.Application.Customers.Commands;
 using AutoPartsErp.Modules.Pricing.Application.PriceLists.Queries;
 using AutoPartsErp.Modules.Pricing.Application.Quotes;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Paging;
 using AutoPartsErp.SharedKernel.Results;
@@ -26,6 +27,7 @@ public sealed class QuoteEndpoints : IEndpointGroup
 
         group.MapGet("/quote", QuoteAsync)
             .WithName("QuotePrice")
+            .RequirePermission(Permissions.Pricing.Quote)
             .WithSummary(
                 "What a customer pays for a part at a quantity today, with the list and break it came from.")
             .Produces<PriceQuoteDto>()
@@ -34,17 +36,20 @@ public sealed class QuoteEndpoints : IEndpointGroup
 
         group.MapGet("/agreements/{customerId:guid}", GetAgreementAsync)
             .WithName("GetCustomerPricing")
+            .RequirePermission(Permissions.Pricing.Read)
             .WithSummary("What was agreed with one customer.")
             .Produces<CustomerPricingDto>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/lists/{priceListId:guid}/agreements", ListAgreementsAsync)
             .WithName("ListAgreementsForPriceList")
+            .RequirePermission(Permissions.Pricing.Read)
             .WithSummary("Who a change to this list would reach.")
             .Produces<PagedResult<CustomerPricingDto>>();
 
         group.MapPost("/agreements", AgreeAsync)
             .WithName("AgreeCustomerPricing")
+            .RequirePermission(Permissions.Pricing.Manage)
             .WithSummary("Record what was agreed with a customer. One agreement each.")
             .Produces<Guid>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
@@ -52,6 +57,7 @@ public sealed class QuoteEndpoints : IEndpointGroup
 
         group.MapPut("/agreements/{customerId:guid}", RenegotiateAsync)
             .WithName("RenegotiateCustomerPricing")
+            .RequirePermission(Permissions.Pricing.Manage)
             .WithSummary("Change a customer's list, their discount, or both.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound)
@@ -59,6 +65,7 @@ public sealed class QuoteEndpoints : IEndpointGroup
 
         group.MapPost("/agreements/{customerId:guid}/end", EndAsync)
             .WithName("EndCustomerPricing")
+            .RequirePermission(Permissions.Pricing.Manage)
             .WithSummary("End a customer's terms, sending them back to the default list.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound)

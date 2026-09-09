@@ -2,6 +2,7 @@ using AutoPartsErp.Modules.Abstractions.Http;
 using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Sales.Application.Contracts;
 using AutoPartsErp.Modules.Sales.Application.Orders.Queries;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Paging;
 using AutoPartsErp.SharedKernel.Results;
@@ -28,17 +29,20 @@ public sealed class CustomerAccountEndpoints : IEndpointGroup
 
         group.MapGet("/customers", SearchAsync)
             .WithName("SearchCustomerAccounts")
+            .RequirePermission(Permissions.Sales.Read)
             .WithSummary("Search customer accounts by code or name.")
             .Produces<PagedResult<CustomerAccountDto>>();
 
         group.MapGet("/customers/{customerId:guid}", GetAsync)
             .WithName("GetCustomerAccount")
+            .RequirePermission(Permissions.Sales.Read)
             .WithSummary("Get one account with its limit, exposure and remaining credit.")
             .Produces<CustomerAccountDto>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/customers/by-code/{code}", GetByCodeAsync)
             .WithName("GetCustomerAccountByCode")
+            .RequirePermission(Permissions.Sales.Read)
             .WithSummary("Get one account by the code typed at the counter.")
             .Produces<CustomerAccountDto>()
             .ProducesProblem(StatusCodes.Status404NotFound);

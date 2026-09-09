@@ -3,6 +3,7 @@ using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Partners.Application.Commands;
 using AutoPartsErp.Modules.Partners.Application.Contracts;
 using AutoPartsErp.Modules.Partners.Application.Queries;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Paging;
 using AutoPartsErp.SharedKernel.Results;
@@ -22,23 +23,27 @@ public sealed class PartnerEndpoints : IEndpointGroup
 
         group.MapGet("/", SearchAsync)
             .WithName("SearchPartners")
+            .RequirePermission(Permissions.Partners.Read)
             .WithSummary("Search partners by code, name or tax number.")
             .Produces<PagedResult<PartnerSummary>>();
 
         group.MapGet("/{partnerId:guid}", GetAsync)
             .WithName("GetPartner")
+            .RequirePermission(Permissions.Partners.Read)
             .WithSummary("Get one partner with addresses, contacts and terms.")
             .Produces<PartnerDetail>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/by-code/{code}", GetByCodeAsync)
             .WithName("GetPartnerByCode")
+            .RequirePermission(Permissions.Partners.Read)
             .WithSummary("Get one partner by their short code.")
             .Produces<PartnerDetail>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/", CreateAsync)
             .WithName("CreatePartner")
+            .RequirePermission(Permissions.Partners.Manage)
             .WithSummary("Register a partner. Roles are granted separately.")
             .Produces<Guid>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
@@ -46,18 +51,21 @@ public sealed class PartnerEndpoints : IEndpointGroup
 
         group.MapPost("/{partnerId:guid}/addresses", AddAddressAsync)
             .WithName("AddPartnerAddress")
+            .RequirePermission(Permissions.Partners.Manage)
             .WithSummary("Record an address. A partner has one billing address and many delivery ones.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem();
 
         group.MapPost("/{partnerId:guid}/contacts", AddContactAsync)
             .WithName("AddPartnerContact")
+            .RequirePermission(Permissions.Partners.Manage)
             .WithSummary("Record someone to contact there.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem();
 
         group.MapPut("/{partnerId:guid}/customer-role", GrantCustomerAsync)
             .WithName("GrantCustomerRole")
+            .RequirePermission(Permissions.Partners.Manage)
             .WithSummary("Start selling to them. Requires a billing address.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem()
@@ -65,18 +73,21 @@ public sealed class PartnerEndpoints : IEndpointGroup
 
         group.MapPut("/{partnerId:guid}/supplier-role", GrantSupplierAsync)
             .WithName("GrantSupplierRole")
+            .RequirePermission(Permissions.Partners.Manage)
             .WithSummary("Start buying from them.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem();
 
         group.MapPost("/{partnerId:guid}/hold", HoldAsync)
             .WithName("PlacePartnerOnHold")
+            .RequirePermission(Permissions.Partners.ManageCredit)
             .WithSummary("Stop new orders. A reason is required.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem();
 
         group.MapDelete("/{partnerId:guid}/hold", ReleaseHoldAsync)
             .WithName("ReleasePartnerHold")
+            .RequirePermission(Permissions.Partners.ManageCredit)
             .WithSummary("Lift a hold.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);

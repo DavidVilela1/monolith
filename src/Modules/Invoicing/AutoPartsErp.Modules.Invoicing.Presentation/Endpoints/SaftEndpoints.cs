@@ -2,6 +2,7 @@ using System.Text;
 using AutoPartsErp.Modules.Abstractions.Http;
 using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Invoicing.Application.Saft;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Results;
 using Microsoft.AspNetCore.Builder;
@@ -28,6 +29,7 @@ public sealed class SaftEndpoints : IEndpointGroup
 
         group.MapGet("/saft", ExportAsync)
             .WithName("ExportSaft")
+            .RequirePermission(Permissions.Invoicing.ExportSaft)
             .WithSummary(
                 "Produce the SAF-T (PT) file for a period, as XML. Includes every issued document "
                 + "in the period, voided ones included; excludes drafts, which have no number and "
@@ -37,6 +39,7 @@ public sealed class SaftEndpoints : IEndpointGroup
 
         group.MapGet("/saft/{year:int}/{month:int}", ExportMonthAsync)
             .WithName("ExportSaftForMonth")
+            .RequirePermission(Permissions.Invoicing.ExportSaft)
             .WithSummary(
                 "The same file for one calendar month, which is the period the monthly filing "
                 + "actually wants and the one nobody should have to work out the end date of.")

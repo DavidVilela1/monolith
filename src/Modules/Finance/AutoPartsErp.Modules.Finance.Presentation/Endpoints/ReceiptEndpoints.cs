@@ -3,6 +3,7 @@ using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Finance.Application.Contracts;
 using AutoPartsErp.Modules.Finance.Application.Receipts.Commands;
 using AutoPartsErp.Modules.Finance.Application.Receivables.Queries;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Paging;
 using AutoPartsErp.SharedKernel.Results;
@@ -22,6 +23,7 @@ public sealed class ReceiptEndpoints : IEndpointGroup
 
         group.MapPost("/receipts", RecordAsync)
             .WithName("RecordReceipt")
+            .RequirePermission(Permissions.Finance.RecordReceipt)
             .WithSummary(
                 "Records money received. The allocations are optional: a transfer arrives with a "
                 + "reference nobody can read, and the customer's balance should show it whether or "
@@ -32,6 +34,7 @@ public sealed class ReceiptEndpoints : IEndpointGroup
 
         group.MapPost("/receipts/{receiptId:guid}/allocate", AllocateAsync)
             .WithName("AllocateReceipt")
+            .RequirePermission(Permissions.Finance.RecordReceipt)
             .WithSummary(
                 "Matches money already received against documents the customer owes. Refused as a "
                 + "whole if any line is wrong, so a part-applied allocation is not a state that "
@@ -43,12 +46,14 @@ public sealed class ReceiptEndpoints : IEndpointGroup
 
         group.MapGet("/receipts/{receiptId:guid}", GetAsync)
             .WithName("GetReceipt")
+            .RequirePermission(Permissions.Finance.Read)
             .WithSummary("One receipt, with the documents it paid.")
             .Produces<ReceiptDto>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/receipts", SearchAsync)
             .WithName("SearchReceipts")
+            .RequirePermission(Permissions.Finance.Read)
             .WithSummary(
                 "Lists receipts, most recent first. onlyUnallocated narrows it to money that has "
                 + "arrived and not yet been matched, which is somebody's working list.")

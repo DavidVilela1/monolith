@@ -4,6 +4,7 @@ using AutoPartsErp.Modules.Finance.Application.Contracts;
 using AutoPartsErp.Modules.Finance.Application.Receipts.Commands;
 using AutoPartsErp.Modules.Finance.Application.Receivables.Commands;
 using AutoPartsErp.Modules.Finance.Application.Receivables.Queries;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Paging;
 using AutoPartsErp.SharedKernel.Results;
@@ -23,6 +24,7 @@ public sealed class ReceivableEndpoints : IEndpointGroup
 
         group.MapGet("/customers/{customerId:guid}/statement", GetStatementAsync)
             .WithName("GetCustomerStatement")
+            .RequirePermission(Permissions.Finance.Read)
             .WithSummary(
                 "What a customer owes and the documents behind it. Pass asAt to reproduce a "
                 + "statement as it looked on the day it was sent; it defaults to today, which is "
@@ -32,6 +34,7 @@ public sealed class ReceivableEndpoints : IEndpointGroup
 
         group.MapGet("/customers/{customerId:guid}/open-items", ListOutstandingAsync)
             .WithName("ListOutstandingItems")
+            .RequirePermission(Permissions.Finance.Read)
             .WithSummary(
                 "The documents on a customer's account with something still outstanding, oldest "
                 + "first. What an allocation screen shows somebody holding a receipt.")
@@ -39,6 +42,7 @@ public sealed class ReceivableEndpoints : IEndpointGroup
 
         group.MapGet("/aging", GetAgingAsync)
             .WithName("GetAging")
+            .RequirePermission(Permissions.Finance.Read)
             .WithSummary(
                 "Every customer with a balance, in the usual thirty-day buckets. Credit notes "
                 + "count against the bucket their own due date falls in, so a customer with more "
@@ -47,6 +51,7 @@ public sealed class ReceivableEndpoints : IEndpointGroup
 
         group.MapPost("/credit-notes/{openItemId:guid}/allocate", AllocateCreditAsync)
             .WithName("AllocateCreditNote")
+            .RequirePermission(Permissions.Finance.RecordReceipt)
             .WithSummary(
                 "Offsets a credit note against documents the customer owes. Separate from issuing "
                 + "the note, because what it is set against is a decision somebody makes "

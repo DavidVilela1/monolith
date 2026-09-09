@@ -3,6 +3,7 @@ using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Pricing.Application.Contracts;
 using AutoPartsErp.Modules.Pricing.Application.PriceLists.Commands;
 using AutoPartsErp.Modules.Pricing.Application.PriceLists.Queries;
+using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Paging;
 using AutoPartsErp.SharedKernel.Results;
@@ -22,23 +23,27 @@ public sealed class PriceListEndpoints : IEndpointGroup
 
         group.MapGet("/lists", SearchAsync)
             .WithName("SearchPriceLists")
+            .RequirePermission(Permissions.Pricing.Read)
             .WithSummary("Price lists, the default one first.")
             .Produces<PagedResult<PriceListSummary>>();
 
         group.MapGet("/lists/{priceListId:guid}", GetAsync)
             .WithName("GetPriceList")
+            .RequirePermission(Permissions.Pricing.Read)
             .WithSummary("One price list.")
             .Produces<PriceListSummary>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/lists/by-code/{code}", GetByCodeAsync)
             .WithName("GetPriceListByCode")
+            .RequirePermission(Permissions.Pricing.Read)
             .WithSummary("One price list, by the code people refer to it by.")
             .Produces<PriceListSummary>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/lists", OpenAsync)
             .WithName("OpenPriceList")
+            .RequirePermission(Permissions.Pricing.Manage)
             .WithSummary("Open a price list, in draft. A promotion needs a last day.")
             .Produces<Guid>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
@@ -46,6 +51,7 @@ public sealed class PriceListEndpoints : IEndpointGroup
 
         group.MapPut("/lists/{priceListId:guid}", AmendAsync)
             .WithName("AmendPriceList")
+            .RequirePermission(Permissions.Pricing.Manage)
             .WithSummary("Rename a list, or move the period it applies over.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound)
@@ -53,35 +59,41 @@ public sealed class PriceListEndpoints : IEndpointGroup
 
         group.MapPost("/lists/{priceListId:guid}/activate", ActivateAsync)
             .WithName("ActivatePriceList")
+            .RequirePermission(Permissions.Pricing.Manage)
             .WithSummary("Put a list into service. It has to price something first.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         group.MapPost("/lists/{priceListId:guid}/archive", ArchiveAsync)
             .WithName("ArchivePriceList")
+            .RequirePermission(Permissions.Pricing.Manage)
             .WithSummary("Withdraw a list. Documents that quoted it still explain themselves.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         group.MapPost("/lists/{priceListId:guid}/make-default", MakeDefaultAsync)
             .WithName("MakeDefaultPriceList")
+            .RequirePermission(Permissions.Pricing.Manage)
             .WithSummary("Make this the list customers with no agreement fall back to.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         group.MapGet("/lists/{priceListId:guid}/prices", ListPricesAsync)
             .WithName("ListPrices")
+            .RequirePermission(Permissions.Pricing.Read)
             .WithSummary("The prices in one list. Paged, because a standard list is enormous.")
             .Produces<PagedResult<PriceListEntryDto>>();
 
         group.MapGet("/lists/{priceListId:guid}/prices/{partId:guid}", GetPriceAsync)
             .WithName("GetPartPrice")
+            .RequirePermission(Permissions.Pricing.Read)
             .WithSummary("What one list says one part costs.")
             .Produces<PriceListEntryDto>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPut("/lists/{priceListId:guid}/prices/{partId:guid}", SetPriceAsync)
             .WithName("SetPartPrice")
+            .RequirePermission(Permissions.Pricing.Manage)
             .WithSummary(
                 "Set the price from a quantity upwards. Adds the break, or corrects the one already there.")
             .Produces<Guid>(StatusCodes.Status201Created)
@@ -91,12 +103,14 @@ public sealed class PriceListEndpoints : IEndpointGroup
         group.MapDelete("/lists/{priceListId:guid}/prices/{partId:guid}/breaks/{minimumQuantity:decimal}",
                 RemoveBreakAsync)
             .WithName("RemovePriceBreak")
+            .RequirePermission(Permissions.Pricing.Manage)
             .WithSummary("Remove one quantity break. The last one cannot go.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapDelete("/lists/{priceListId:guid}/prices/{partId:guid}", RemovePriceAsync)
             .WithName("RemovePartPrice")
+            .RequirePermission(Permissions.Pricing.Manage)
             .WithSummary("Take a part out of a list entirely.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound);
