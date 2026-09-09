@@ -163,6 +163,56 @@ public sealed class StockMovement : AggregateRoot<MovementId>, IAuditable, ITena
         DateTimeOffset occurredAtUtc) =>
         new(MovementId.New(), part, warehouseId, type, quantity, balanceAfter, reference, occurredAtUtc);
 
+    /// <summary>
+    /// What a quantity coming back is worth, from what the same document line took off the shelf.
+    /// <para>
+    /// The figure a customer return is booked back in at. It is deliberately not a unit cost
+    /// multiplied up: <see cref="Money"/> rounds to the currency's decimal places, so dividing to
+    /// find a per-unit figure and multiplying it back would round twice, and a return of three
+    /// out of ten would not be three tenths of what the ten were worth. One multiplication by a
+    /// fraction rounds once, which is the same reasoning that puts a value rather than a unit
+    /// cost in <see cref="CostValue"/>.
+    /// </para>
+    /// <para>
+    /// Proportional, because a line dispatched in two shipments has two movements at two costs
+    /// and a customer bringing three of ten back does not say which shipment they came from.
+    /// There is no more precise answer available, and inventing one would be a guess dressed up
+    /// as a fact.
+    /// </para>
+    /// <para>
+    /// Only movements carrying a value count, on both sides of the fraction. Treating a costless
+    /// issue as one costing nothing would halve the figure every time stock that had never been
+    /// through a priced receipt was mixed in, and write the difference off without saying so.
+    /// </para>
+    /// <para>
+    /// Null when nothing that left had a value at all — a shelf that has never been priced. That
+    /// is a real state, and it is not the same as a cost of zero, which would say the goods were
+    /// free.
+    /// </para>
+    /// </summary>
+    /// <param name="movements">The ledger rows for the line. Inbound ones are ignored.</param>
+    /// <param name="returnedQuantity">How much is coming back.</param>
+    public static Money? ValueOfReturn(IEnumerable<StockMovement> movements, decimal returnedQuantity)
+    {
+        ArgumentNullException.ThrowIfNull(movements);
+
+        Money? issued = null;
+        decimal units = 0m;
+
+        foreach (StockMovement movement in movements)
+        {
+            if (movement.IsInbound || movement.CostValue is not { } value)
+            {
+                continue;
+            }
+
+            issued = issued is null ? value : issued + value;
+            units += Math.Abs(movement.Quantity.Value);
+        }
+
+        return issued is null || units == 0m ? null : issued.Multiply(returnedQuantity / units);
+    }
+
     /// <summary>Attaches the bin the stock came from or went to.</summary>
     public StockMovement InBin(BinId binId)
     {

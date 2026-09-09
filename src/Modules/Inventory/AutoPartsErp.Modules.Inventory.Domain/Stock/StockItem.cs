@@ -312,6 +312,75 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
     }
 
     /// <summary>
+    /// Puts a customer's return back on the shelf, at what it was worth when it left.
+    /// <para>
+    /// The arithmetic is <see cref="ReceiveValued"/>'s — a known total joins the balance rather
+    /// than a unit price being multiplied back up — and the reason is the same one: what came off
+    /// the shelf has to be what goes back on it, to the cent.
+    /// </para>
+    /// <para>
+    /// <b>Not at today's average.</b> A part sold in March at €40 and returned in September onto
+    /// a shelf that has since averaged down to €31 would arrive worth nine euros more than it
+    /// cost, and the difference would be a silent profit on a transaction where the company made
+    /// nothing at all. Enough of those and the stock value stops being a number anybody can
+    /// explain. What it cost when it left is a fact in this module's own ledger, so it is looked
+    /// up rather than guessed.
+    /// </para>
+    /// <para>
+    /// A null value means the original issue took nothing off the balance either — stock that has
+    /// never been through a priced receipt. The quantity joins the shelf uncosted, which is the
+    /// honest state rather than a cost of zero.
+    /// </para>
+    /// </summary>
+    /// <param name="quantity">How much came back. Must be positive.</param>
+    /// <param name="reference">The return that brought it.</param>
+    /// <param name="now">The current instant.</param>
+    /// <param name="value">What the goods were worth when they went out, when that is known.</param>
+    public Result<StockMovement> ReceiveReturn(
+        decimal quantity,
+        MovementReference reference,
+        DateTimeOffset now,
+        Money? value)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+
+        Result<Quantity> parsed = ParsePositive(quantity);
+        if (parsed.IsFailure)
+        {
+            return Result.Failure<StockMovement>(parsed.Error);
+        }
+
+        if (value is not null && value.Currency != StockValue.Currency)
+        {
+            return Result.Failure<StockMovement>(
+                InventoryErrors.Stock.CostCurrencyMismatch(
+                    value.Currency.Code, StockValue.Currency.Code));
+        }
+
+        OnHand = OnHand.Add(parsed.Value);
+
+        if (value is not null)
+        {
+            StockValue = StockValue.Add(value);
+        }
+
+        // Its own movement type, not a receipt. "What did we buy this month" and "what did
+        // customers bring back this month" are different questions, and a ledger that answered
+        // both with the same row could answer neither.
+        StockMovement movement = StockMovement.Record(
+            Part, WarehouseId, MovementType.CustomerReturn, parsed.Value, OnHand, reference, now);
+
+        if (value is not null)
+        {
+            movement.AtValue(value);
+        }
+
+        Raise(new StockReceivedDomainEvent(Id, Part, WarehouseId, parsed.Value.Value, reference.Number));
+
+        return movement;
+    }
+
+    /// <summary>
     /// Sends stock to another warehouse, and answers what value went with it.
     /// <para>
     /// The value is the whole reason this is not just an issue. Stock moving between two of the

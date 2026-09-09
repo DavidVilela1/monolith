@@ -85,6 +85,30 @@ public interface IStockMovementRepository
 
     /// <summary>Stages several movements, for operations that move more than one line at once.</summary>
     void AddRange(IEnumerable<StockMovement> movements);
+
+    /// <summary>
+    /// The ledger rows already booked against one document line for one part in one warehouse.
+    /// <para>
+    /// The only read on this table that is not a report. It exists so that goods coming back can
+    /// be valued at what they cost when they left, which is a fact this module already holds and
+    /// nobody else does — asking Sales to carry a cost around would put costing in the module
+    /// that sells rather than the one that owns the shelf.
+    /// </para>
+    /// <para>
+    /// Matched on the reference's number <i>and</i> its note, because the note is what identifies
+    /// the order line. Without it a return against one line of a four-line order would be valued
+    /// at the average of the whole order.
+    /// </para>
+    /// </summary>
+    /// <param name="part">The part.</param>
+    /// <param name="warehouseId">The warehouse.</param>
+    /// <param name="reference">The document line to match, as the original movement recorded it.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<IReadOnlyList<StockMovement>> GetForReferenceAsync(
+        PartRef part,
+        WarehouseId warehouseId,
+        MovementReference reference,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>Write-side access to count sheets.</summary>

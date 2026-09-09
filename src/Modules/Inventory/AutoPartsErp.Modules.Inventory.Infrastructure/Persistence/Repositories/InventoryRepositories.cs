@@ -137,6 +137,31 @@ public sealed class StockMovementRepository : IStockMovementRepository
         ArgumentNullException.ThrowIfNull(movements);
         _context.StockMovements.AddRange(movements);
     }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<StockMovement>> GetForReferenceAsync(
+        PartRef part,
+        WarehouseId warehouseId,
+        MovementReference reference,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+
+        // Bounded by how many times one order line was shipped, which is a handful. Read whole
+        // rather than aggregated in SQL because the arithmetic that follows is a costing rule and
+        // belongs in the domain, where it can be read and tested without a database.
+        List<StockMovement> movements = await _context.StockMovements
+            .AsNoTracking()
+            .Where(movement => movement.Part == part && movement.WarehouseId == warehouseId)
+            .Where(movement => movement.Reference.Type == reference.Type
+                && movement.Reference.Number == reference.Number
+                && movement.Reference.Note == reference.Note)
+            .OrderBy(movement => movement.OccurredAtUtc)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return movements;
+    }
 }
 
 /// <summary>Write-side access to warehouses.</summary>
