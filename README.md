@@ -13,12 +13,12 @@ about:
 | **Catalog** | `catalog` | 10 | Parts, brands, categories, cross-references, vehicle fitment |
 | **Pricing** | `pricing` | 12 | Price lists, quantity breaks, customer agreements, price resolution |
 | **Purchasing** | `purchasing` | 15 | Purchase orders, goods receipt, replenishment suggestions |
-| **Sales** | `sales` | 20 | Customer accounts, sales orders, dispatch, credit control |
+| **Sales** | `sales` | 20 | Customer accounts, sales orders, dispatch, credit control, customer returns |
 | **Invoicing** | `invoicing` | 25 | Registered series, ATCUD, the signature chain, the QR code, the SAF-T (PT) export |
 | **Finance** | `finance` | 30 | The sales ledger: open items, receipts matched to the documents they pay, ageing |
 
 They share no code beyond two contract assemblies, and no module references another module's
-projects. 637 tests, all green — 599 that need nothing but the compiler, and 38 that need a real
+projects. 659 tests, all green — 621 that need nothing but the compiler, and 38 that need a real
 PostgreSQL because what they check does not exist until there is one.
 
 ---
@@ -504,7 +504,7 @@ returns both.
 so a route added later without a thought about who may call it is refused rather than open. Three
 routes say otherwise — sign in, refresh, sign out — because they are where a token comes from.
 
-**Every one of the 141 routes behind a permission names which one.** Not a group-wide check per module:
+**Every one of the 149 routes behind a permission names which one.** Not a group-wide check per module:
 `GET /api/inventory/stock/replenishment` needs `inventory.stock.read` and
 `POST /api/inventory/stock/adjust` needs `inventory.stock.adjust`, and they sit four lines apart
 in the same file. The catalogue lives in the shared kernel rather than in Access, and it has to —
@@ -516,7 +516,7 @@ a way of saying "I am company B" that company A could also say: anybody who coul
 could read anybody's data by changing one header. A claim inside a signed token cannot be edited
 by whoever is holding it.
 
-**Permissions, grouped into roles.** Thirty-five permissions named `module.thing.verb`, and roles
+**Permissions, grouped into roles.** Thirty-six permissions named `module.thing.verb`, and roles
 are named bundles of them. Permissions live on the role rather than on the user, so giving
 somebody an exception means giving them a second role — which keeps "why can she do this?" to a
 list of role names instead of an audit of one person's history.
@@ -696,6 +696,14 @@ availability, in the replenishment list and on count sheets, and every one of th
 learn to exclude it. What is on the van lives on the transfer instead, as a quantity and a value
 per line.
 
+**A return lands at what it cost when it left.** Not at today's average: a part sold in March at
+€40 and returned in September onto a shelf that has since averaged down to €31 would come back
+worth nine euros more than it cost, and the difference would be a silent profit on a transaction
+where the company made nothing. The figure is looked up in this module's own ledger, from the row
+the dispatch wrote — Sales never carries a cost, because costing belongs to the module that owns
+the shelf. The value is taken as a fraction of what left rather than as a unit cost multiplied
+back up, so it rounds once.
+
 **Value travels with the goods.** Moving stock between two of the company's own shelves must not
 change what the company owns, so the exact value comes off the sender, rides on the document, and
 lands on the receiver. That is why the receiving end takes a total rather than a unit price —
@@ -779,6 +787,47 @@ sale — those are goods leaving now.
 
 **Line arithmetic is fixed and rounded at each step.** Extend, discount, net, VAT, each rounded as
 it is computed, because that is the order a customer can check with a calculator.
+
+**A return is a document, not a credit note with stock attached.** A credit note can be issued
+because the price was wrong, because the invoice went to the wrong company, or because a discount
+was agreed after the fact — none of which involve a single part moving, and a system that put
+stock back on every credit note would invent stock. So goods coming back are their own fact and
+the credit follows from them.
+
+**Raising a return and receiving it are two steps.** Raising records what the customer says is
+coming; receiving records what actually turned up, and that is the step that moves stock. A
+counter return does both in the same minute — but a workshop ringing to say a pump is coming back
+next Tuesday must not put a pump on the shelf for a salesperson to promise somebody on Monday.
+
+**Not everything that comes back goes back on the shelf.** Each line says what was decided about
+it: a sealed box returns to stock, a fitted and scratched alternator does not. The customer is
+credited either way, because that is a conversation with them and not a fact about the shelf. Only
+the saleable lines reach Inventory — booking a scrapped part in and adjusting it straight back out
+would put two movements in the ledger for stock that was never on a shelf.
+
+**The credit note is drawn from the return, and names its document.** An order billed across
+three invoices could have a return credited against any of them, and picking one would be this
+system choosing which legal document to reverse. A credit note names exactly one original — that
+is what the tax authority reads — so the person raising it names it too. The lines are matched on
+the sales order line that both documents carry: the invoice line copied it when the document was
+drawn, and the return line has it because the goods came off that line. Neither module knows the
+other's keys.
+
+**A return produces one credit note, and the database says so.** The check is a unique index on
+the return reference, not a read followed by a write — two people reaching for the same return in
+the same second are separated by PostgreSQL rather than by the order two queries happened to fall
+in. Drafts count: a draft is a credit note somebody is in the middle of, and abandoning it
+unblocks the return.
+
+**Crediting an order is not invoicing more of it.** Credit note lines carry the invoice line they
+credit, not the order line the original was drawn from — so nothing is reported back to Sales as
+billed, and an order credited in full does not look over-invoiced. Sales hears about the credit
+through a different event, and all it does with it is mark the return settled.
+
+**Goods that never left cannot come back.** The order line counts what has been returned against
+what was dispatched, and the two aggregates move in the same transaction. The dispatched figure
+itself does not go down: a line that quietly un-dispatched itself would make the order outstanding
+again, put it back on the picking list, and promise the customer goods they have just sent back.
 
 ### Invoicing
 
@@ -980,8 +1029,9 @@ concurrency in all three modules that hand out numbers.
 2. **Accounts payable, the general ledger, VAT returns and period close.** Finance covers what
    customers owe and nothing else yet: there is no supplier invoice to owe anything against,
    because Purchasing has an order and a goods receipt and no document between them.
-3. **Returns and core credits** — the other half of a parts business, and the reason
-   `RequiresCoreReturn` exists on a part already.
+3. **Core credits.** Nothing charges or refunds the deposit that `RequiresCoreReturn` has been
+   describing on parts since Catalog was written, and a returnable core is half the transaction on
+   a starter motor.
 4. **Margin, and a floor under it.** Inventory knows what stock cost and Pricing knows what it
    sells for, and nothing puts the two numbers on the same line. Until it does, nobody can be
    stopped from selling below cost.
@@ -1020,9 +1070,10 @@ concurrency in all three modules that hand out numbers.
 - Cost of sale is on the ledger but nowhere else. Nothing posts it to a general ledger, because
   there is no general ledger; nothing shows margin on a sales order line; and the margin floor
   Pricing would want is now possible and not built.
-- A customer return is valued at today's average rather than at what those goods cost when they
-  left. The second is correct and needs the sales line to carry its cost back, which is a change
-  to Sales.
+- A return is valued proportionally across every shipment of the line it came from. A line
+  dispatched twice at two costs has no single unit cost, and the customer bringing three of ten
+  back does not say which van they came on — so the figure is the average of what left, and there
+  is no more precise one to be had short of serial numbers.
 - A shortfall written off in transit produces no shrinkage posting, because there is no general
   ledger to post it to. The `StockTransferClosedShort` event carries the lost value ready for one.
 - Storage bins are recorded but never used: `StockMovement.InBin` has no caller, so no movement
