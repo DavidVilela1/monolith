@@ -133,6 +133,32 @@ public static class Permissions
 
         /// <summary>Book a delivery in against an order.</summary>
         public const string Receive = "purchasing.receipt.record";
+
+        /// <summary>
+        /// Set what was agreed with a supplier: their prices and their rebate.
+        /// <para>
+        /// Apart from <see cref="Manage"/> because raising an order and deciding what the company
+        /// pays are different jobs held by different people. Everyone in a buying office raises
+        /// orders; the rebate scale is what was negotiated at the top of the year, and a counter
+        /// clerk who can edit it can quietly change what every delivery for the rest of the year
+        /// is worth.
+        /// </para>
+        /// </summary>
+        public const string ManageAgreements = "purchasing.agreement.manage";
+
+        /// <summary>See suppliers' own documents and what is in dispute.</summary>
+        public const string ReadInvoices = "purchasing.supplier_invoice.read";
+
+        /// <summary>
+        /// Record what a supplier's paper says, and decide what to do when it disagrees.
+        /// <para>
+        /// Its own permission, and the reason is the second half. Reconciling is clerical;
+        /// accepting a difference commits the company to paying more than it counted at prices it
+        /// agreed, which is the same shape of decision as going past a credit limit and belongs to
+        /// somebody who can be asked about it afterwards.
+        /// </para>
+        /// </summary>
+        public const string ManageInvoices = "purchasing.supplier_invoice.manage";
     }
 
     /// <summary>Selling.</summary>
@@ -267,6 +293,7 @@ public static class Permissions
         Partners.Read, Partners.Manage, Partners.ManageCredit,
         Pricing.Quote, Pricing.Read, Pricing.Manage,
         Purchasing.Read, Purchasing.Manage, Purchasing.Submit, Purchasing.Receive,
+        Purchasing.ManageAgreements, Purchasing.ReadInvoices, Purchasing.ManageInvoices,
         Sales.Read, Sales.Manage, Sales.Confirm, Sales.Dispatch, Sales.Return,
         Sales.OverrideCredit, Sales.OverrideMarginFloor,
         Invoicing.Read, Invoicing.Draft, Invoicing.Issue, Invoicing.Void,

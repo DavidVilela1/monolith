@@ -126,6 +126,19 @@ public sealed class RappelScale : ValueObject
         return new RappelScale(ordered);
     }
 
+    /// <summary>
+    /// Rebuilds a scale from steps that were already checked when they were first agreed.
+    /// <para>
+    /// Skips the validation deliberately. Rows that reached the database went through
+    /// <see cref="Of"/>, and re-running the rules on the way out would mean a scale saved under
+    /// one version of them becoming unreadable under the next — which turns a rule change into a
+    /// screen that will not open.
+    /// </para>
+    /// </summary>
+    /// <param name="steps">The stored steps.</param>
+    internal static RappelScale FromStored(IEnumerable<RappelStep> steps) =>
+        new([.. steps.OrderBy(step => step.From.Amount)]);
+
     /// <summary>A flat rebate, which is a scale with one step starting at nothing.</summary>
     /// <param name="percent">The agreed percentage.</param>
     /// <param name="currency">The currency the agreement is in.</param>
@@ -218,10 +231,43 @@ public sealed class RappelScale : ValueObject
 
 /// <summary>
 /// One step of a <see cref="RappelScale"/>.
+/// <para>
+/// A class rather than a record struct, and the reason is storage: EF Core cannot own a collection
+/// of value types, so a struct here would model beautifully and fail the moment anybody tried to
+/// save one. It is worth knowing that this shape was chosen by the database and not by the domain.
+/// </para>
 /// </summary>
-/// <param name="From">
-/// The cumulative purchase value that reaches this step. Inclusive: a step at 25.000 is reached by
-/// buying exactly 25.000, because that is what a supplier's contract means by "a partir de".
-/// </param>
-/// <param name="Percent">The rate that then applies to the whole of the value.</param>
-public readonly record struct RappelStep(Money From, decimal Percent);
+public sealed class RappelStep : ValueObject
+{
+    /// <summary>Creates a step.</summary>
+    /// <param name="from">The cumulative purchase value that reaches it.</param>
+    /// <param name="percent">The rate that then applies to the whole of the value.</param>
+    public RappelStep(Money from, decimal percent)
+    {
+        From = from;
+        Percent = percent;
+    }
+
+    /// <summary>Required by EF Core materialization.</summary>
+#pragma warning disable CS8618
+    private RappelStep()
+    {
+    }
+#pragma warning restore CS8618
+
+    /// <summary>
+    /// The cumulative purchase value that reaches this step. Inclusive: a step at 25.000 is
+    /// reached by buying exactly 25.000, because that is what "a partir de" means on a contract.
+    /// </summary>
+    public Money From { get; private set; } = null!;
+
+    /// <summary>The rate that then applies to the whole of the value.</summary>
+    public decimal Percent { get; private set; }
+
+    /// <inheritdoc />
+    protected override IEnumerable<object?> GetEqualityComponents()
+    {
+        yield return From;
+        yield return Percent;
+    }
+}

@@ -208,7 +208,8 @@ public sealed class SupplierAgreementTests
         agreement.DropRebate();
 
         agreement.RappelBasis.Should().Be(RappelBasis.None);
-        agreement.RappelScale.Should().BeNull();
+        agreement.Scale.Should().BeNull();
+        agreement.RappelSteps.Should().BeEmpty();
         agreement.InvoiceRateOn(Eur(80_000m)).Should().Be(0m);
     }
 

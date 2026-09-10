@@ -1,3 +1,5 @@
+using AutoPartsErp.Modules.Purchasing.Domain.Agreements;
+using AutoPartsErp.Modules.Purchasing.Domain.Invoices;
 using AutoPartsErp.Modules.Purchasing.Domain.Orders;
 using AutoPartsErp.Modules.Purchasing.Domain.Replenishment;
 using AutoPartsErp.SharedKernel.Abstractions;
@@ -54,6 +56,82 @@ public interface IReplenishmentSuggestionRepository
     /// <summary>Every open suggestion for a part, across all warehouses.</summary>
     Task<IReadOnlyList<ReplenishmentSuggestion>> GetOpenForPartAsync(
         PartRef partId,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>Write-side access to what was agreed with a supplier.</summary>
+public interface ISupplierAgreementRepository : IRepository<SupplierAgreement, SupplierAgreementId>
+{
+    /// <summary>
+    /// The agreement in force with a supplier on a given day, or null when there is none.
+    /// <para>
+    /// One lookup, always. The whole point of allowing a single live agreement per supplier is
+    /// that "which one applies to this delivery?" never depends on the order two rows came back
+    /// in.
+    /// </para>
+    /// </summary>
+    Task<SupplierAgreement?> GetForSupplierAsync(
+        SupplierRef supplierId,
+        DateOnly on,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>True when the supplier already has an agreement that has not ended.</summary>
+    Task<bool> HasLiveAgreementAsync(
+        SupplierRef supplierId,
+        SupplierAgreementId? excluding = null,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>Write-side access to what a supplier charges for a part.</summary>
+public interface ISupplierPriceRepository : IRepository<SupplierPrice, SupplierPriceId>
+{
+    /// <summary>
+    /// What a supplier charged for a part on a given day, or null when nothing was agreed by then.
+    /// <para>
+    /// The most recent row whose day has arrived, which is why a price rise is recorded rather
+    /// than edited: both rows are here, and the one that answers is the one that was in force when
+    /// the goods came off the van.
+    /// </para>
+    /// </summary>
+    Task<SupplierPrice?> GetPriceOnAsync(
+        SupplierRef supplierId,
+        PartRef partId,
+        DateOnly on,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>True when that supplier already has a price for that part from exactly that day.</summary>
+    Task<bool> ExistsForAsync(
+        SupplierRef supplierId,
+        PartRef partId,
+        DateOnly effectiveFrom,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>Write-side access to suppliers' own documents.</summary>
+public interface ISupplierInvoiceRepository : IRepository<SupplierInvoice, SupplierInvoiceId>
+{
+    /// <summary>
+    /// The draft collecting one supplier's deliveries on one day, or null when none is open.
+    /// <para>
+    /// What makes a receipt land beside the ones that arrived on the same van instead of opening a
+    /// document of its own.
+    /// </para>
+    /// </summary>
+    Task<SupplierInvoice?> GetOpenDraftAsync(
+        SupplierRef supplierId,
+        DateOnly receivedOn,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when goods from that order line have already been put on a document.
+    /// <para>
+    /// The guard that makes drafting idempotent. Goods-receipt events arrive at least once, and a
+    /// redelivered one must not charge the company for the same pallet twice.
+    /// </para>
+    /// </summary>
+    Task<bool> HasLineForReceiptAsync(
+        PurchaseOrderLineId purchaseOrderLineId,
+        decimal quantity,
         CancellationToken cancellationToken = default);
 }
 

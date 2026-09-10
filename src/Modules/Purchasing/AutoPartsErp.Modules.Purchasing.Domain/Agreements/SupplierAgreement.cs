@@ -29,6 +29,8 @@ public sealed class SupplierAgreement : AggregateRoot<SupplierAgreementId>, IAud
     /// <summary>Longest permitted note.</summary>
     public const int MaxNoteLength = 500;
 
+    private readonly List<RappelStep> _rappelSteps = [];
+
     private SupplierAgreement(
         SupplierAgreementId id,
         SupplierRef supplierId,
@@ -84,13 +86,13 @@ public sealed class SupplierAgreement : AggregateRoot<SupplierAgreementId>, IAud
     public RappelPeriod RappelPeriod { get; private set; }
 
     /// <summary>
-    /// The rebate steps, or null when there is no rebate.
+    /// The rebate steps as they are stored, empty when there is no rebate.
     /// <para>
-    /// The same object for both bases. What differs between them is not the arithmetic but when it
-    /// is measured and who sends the paperwork — which is the whole reason they share it.
+    /// Rows rather than one serialized figure, so "which suppliers pay more than three per cent?"
+    /// stays a question a query can answer.
     /// </para>
     /// </summary>
-    public RappelScale? RappelScale { get; private set; }
+    public IReadOnlyList<RappelStep> RappelSteps => _rappelSteps;
 
     /// <summary>What the buyer wants to remember about how this was agreed.</summary>
     public string? Note { get; private set; }
@@ -122,12 +124,24 @@ public sealed class SupplierAgreement : AggregateRoot<SupplierAgreementId>, IAud
     /// <summary>The currency the agreement is written in.</summary>
     public Currency Currency => Currency.FromCode(CurrencyCode);
 
+    /// <summary>
+    /// The steps as one object, or null when there is no rebate.
+    /// <para>
+    /// Rebuilt from the rows rather than stored beside them, so there is exactly one copy of the
+    /// truth. The same object serves both bases: what differs between them is not the arithmetic
+    /// but when it is measured and who sends the paperwork.
+    /// </para>
+    /// </summary>
+    public RappelScale? Scale =>
+        _rappelSteps.Count == 0 ? null : RappelScale.FromStored(_rappelSteps);
+
     /// <summary>True when a rebate is settled on each invoice as it is drafted.</summary>
-    public bool RebatesOnInvoice => RappelBasis == RappelBasis.OnInvoice && RappelScale is not null;
+    public bool RebatesOnInvoice =>
+        RappelBasis == RappelBasis.OnInvoice && _rappelSteps.Count > 0;
 
     /// <summary>True when a rebate builds up over a period and arrives as a credit note.</summary>
     public bool RebatesByCreditNote =>
-        RappelBasis == RappelBasis.PeriodCreditNote && RappelScale is not null;
+        RappelBasis == RappelBasis.PeriodCreditNote && _rappelSteps.Count > 0;
 
     /// <summary>Opens an agreement with a supplier. No rebate until one is set.</summary>
     /// <param name="supplierId">The supplier.</param>
@@ -196,7 +210,7 @@ public sealed class SupplierAgreement : AggregateRoot<SupplierAgreementId>, IAud
 
         RappelBasis = RappelBasis.OnInvoice;
         RappelPeriod = RappelPeriod.Annual;
-        RappelScale = scale;
+        ReplaceSteps(scale);
 
         Raise(new SupplierRebateAgreedDomainEvent(
             Id, SupplierId, RappelBasis, RappelPeriod, scale.BestRatePercent));
@@ -232,7 +246,7 @@ public sealed class SupplierAgreement : AggregateRoot<SupplierAgreementId>, IAud
 
         RappelBasis = RappelBasis.PeriodCreditNote;
         RappelPeriod = period;
-        RappelScale = scale;
+        ReplaceSteps(scale);
 
         Raise(new SupplierRebateAgreedDomainEvent(
             Id, SupplierId, RappelBasis, period, scale.BestRatePercent));
@@ -252,7 +266,7 @@ public sealed class SupplierAgreement : AggregateRoot<SupplierAgreementId>, IAud
     {
         RappelBasis = RappelBasis.None;
         RappelPeriod = RappelPeriod.None;
-        RappelScale = null;
+        _rappelSteps.Clear();
     }
 
     /// <summary>
@@ -268,7 +282,7 @@ public sealed class SupplierAgreement : AggregateRoot<SupplierAgreementId>, IAud
     {
         ArgumentNullException.ThrowIfNull(purchasedThisPeriod);
 
-        return RebatesOnInvoice ? RappelScale!.RateFor(purchasedThisPeriod) : 0m;
+        return RebatesOnInvoice ? Scale!.RateFor(purchasedThisPeriod) : 0m;
     }
 
     /// <summary>Records the buyer's note about how this was agreed.</summary>
@@ -301,6 +315,12 @@ public sealed class SupplierAgreement : AggregateRoot<SupplierAgreementId>, IAud
         Raise(new SupplierAgreementEndedDomainEvent(Id, SupplierId, lastDay));
 
         return Result.Success();
+    }
+
+    private void ReplaceSteps(RappelScale scale)
+    {
+        _rappelSteps.Clear();
+        _rappelSteps.AddRange(scale.Steps);
     }
 
     /// <summary>True when the given day falls inside the agreement's life.</summary>

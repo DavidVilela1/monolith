@@ -48,9 +48,6 @@ public sealed class SupplierInvoiceLine : Entity<SupplierInvoiceLineId>, IAudita
     }
 #pragma warning restore CS8618
 
-    /// <summary>The invoice this line belongs to.</summary>
-    public SupplierInvoiceId SupplierInvoiceId { get; private set; }
-
     /// <summary>The order the goods were ordered on.</summary>
     public PurchaseOrderId PurchaseOrderId { get; private set; }
 

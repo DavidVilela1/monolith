@@ -1,4 +1,6 @@
 using AutoPartsErp.Modules.Purchasing.Domain;
+using AutoPartsErp.Modules.Purchasing.Domain.Agreements;
+using AutoPartsErp.Modules.Purchasing.Domain.Invoices;
 using AutoPartsErp.Modules.Purchasing.Domain.Orders;
 using AutoPartsErp.Modules.Purchasing.Domain.Replenishment;
 using AutoPartsErp.Persistence;
@@ -39,6 +41,15 @@ public sealed class PurchasingDbContext : ModuleDbContext, IPurchasingUnitOfWork
     /// <summary>Parts that have run low and probably need buying.</summary>
     public DbSet<ReplenishmentSuggestion> ReplenishmentSuggestions => Set<ReplenishmentSuggestion>();
 
+    /// <summary>What was agreed with each supplier, with their rebate steps.</summary>
+    public DbSet<SupplierAgreement> SupplierAgreements => Set<SupplierAgreement>();
+
+    /// <summary>What each supplier charges for each part, from each day.</summary>
+    public DbSet<SupplierPrice> SupplierPrices => Set<SupplierPrice>();
+
+    /// <summary>Suppliers' own documents, with the lines drafted from receipts.</summary>
+    public DbSet<SupplierInvoice> SupplierInvoices => Set<SupplierInvoice>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -52,6 +63,15 @@ public sealed class PurchasingDbContext : ModuleDbContext, IPurchasingUnitOfWork
 
         modelBuilder.Entity<ReplenishmentSuggestion>()
             .HasQueryFilter(suggestion => suggestion.TenantId == CurrentTenantId);
+
+        modelBuilder.Entity<SupplierAgreement>()
+            .HasQueryFilter(agreement => !agreement.IsDeleted && agreement.TenantId == CurrentTenantId);
+
+        modelBuilder.Entity<SupplierPrice>()
+            .HasQueryFilter(price => !price.IsDeleted && price.TenantId == CurrentTenantId);
+
+        modelBuilder.Entity<SupplierInvoice>()
+            .HasQueryFilter(invoice => !invoice.IsDeleted && invoice.TenantId == CurrentTenantId);
 
         base.OnModelCreating(modelBuilder);
     }

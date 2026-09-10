@@ -73,6 +73,9 @@ public sealed class PurchasingModule : IModule
 
         services.AddScoped<IPurchaseOrderRepository, PurchaseOrderRepository>();
         services.AddScoped<IReplenishmentSuggestionRepository, ReplenishmentSuggestionRepository>();
+        services.AddScoped<ISupplierAgreementRepository, SupplierAgreementRepository>();
+        services.AddScoped<ISupplierPriceRepository, SupplierPriceRepository>();
+        services.AddScoped<ISupplierInvoiceRepository, SupplierInvoiceRepository>();
         services.AddScoped<IPurchasingReadStore, PurchasingReadStore>();
 
         services.AddModuleHandlers(
@@ -90,5 +93,6 @@ public sealed class PurchasingModule : IModule
 
         new PurchaseOrderEndpoints().Map(group);
         new ReplenishmentEndpoints().Map(group);
+        new SupplierAgreementEndpoints().Map(group);
     }
 }
