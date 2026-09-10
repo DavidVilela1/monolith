@@ -18,7 +18,7 @@ about:
 | **Finance** | `finance` | 30 | The sales ledger: open items, receipts matched to the documents they pay, ageing |
 
 They share no code beyond two contract assemblies, and no module references another module's
-projects. 670 tests, all green — 632 that need nothing but the compiler, and 38 that need a real
+projects. 673 tests, all green — 635 that need nothing but the compiler, and 38 that need a real
 PostgreSQL because what they check does not exist until there is one.
 
 ---
@@ -788,6 +788,27 @@ sale — those are goods leaving now.
 **Line arithmetic is fixed and rounded at each step.** Extend, discount, net, VAT, each rounded as
 it is computed, because that is the order a customer can check with a calculator.
 
+**A line records what the shelf was worth when it was priced.** Not what the sale cost: what a
+dispatch actually takes off the balance is stamped on the ledger row at the moment it happens, and
+the two differ whenever the shelf moves in between. The line's figure is what the decision was
+made against — "was that price worth taking?" — and it stays what it was, so the answer keeps
+reading the same way next month. Anything reconciling margin to the accounts wants the ledger;
+anything deciding a price wants the line.
+
+**A cost nobody knows is not a cost of zero.** Inventory answers null for a part with no record in
+that warehouse, an empty shelf, or one that has never been through a priced receipt — and the line
+then has no margin rather than a margin of a hundred per cent. The order says how many of its
+lines are in that state, because a margin figure quietly covering four lines of six is a number
+somebody decides on and then cannot reproduce.
+
+**Margin is of revenue, not of cost.** A part bought at 10 and sold at 15 is a third of the
+selling price and half the buying price, and both get called "fifty per cent" by somebody. This
+one is of revenue, which is what a distributor's accounts are built on.
+
+**A core deposit is outside the margin on both sides.** It is revenue with no cost, and counting
+it would make every part sold on a core look like the best margin in the branch — right up until
+the old unit comes back and the money goes out again.
+
 **A core deposit is a line, not a field.** A remanufactured starter motor is sold twice over: the
 part, and a sum held until the old one comes back. The deposit prints as its own line, is credited
 on its own, and is what a customer pays when they keep the old unit — none of which a number
@@ -1047,9 +1068,9 @@ concurrency in all three modules that hand out numbers.
 2. **Accounts payable, the general ledger, VAT returns and period close.** Finance covers what
    customers owe and nothing else yet: there is no supplier invoice to owe anything against,
    because Purchasing has an order and a goods receipt and no document between them.
-3. **Margin, and a floor under it.** Inventory knows what stock cost and Pricing knows what it
-   sells for, and nothing puts the two numbers on the same line. Until it does, nobody can be
-   stopped from selling below cost.
+3. **A floor under the margin.** The margin is now on the line and on the order; nothing yet
+   refuses a price that goes under it, or asks somebody senior to sign one off. The credit-limit
+   override is the shape that fits.
 
 **Known issues:**
 

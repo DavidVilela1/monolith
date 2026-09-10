@@ -1,4 +1,5 @@
 using AutoPartsErp.ModuleContracts.Catalog;
+using AutoPartsErp.ModuleContracts.Inventory;
 using AutoPartsErp.ModuleContracts.Pricing;
 using AutoPartsErp.Modules.Sales.Application.Orders.Commands;
 using AutoPartsErp.Modules.Sales.Domain;
@@ -72,7 +73,11 @@ public sealed class AddSalesOrderLineTests
         SalesOrder order = NewOrder();
         var pricing = new FakePricing(Quote(24.50m, 5m));
         var handler = new AddSalesOrderLineCommandHandler(
-            new FakeOrders(order), new FakeCatalogue(Describe(sellable: true)), pricing, new FakeUnitOfWork());
+            new FakeOrders(order),
+            new FakeCatalogue(Describe(sellable: true)),
+            pricing,
+            new FakeCosting(null),
+            new FakeUnitOfWork());
 
         Result<Guid> result = await handler.HandleAsync(
             new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m, UnitPrice: 18m));
@@ -119,6 +124,7 @@ public sealed class AddSalesOrderLineTests
                 Describe(sellable: true, requiresCoreReturn: true),
                 new CoreCharge(30.00m, "EUR")),
             new FakePricing(Quote(24.50m, 5m)),
+            new FakeCosting(null),
             new FakeUnitOfWork());
 
         Result<Guid> result = await handler.HandleAsync(
@@ -148,6 +154,7 @@ public sealed class AddSalesOrderLineTests
             new FakeOrders(order),
             new FakeCatalogue(Describe(sellable: true, requiresCoreReturn: true), coreCharge: null),
             new FakePricing(Quote(24.50m, 5m)),
+            new FakeCosting(null),
             new FakeUnitOfWork());
 
         Result<Guid> result = await handler.HandleAsync(
@@ -155,6 +162,54 @@ public sealed class AddSalesOrderLineTests
 
         result.Error.Code.Should().Be("sales.core.charge_missing");
         order.Lines.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// The cost comes from Inventory, at the shelf the goods will leave from, and it is a
+    /// snapshot: what the decision was made against, not a figure that keeps moving.
+    /// </summary>
+    [Fact]
+    public async Task A_line_records_what_the_shelf_was_worth_when_it_was_priced()
+    {
+        SalesOrder order = NewOrder();
+        var handler = NewHandler(order, Describe(sellable: true), Quote(24.50m, 0m), unitCost: 14.00m);
+
+        Result<Guid> result = await handler.HandleAsync(
+            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m));
+
+        result.IsSuccess.Should().BeTrue();
+
+        SalesOrderLine line = order.Lines.Single();
+
+        line.UnitCost!.Amount.Should().Be(14.00m);
+        line.CostOfSale!.Amount.Should().Be(56.00m);
+        line.Margin!.Amount.Should().Be(42.00m);
+        line.MarginPercent.Should().Be(42.86m);
+    }
+
+    /// <summary>
+    /// A part Inventory cannot cost is still a part somebody can sell. It has no margin, which is
+    /// a different thing from a margin of a hundred per cent, and the line says so rather than
+    /// guessing.
+    /// </summary>
+    [Fact]
+    public async Task A_part_the_shelf_cannot_cost_is_still_sold_and_has_no_margin()
+    {
+        SalesOrder order = NewOrder();
+        var handler = NewHandler(order, Describe(sellable: true), Quote(24.50m, 0m), unitCost: null);
+
+        Result<Guid> result = await handler.HandleAsync(
+            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m));
+
+        result.IsSuccess.Should().BeTrue();
+
+        SalesOrderLine line = order.Lines.Single();
+
+        line.UnitCost.Should().BeNull();
+        line.HasMargin.Should().BeFalse();
+        line.Margin.Should().BeNull();
+        line.MarginPercent.Should().BeNull();
+        order.HasUncostedLines.Should().BeTrue();
     }
 
     [Fact]
@@ -169,6 +224,7 @@ public sealed class AddSalesOrderLineTests
             new FakeOrders(order),
             new FakeCatalogue(Describe(sellable: true)),
             new FakePricing(null),
+            new FakeCosting(null),
             new FakeUnitOfWork());
 
         Result<Guid> result = await handler.HandleAsync(
@@ -246,7 +302,11 @@ public sealed class AddSalesOrderLineTests
 
         var catalogue = new FakeCatalogue(Describe(sellable: false));
         var handler = new AddSalesOrderLineCommandHandler(
-            new FakeOrders(order), catalogue, new FakePricing(null), new FakeUnitOfWork());
+            new FakeOrders(order),
+            catalogue,
+            new FakePricing(null),
+            new FakeCosting(null),
+            new FakeUnitOfWork());
 
         Result<Guid> result = await handler.HandleAsync(
             new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m));
@@ -259,12 +319,40 @@ public sealed class AddSalesOrderLineTests
     private static AddSalesOrderLineCommandHandler NewHandler(
         SalesOrder order,
         PartDescriptor? descriptor,
-        PartPrice? quote = null) =>
+        PartPrice? quote = null,
+        decimal? unitCost = null) =>
         new(
             new FakeOrders(order),
             new FakeCatalogue(descriptor),
             new FakePricing(quote ?? Quote(30m, 0m)),
+            new FakeCosting(unitCost),
             new FakeUnitOfWork());
+
+    /// <summary>
+    /// Answers what a shelf is worth, or says it cannot. Null is the ordinary case in these
+    /// tests, because most of them are about prices and refusals rather than margin.
+    /// </summary>
+    private sealed class FakeCosting : IInventoryCosting
+    {
+        private readonly decimal? _unitCost;
+
+        public FakeCosting(decimal? unitCost) => _unitCost = unitCost;
+
+        public Task<StockUnitCost?> GetUnitCostAsync(
+            Guid partId,
+            Guid warehouseId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(_unitCost is { } cost
+                ? new StockUnitCost(partId, warehouseId, cost, "EUR")
+                : null);
+
+        public Task<IReadOnlyDictionary<Guid, StockUnitCost>> GetUnitCostsAsync(
+            IReadOnlyCollection<Guid> partIds,
+            Guid warehouseId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyDictionary<Guid, StockUnitCost>>(
+                new Dictionary<Guid, StockUnitCost>());
+    }
 
     private static PartPrice Quote(decimal gross, decimal discountPercent, string currency = "EUR") =>
         new(

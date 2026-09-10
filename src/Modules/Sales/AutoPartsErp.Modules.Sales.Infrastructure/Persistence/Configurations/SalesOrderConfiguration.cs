@@ -209,6 +209,26 @@ public sealed class SalesOrderConfiguration : IEntityTypeConfiguration<SalesOrde
 
             line.Navigation(l => l.UnitPrice).IsRequired();
 
+            // Optional, unlike the price. Null means Inventory could not cost the part when the
+            // line was raised, and the line reports no margin rather than a wrong one.
+            line.OwnsOne(l => l.UnitCost, cost =>
+            {
+                cost.Property(m => m.Amount)
+                    .HasColumnName("unit_cost")
+                    .HasPrecision(18, 4);
+
+                cost.Property(m => m.Currency)
+                    .HasColumnName("unit_cost_currency")
+                    .HasConversion(
+                        currency => currency.Code,
+                        code => Currency.FromCode(code),
+                        new ValueComparer<Currency>(
+                            (left, right) => left!.Code == right!.Code,
+                            currency => currency.Code.GetHashCode(StringComparison.Ordinal),
+                            currency => Currency.FromCode(currency.Code)))
+                    .HasMaxLength(3);
+            });
+
             // Percentages, not money. Four decimal places because a trade discount of 12.5%
             // is ordinary and 33.333% happens.
             line.Property(l => l.DiscountPercent).HasPrecision(9, 4).IsRequired();

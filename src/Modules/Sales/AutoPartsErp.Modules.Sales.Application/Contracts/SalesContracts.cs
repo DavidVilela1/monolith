@@ -96,6 +96,23 @@ public sealed record SalesOrderDetail
     /// <summary>True when this order was confirmed past the customer's credit limit.</summary>
     public bool CreditLimitOverridden { get; init; }
 
+    /// <summary>What the lines that can be costed make, before VAT.</summary>
+    public decimal Margin { get; init; }
+
+    /// <summary>
+    /// That margin as a percentage of what those lines sell for. Null when nothing on the order
+    /// can be costed.
+    /// </summary>
+    public decimal? MarginPercent { get; init; }
+
+    /// <summary>
+    /// True when something on the order has no cost, so the margin above covers part of it.
+    /// <para>
+    /// A screen showing a margin without this is showing a figure nobody can reproduce.
+    /// </para>
+    /// </summary>
+    public bool HasUncostedLines { get; init; }
+
     /// <summary>Its lines.</summary>
     public required IReadOnlyList<SalesOrderLineDto> Lines { get; init; }
 }
@@ -122,6 +139,12 @@ public sealed record SalesOrderDetail
 /// </param>
 /// <param name="Kind">Goods, or CoreDeposit for the sum held against a returnable old unit.</param>
 /// <param name="CoreForLineId">The goods line a deposit belongs to. Null on a goods line.</param>
+/// <param name="UnitCost">
+/// What the shelf was worth per unit when the line was priced. Null when Inventory could not say,
+/// which is not a cost of zero.
+/// </param>
+/// <param name="Margin">What the line makes before VAT. Null when there is no cost to compare.</param>
+/// <param name="MarginPercent">That margin as a percentage of what the customer pays, before VAT.</param>
 public sealed record SalesOrderLineDto(
     Guid Id,
     Guid PartId,
@@ -140,7 +163,10 @@ public sealed record SalesOrderLineDto(
     decimal VatAmount,
     decimal GrossTotal,
     bool IsFullyDispatched,
-    string? PriceSource);
+    string? PriceSource,
+    decimal? UnitCost,
+    decimal? Margin,
+    decimal? MarginPercent);
 
 /// <summary>One row in a list of customer returns.</summary>
 /// <param name="Id">The return.</param>

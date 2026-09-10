@@ -180,6 +180,41 @@ public sealed class CoreDepositTests
             .Error.Code.Should().Be("sales.line.duplicate_part");
     }
 
+    /// <summary>
+    /// The trap. A deposit is revenue with no cost: counted, it would make every part sold on a
+    /// core look like the best margin in the branch — right up until the old unit comes back and
+    /// the money goes out again. It is outside the margin on both sides of the fraction.
+    /// </summary>
+    [Fact]
+    public void A_deposit_is_outside_the_margin_on_both_sides()
+    {
+        SalesOrder order = Fixture.NewDraft();
+
+        order.AddLine(
+            Fixture.NewPart(),
+            "SM-900",
+            "Starter motor",
+            Quantity.Each(2),
+            Eur(120.00m),
+            discountPercent: 0m,
+            vatRatePercent: 23m,
+            priceSource: null,
+            coreDeposit: Eur(30.00m),
+            unitCost: Eur(80.00m));
+
+        SalesOrderLine deposit = order.Lines.Single(line => line.IsCoreDeposit);
+
+        deposit.HasMargin.Should().BeFalse();
+        deposit.Margin.Should().BeNull();
+
+        // 240.00 sold against 160.00 of cost. The sixty euros of deposit is in neither figure.
+        order.CostedNetTotal.Amount.Should().Be(240.00m);
+        order.CostOfSale.Amount.Should().Be(160.00m);
+        order.Margin.Amount.Should().Be(80.00m);
+        order.MarginPercent.Should().Be(33.33m);
+        order.HasUncostedLines.Should().BeFalse();
+    }
+
     /// <summary>A starter motor at 120.00 with a 30.00 deposit, two of them.</summary>
     private static (SalesOrder Order, SalesOrderLineId GoodsId) WithCore()
     {

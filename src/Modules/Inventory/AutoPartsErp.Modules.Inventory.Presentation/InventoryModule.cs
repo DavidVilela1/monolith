@@ -94,6 +94,10 @@ public sealed class InventoryModule : IModule
         // reference the contract and the container introduces them.
         services.AddScoped<IInventoryAvailability, InventoryAvailability>();
 
+        // What stock cost, for anybody deciding whether a price is worth taking. Its own
+        // interface rather than a field on availability: two questions with two audiences.
+        services.AddScoped<IInventoryCosting, InventoryCosting>();
+
         services.AddModuleHandlers(
             typeof(Application.Stock.Commands.ReceiveStockCommand).Assembly);
 

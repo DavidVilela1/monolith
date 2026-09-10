@@ -110,6 +110,24 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
     public decimal VatRatePercent { get; private set; }
 
     /// <summary>
+    /// What one unit was worth on the shelf when this line was priced.
+    /// <para>
+    /// A snapshot, like the price and the SKU beside it, and it is not the cost of the sale. What
+    /// a dispatch actually takes off the balance is stamped on the ledger row at the moment it
+    /// happens, and the two differ whenever the shelf moves in between. This is the figure the
+    /// decision was made against — "was that price worth taking?" — and it stays what it was so
+    /// the answer to that question keeps reading the same way next month.
+    /// </para>
+    /// <para>
+    /// Null when Inventory could not say: no stock record in that warehouse, an empty shelf, or a
+    /// part that has never been through a priced receipt. Null is not zero. A line whose cost is
+    /// unknown has no margin, and reporting one of a hundred per cent would be worse than
+    /// reporting none.
+    /// </para>
+    /// </summary>
+    public Money? UnitCost { get; private set; }
+
+    /// <summary>
     /// Where the price came from: the code of the price list that quoted it, or null when
     /// somebody typed it.
     /// <para>
@@ -199,6 +217,40 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
 
     /// <summary>What the line adds to the invoice.</summary>
     public Money GrossTotal => NetTotal + VatAmount;
+
+    /// <summary>
+    /// True when this line can be shown a margin at all.
+    /// <para>
+    /// A deposit is excluded as well as an uncosted line. A core deposit is money held against an
+    /// old unit, not goods sold: it has revenue and no cost, and counting it would make every
+    /// starter motor look like the most profitable thing in the branch.
+    /// </para>
+    /// </summary>
+    public bool HasMargin => UnitCost is not null && !IsCoreDeposit;
+
+    /// <summary>What the goods on this line cost, at the figure the price was decided against.</summary>
+    public Money? CostOfSale => HasMargin ? UnitCost!.Multiply(Quantity.Value) : null;
+
+    /// <summary>What the line makes, before VAT. Null when there is no cost to compare against.</summary>
+    public Money? Margin => CostOfSale is { } cost ? NetTotal - cost : null;
+
+    /// <summary>
+    /// The margin as a percentage of what the customer pays, before VAT.
+    /// <para>
+    /// Of revenue, not of cost. A part bought at 10 and sold at 15 is a third of the selling price
+    /// and half the buying price, and both are called "fifty per cent" by somebody — so which one
+    /// this is has to be stated rather than assumed. Revenue is the one a distributor's accounts
+    /// are built on.
+    /// </para>
+    /// <para>
+    /// Null when there is no cost, and also when the line is free: a giveaway has no margin
+    /// percentage, and dividing by nothing to produce one would be inventing a number.
+    /// </para>
+    /// </summary>
+    public decimal? MarginPercent =>
+        Margin is { } margin && NetTotal.Amount != 0m
+            ? decimal.Round(margin.Amount / NetTotal.Amount * 100m, 2, MidpointRounding.ToEven)
+            : null;
 
     /// <summary>Creates a line. Called by <see cref="SalesOrder.AddLine"/>, not directly.</summary>
     /// <param name="partId">The part being sold.</param>
@@ -340,6 +392,20 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
     internal void MatchQuantityTo(Quantity quantity)
     {
         Quantity = quantity;
+    }
+
+    /// <summary>
+    /// Records what the shelf was worth when this line was priced.
+    /// <para>
+    /// Set once, at creation, and never again — not when the price is overridden and not when the
+    /// quantity changes. It is what the margin decision was made against, and a figure that
+    /// quietly followed the shelf would make last month's decisions read as though somebody had
+    /// made them on today's numbers.
+    /// </para>
+    /// </summary>
+    internal void RecordUnitCost(Money? unitCost)
+    {
+        UnitCost = unitCost;
     }
 
     /// <summary>

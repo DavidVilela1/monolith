@@ -84,6 +84,13 @@ public static class SalesErrors
         public static Error NotFound(string identifier) =>
             Error.NotFound("sales.line.not_found", $"Line '{identifier}' is not on this order.");
 
+        /// <summary>A cost in another currency cannot be compared with the price.</summary>
+        public static readonly Error CostCurrencyMismatch =
+            Error.Validation(
+                "sales.line.cost_currency_mismatch",
+                "That cost is not in the order's currency. A margin computed across two " +
+                "currencies is worse than no margin at all.");
+
         /// <summary>A deposit is not a figure to negotiate.</summary>
         public static readonly Error CoreDepositNotPositive =
             Error.Validation(

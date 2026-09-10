@@ -399,6 +399,9 @@ public sealed class SalesReadStore : ISalesReadStore
         IsEditable = order.IsEditable,
         CanDispatch = order.CanDispatch,
         CreditLimitOverridden = order.CreditLimitOverridden,
+        Margin = order.Margin.Amount,
+        MarginPercent = order.MarginPercent,
+        HasUncostedLines = order.HasUncostedLines,
         Lines = [.. order.Lines.Select(line => new SalesOrderLineDto(
             line.Id.Value,
             line.PartId.Value,
@@ -417,6 +420,9 @@ public sealed class SalesReadStore : ISalesReadStore
             line.VatAmount.Amount,
             line.GrossTotal.Amount,
             line.IsFullyDispatched,
-            line.PriceSource))],
+            line.PriceSource,
+            line.UnitCost?.Amount,
+            line.Margin?.Amount,
+            line.MarginPercent))],
     };
 }

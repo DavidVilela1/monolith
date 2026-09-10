@@ -227,6 +227,43 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
     /// <summary>What the customer will be invoiced.</summary>
     public Money GrossTotal => Sum(line => line.GrossTotal);
 
+    /// <summary>
+    /// True while something on the order cannot be costed, and the margin below is therefore
+    /// about part of it.
+    /// <para>
+    /// Exposed rather than hidden, because a margin figure that quietly covers four lines of six
+    /// is the kind of number somebody makes a decision on and then cannot reproduce. A screen
+    /// showing "31% over 4 of 6 lines" is honest; one showing "31%" is not.
+    /// </para>
+    /// </summary>
+    public bool HasUncostedLines => _lines.Exists(line => !line.IsCoreDeposit && line.UnitCost is null);
+
+    /// <summary>What the costed lines sell for, before VAT.</summary>
+    public Money CostedNetTotal => Sum(line => line.HasMargin ? line.NetTotal : Money.Zero(Currency));
+
+    /// <summary>What the costed lines cost.</summary>
+    public Money CostOfSale =>
+        Sum(line => line.CostOfSale ?? Money.Zero(Currency));
+
+    /// <summary>
+    /// What the order makes on the lines that can be costed, before VAT.
+    /// <para>
+    /// Core deposits are outside this on both sides. A deposit is revenue with no cost, and
+    /// counting it would make every part sold on a core look like the best margin in the branch —
+    /// right up until the old unit comes back and the money goes out again.
+    /// </para>
+    /// </summary>
+    public Money Margin => CostedNetTotal - CostOfSale;
+
+    /// <summary>
+    /// The margin as a percentage of what the costed lines sell for. Null when nothing on the
+    /// order can be costed, or when the costed lines are free.
+    /// </summary>
+    public decimal? MarginPercent =>
+        CostedNetTotal.Amount == 0m
+            ? null
+            : decimal.Round(Margin.Amount / CostedNetTotal.Amount * 100m, 2, MidpointRounding.ToEven);
+
     /// <summary>Starts an order. Nothing is promised to anyone until it is confirmed.</summary>
     /// <param name="orderNumber">The number to print on the document.</param>
     /// <param name="kind">Counter sale or delivered order.</param>
@@ -291,6 +328,11 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
     /// The deposit to charge against the old unit, for a part sold on a returnable core. A second
     /// line is added beside the goods one, and the two travel together from then on.
     /// </param>
+    /// <param name="unitCost">
+    /// What the shelf was worth per unit when this line was priced, when Inventory could say. It
+    /// is snapshotted for the margin and never revisited. The deposit line gets none: a deposit
+    /// is money held, not goods sold.
+    /// </param>
     public Result<SalesOrderLineId> AddLine(
         PartRef partId,
         string? sku,
@@ -300,7 +342,8 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
         decimal discountPercent = 0m,
         decimal vatRatePercent = 0m,
         string? priceSource = null,
-        Money? coreDeposit = null)
+        Money? coreDeposit = null,
+        Money? unitCost = null)
     {
         ArgumentNullException.ThrowIfNull(quantity);
         ArgumentNullException.ThrowIfNull(unitPrice);
@@ -331,6 +374,15 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
         {
             return Result.Failure<SalesOrderLineId>(line.Error);
         }
+
+        // Refused rather than ignored. A cost in the wrong currency is a figure somebody would
+        // read as a margin, and a margin computed across two currencies is worse than none.
+        if (unitCost is not null && unitCost.Currency != Currency)
+        {
+            return SalesErrors.Line.CostCurrencyMismatch;
+        }
+
+        line.Value.RecordUnitCost(unitCost);
 
         if (coreDeposit is not null)
         {

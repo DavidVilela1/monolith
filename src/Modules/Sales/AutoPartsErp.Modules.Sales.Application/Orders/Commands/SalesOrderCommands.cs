@@ -230,6 +230,7 @@ public sealed class AddSalesOrderLineCommandHandler : ICommandHandler<AddSalesOr
     private readonly ISalesOrderRepository _orders;
     private readonly ICatalogDirectory _catalogue;
     private readonly IPriceProvider _prices;
+    private readonly IInventoryCosting _costing;
     private readonly ISalesUnitOfWork _unitOfWork;
 
     /// <summary>Initializes the handler.</summary>
@@ -237,11 +238,13 @@ public sealed class AddSalesOrderLineCommandHandler : ICommandHandler<AddSalesOr
         ISalesOrderRepository orders,
         ICatalogDirectory catalogue,
         IPriceProvider prices,
+        IInventoryCosting costing,
         ISalesUnitOfWork unitOfWork)
     {
         _orders = orders;
         _catalogue = catalogue;
         _prices = prices;
+        _costing = costing;
         _unitOfWork = unitOfWork;
     }
 
@@ -365,6 +368,23 @@ public sealed class AddSalesOrderLineCommandHandler : ICommandHandler<AddSalesOr
             coreDeposit = Money.Of(charge.Amount, order.Currency);
         }
 
+        // What the shelf is worth, for the margin. Asked after the price is settled, because a
+        // line that was going to be refused for some other reason should not have cost a round
+        // trip into another module first.
+        //
+        // A cost this module cannot get is not an error. Inventory may have no record of the part
+        // in that warehouse, or the shelf may be empty, and neither is a reason to refuse a sale —
+        // it is a reason for the line to have no margin, which it will say for itself.
+        StockUnitCost? cost = await _costing
+            .GetUnitCostAsync(part.PartId, order.FromWarehouseId.Value, cancellationToken)
+            .ConfigureAwait(false);
+
+        Money? unitCost =
+            cost is not null
+            && string.Equals(cost.CurrencyCode, order.CurrencyCode, StringComparison.OrdinalIgnoreCase)
+                ? Money.Of(cost.UnitCost, order.Currency)
+                : null;
+
         Result<SalesOrderLineId> line = order.AddLine(
             new PartRef(part.PartId),
             part.Sku,
@@ -374,7 +394,8 @@ public sealed class AddSalesOrderLineCommandHandler : ICommandHandler<AddSalesOr
             discountPercent,
             request.VatRatePercent,
             priceSource,
-            coreDeposit);
+            coreDeposit,
+            unitCost);
 
         if (line.IsFailure)
         {
