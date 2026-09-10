@@ -128,6 +128,24 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
     public Money? UnitCost { get; private set; }
 
     /// <summary>
+    /// True when this line sits below the margin floor and somebody with the authority to say so
+    /// let it through anyway.
+    /// <para>
+    /// A record of a decision, not a permission to skip the check. It is set at the moment the
+    /// line is priced under the floor and cleared again the moment a re-price brings it back
+    /// above — a flag that stayed set would let the next edit through unexamined, which is the
+    /// opposite of what an override is for.
+    /// </para>
+    /// <para>
+    /// Worth storing rather than inferring. The floor moves: the list gets a new one, the
+    /// customer is put on a different agreement, the company changes its default. Re-deriving
+    /// this next month would answer "was this authorised?" with today's rules, and the honest
+    /// answer is about the rules that were in force when somebody clicked.
+    /// </para>
+    /// </summary>
+    public bool MarginFloorOverridden { get; private set; }
+
+    /// <summary>
     /// Where the price came from: the code of the price list that quoted it, or null when
     /// somebody typed it.
     /// <para>
@@ -248,9 +266,7 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
     /// </para>
     /// </summary>
     public decimal? MarginPercent =>
-        Margin is { } margin && NetTotal.Amount != 0m
-            ? decimal.Round(margin.Amount / NetTotal.Amount * 100m, 2, MidpointRounding.ToEven)
-            : null;
+        CostOfSale is { } cost ? PercentOf(NetTotal, cost) : null;
 
     /// <summary>Creates a line. Called by <see cref="SalesOrder.AddLine"/>, not directly.</summary>
     /// <param name="partId">The part being sold.</param>
@@ -409,6 +425,97 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
     }
 
     /// <summary>
+    /// Tests the line against the least it is allowed to make, and records the answer.
+    /// <para>
+    /// The comparison is done in money, not in percentages. <see cref="MarginPercent"/> is rounded
+    /// to two places for people to read, and a line making 29.996 per cent against a floor of 30
+    /// would round its way past the check — which is exactly the kind of hole somebody eventually
+    /// finds and starts using deliberately. Multiplying out instead is exact.
+    /// </para>
+    /// <para>
+    /// A line with no cost is let through. Inventory not being able to price the shelf is not the
+    /// salesperson's fault, and a floor that refused every part the warehouse has never received
+    /// would stop a counter dead on its first day. The line says <see cref="HasMargin"/> is false
+    /// and the order says it has uncosted lines; that is the honest reporting of it, and it is
+    /// better than a refusal nobody can act on.
+    /// </para>
+    /// </summary>
+    /// <param name="minimumMarginPercent">The floor, or null when nothing sets one.</param>
+    /// <param name="overridden">
+    /// Whether somebody with the authority to sell under the floor has said to.
+    /// </param>
+    internal Result ApplyMarginFloor(decimal? minimumMarginPercent, bool overridden)
+    {
+        if (minimumMarginPercent is not { } floor || CostOfSale is not { } cost)
+        {
+            MarginFloorOverridden = false;
+
+            return Result.Success();
+        }
+
+        Result tested = TestFloor(Sku, NetTotal, cost, floor, overridden, out bool wasOverridden);
+
+        if (tested.IsFailure)
+        {
+            return tested;
+        }
+
+        MarginFloorOverridden = wasOverridden;
+
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// The margin as a percentage of revenue, rounded for people to read.
+    /// <para>
+    /// Null when the line is free: a giveaway has no margin percentage, and dividing by nothing to
+    /// produce one would be inventing a number.
+    /// </para>
+    /// </summary>
+    private static decimal? PercentOf(Money netTotal, Money costOfSale) =>
+        netTotal.Amount == 0m
+            ? null
+            : decimal.Round(
+                (netTotal - costOfSale).Amount / netTotal.Amount * 100m, 2, MidpointRounding.ToEven);
+
+    /// <summary>
+    /// Whether a net figure clears the floor against a cost, and whether an override carried it.
+    /// <para>
+    /// The comparison is in money, not in percentages. <see cref="MarginPercent"/> is rounded to
+    /// two places for people to read, and a line making 29.996 per cent against a floor of 30
+    /// would round its way past the check — exactly the kind of hole somebody eventually finds and
+    /// starts using deliberately. Multiplying out instead is exact.
+    /// </para>
+    /// </summary>
+    private static Result TestFloor(
+        string sku,
+        Money netTotal,
+        Money costOfSale,
+        decimal floorPercent,
+        bool overridden,
+        out bool wasOverridden)
+    {
+        wasOverridden = false;
+
+        // margin >= floor% of revenue, multiplied out. NetTotal is never negative: a price cannot
+        // be, and the discount is capped at a hundred per cent.
+        if ((netTotal - costOfSale).Amount * 100m >= floorPercent * netTotal.Amount)
+        {
+            return Result.Success();
+        }
+
+        if (!overridden)
+        {
+            return SalesErrors.Line.BelowMarginFloor(
+                sku, PercentOf(netTotal, costOfSale), floorPercent);
+        }
+
+        wasOverridden = true;
+
+        return Result.Success();
+    }
+
+    /// <summary>
     /// Changes the price or the discount, and forgets where the old price came from.
     /// <para>
     /// Clearing <see cref="PriceSource"/> is the whole point of the method having a comment. This
@@ -418,7 +525,11 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
     /// nobody thinks to check.
     /// </para>
     /// </summary>
-    internal Result ChangePricing(Money unitPrice, decimal discountPercent)
+    internal Result ChangePricing(
+        Money unitPrice,
+        decimal discountPercent,
+        decimal? minimumMarginPercent = null,
+        bool overrideMarginFloor = false)
     {
         ArgumentNullException.ThrowIfNull(unitPrice);
 
@@ -437,11 +548,49 @@ public sealed class SalesOrderLine : Entity<SalesOrderLineId>, IAuditable, ITena
             return SalesErrors.Line.DiscountOutOfRange;
         }
 
+        // The floor is tested against what the line is about to become, not against what it is,
+        // and it is tested before a single field moves. Assigning first and refusing afterwards
+        // would leave a line carrying a price the domain has just said no to, relying on nobody
+        // calling SaveChanges — which is a rule enforced by a habit rather than by the code.
+        bool wasOverridden = MarginFloorOverridden;
+
+        if (minimumMarginPercent is { } floor && HasMargin)
+        {
+            Money net = Net(unitPrice, Quantity, discountPercent);
+            Money cost = UnitCost!.Multiply(Quantity.Value);
+
+            Result tested = TestFloor(Sku, net, cost, floor, overrideMarginFloor, out wasOverridden);
+
+            if (tested.IsFailure)
+            {
+                return tested;
+            }
+        }
+        else
+        {
+            wasOverridden = false;
+        }
+
         UnitPrice = unitPrice;
         DiscountPercent = discountPercent;
         PriceSource = null;
+        MarginFloorOverridden = wasOverridden;
 
         return Result.Success();
+    }
+
+    /// <summary>
+    /// What a customer would pay for a line priced this way, before VAT.
+    /// <para>
+    /// The same arithmetic <see cref="NetTotal"/> does, spelled out so the floor can be tested
+    /// against a price the line has not taken yet.
+    /// </para>
+    /// </summary>
+    private static Money Net(Money unitPrice, Quantity quantity, decimal discountPercent)
+    {
+        Money extended = unitPrice * quantity.Value;
+
+        return extended - extended.Percentage(discountPercent);
     }
 
     /// <summary>

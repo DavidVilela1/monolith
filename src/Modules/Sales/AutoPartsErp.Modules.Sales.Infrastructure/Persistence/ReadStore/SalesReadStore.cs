@@ -423,6 +423,7 @@ public sealed class SalesReadStore : ISalesReadStore
             line.PriceSource,
             line.UnitCost?.Amount,
             line.Margin?.Amount,
-            line.MarginPercent))],
+            line.MarginPercent,
+            line.MarginFloorOverridden))],
     };
 }

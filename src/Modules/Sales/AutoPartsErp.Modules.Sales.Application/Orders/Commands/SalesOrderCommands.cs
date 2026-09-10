@@ -161,6 +161,10 @@ public sealed class CreateSalesOrderCommandHandler : ICommandHandler<CreateSales
 /// agreed discount is used; supply it and it replaces theirs, quoted price or not.
 /// </param>
 /// <param name="VatRatePercent">The VAT rate, 0 to 100. Portugal's normal rate is 23.</param>
+/// <param name="OverrideMarginFloor">
+/// Whether to add the line even though it makes less than the customer's list allows. Set by the
+/// endpoint the caller reached, not by the caller — see the two routes.
+/// </param>
 /// <remarks>
 /// This command has now given up the SKU, the description, the unit and the price. All a caller
 /// says is which part and how many; the catalogue names it, Pricing prices it, and the line
@@ -177,7 +181,8 @@ public sealed record AddSalesOrderLineCommand(
     decimal Quantity,
     decimal? UnitPrice = null,
     decimal? DiscountPercent = null,
-    decimal VatRatePercent = 23m) : ICommand<Guid>;
+    decimal VatRatePercent = 23m,
+    bool OverrideMarginFloor = false) : ICommand<Guid>;
 
 /// <summary>Checks the shape of an <see cref="AddSalesOrderLineCommand"/>.</summary>
 public sealed class AddSalesOrderLineCommandValidator : IValidator<AddSalesOrderLineCommand>
@@ -385,6 +390,16 @@ public sealed class AddSalesOrderLineCommandHandler : ICommandHandler<AddSalesOr
                 ? Money.Of(cost.UnitCost, order.Currency)
                 : null;
 
+        // And the least the line is allowed to make. Asked only when there is a cost to measure
+        // against: a line Inventory cannot price is one the floor has nothing to say about, and
+        // asking anyway would put a round trip into Pricing on the ordinary counter path for an
+        // answer that gets thrown away.
+        decimal? floor = unitCost is null
+            ? null
+            : await _prices
+                .GetMinimumMarginPercentAsync(order.CustomerId.Value, cancellationToken)
+                .ConfigureAwait(false);
+
         Result<SalesOrderLineId> line = order.AddLine(
             new PartRef(part.PartId),
             part.Sku,
@@ -395,7 +410,9 @@ public sealed class AddSalesOrderLineCommandHandler : ICommandHandler<AddSalesOr
             request.VatRatePercent,
             priceSource,
             coreDeposit,
-            unitCost);
+            unitCost,
+            floor,
+            request.OverrideMarginFloor);
 
         if (line.IsFailure)
         {
@@ -481,25 +498,33 @@ public sealed class ChangeSalesOrderLineQuantityCommandHandler
 /// <param name="LineId">The line to change.</param>
 /// <param name="UnitPrice">The new list price per unit.</param>
 /// <param name="DiscountPercent">The new discount, 0 to 100.</param>
+/// <param name="OverrideMarginFloor">
+/// Whether to take the price even though it makes less than the customer's list allows. Set by the
+/// endpoint the caller reached, not by the caller.
+/// </param>
 public sealed record ChangeSalesOrderLinePricingCommand(
     Guid SalesOrderId,
     Guid LineId,
     decimal UnitPrice,
-    decimal DiscountPercent) : ICommand;
+    decimal DiscountPercent,
+    bool OverrideMarginFloor = false) : ICommand;
 
 /// <summary>Changes the line pricing.</summary>
 public sealed class ChangeSalesOrderLinePricingCommandHandler
     : ICommandHandler<ChangeSalesOrderLinePricingCommand>
 {
     private readonly ISalesOrderRepository _orders;
+    private readonly IPriceProvider _prices;
     private readonly ISalesUnitOfWork _unitOfWork;
 
     /// <summary>Initializes the handler.</summary>
     public ChangeSalesOrderLinePricingCommandHandler(
         ISalesOrderRepository orders,
+        IPriceProvider prices,
         ISalesUnitOfWork unitOfWork)
     {
         _orders = orders;
+        _prices = prices;
         _unitOfWork = unitOfWork;
     }
 
@@ -519,10 +544,19 @@ public sealed class ChangeSalesOrderLinePricingCommandHandler
             return SalesErrors.Order.NotFound(request.SalesOrderId.ToString());
         }
 
+        // Asked unconditionally here, unlike on the add path. This is the override route's whole
+        // purpose — somebody is deliberately moving a price — so one round trip is the cheapest
+        // part of what is happening, and the line already knows whether it has a cost to test.
+        decimal? floor = await _prices
+            .GetMinimumMarginPercentAsync(order.CustomerId.Value, cancellationToken)
+            .ConfigureAwait(false);
+
         Result changed = order.ChangeLinePricing(
             new SalesOrderLineId(request.LineId),
             Money.Of(request.UnitPrice, order.Currency),
-            request.DiscountPercent);
+            request.DiscountPercent,
+            floor,
+            request.OverrideMarginFloor);
 
         if (changed.IsFailure)
         {

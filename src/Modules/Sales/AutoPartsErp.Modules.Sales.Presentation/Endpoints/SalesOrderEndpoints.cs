@@ -67,6 +67,20 @@ public sealed class SalesOrderEndpoints : IEndpointGroup
             .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
+        // The same second-route shape as confirm-over-limit below, for the same reason: the
+        // permission has to be declarable on the route, and a flag in the body is not.
+        group.MapPost("/orders/{salesOrderId:guid}/lines/below-floor", AddLineBelowFloorAsync)
+            .WithName("AddSalesOrderLineBelowMarginFloor")
+            .RequirePermission(Permissions.Sales.Manage)
+            .RequirePermission(Permissions.Sales.OverrideMarginFloor)
+            .WithSummary(
+                "Add a part to a draft order even though it makes less than the customer's price "
+                + "list allows. The line records that it was let through.")
+            .Produces<Guid>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
         group.MapPut("/orders/{salesOrderId:guid}/lines/{lineId:guid}/quantity", ChangeQuantityAsync)
             .WithName("ChangeSalesOrderLineQuantity")
             .RequirePermission(Permissions.Sales.Manage)
@@ -78,6 +92,17 @@ public sealed class SalesOrderEndpoints : IEndpointGroup
             .WithName("ChangeSalesOrderLinePricing")
             .RequirePermission(Permissions.Sales.Manage)
             .WithSummary("Change the price or discount on a line. Draft only.")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
+        group.MapPut("/orders/{salesOrderId:guid}/lines/{lineId:guid}/pricing-below-floor",
+                ChangePricingBelowFloorAsync)
+            .WithName("ChangeSalesOrderLinePricingBelowMarginFloor")
+            .RequirePermission(Permissions.Sales.Manage)
+            .RequirePermission(Permissions.Sales.OverrideMarginFloor)
+            .WithSummary(
+                "Price a line under the least the customer's price list allows. The line records "
+                + "that it was let through, and forgets again if it is re-priced back above.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
@@ -180,10 +205,27 @@ public sealed class SalesOrderEndpoints : IEndpointGroup
         return result.ToCreated(id => $"/api/sales/orders/{id}");
     }
 
-    private static async Task<IResult> AddLineAsync(
+    private static Task<IResult> AddLineAsync(
         IDispatcher dispatcher,
         Guid salesOrderId,
         AddSalesLineRequest body,
+        CancellationToken cancellationToken) =>
+        AddLineCoreAsync(dispatcher, salesOrderId, body, overrideMarginFloor: false, cancellationToken);
+
+    private static Task<IResult> AddLineBelowFloorAsync(
+        IDispatcher dispatcher,
+        Guid salesOrderId,
+        AddSalesLineRequest body,
+        CancellationToken cancellationToken) =>
+        AddLineCoreAsync(dispatcher, salesOrderId, body, overrideMarginFloor: true, cancellationToken);
+
+    // Named apart from the two route handlers above rather than overloading them. A minimal-API
+    // route takes a method group, and a group with more than one candidate has nothing to bind to.
+    private static async Task<IResult> AddLineCoreAsync(
+        IDispatcher dispatcher,
+        Guid salesOrderId,
+        AddSalesLineRequest body,
+        bool overrideMarginFloor,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(body);
@@ -191,7 +233,7 @@ public sealed class SalesOrderEndpoints : IEndpointGroup
         Result<Guid> result = await dispatcher.SendAsync(
             new AddSalesOrderLineCommand(
                 salesOrderId, body.PartId, body.Quantity, body.UnitPrice,
-                body.DiscountPercent, body.VatRatePercent),
+                body.DiscountPercent, body.VatRatePercent, overrideMarginFloor),
             cancellationToken);
 
         return result.ToCreated(lineId => $"/api/sales/orders/{salesOrderId}/lines/{lineId}");
@@ -213,18 +255,37 @@ public sealed class SalesOrderEndpoints : IEndpointGroup
         return result.ToNoContent();
     }
 
-    private static async Task<IResult> ChangePricingAsync(
+    private static Task<IResult> ChangePricingAsync(
         IDispatcher dispatcher,
         Guid salesOrderId,
         Guid lineId,
         PricingRequest body,
+        CancellationToken cancellationToken) =>
+        ChangePricingCoreAsync(
+            dispatcher, salesOrderId, lineId, body, overrideMarginFloor: false, cancellationToken);
+
+    private static Task<IResult> ChangePricingBelowFloorAsync(
+        IDispatcher dispatcher,
+        Guid salesOrderId,
+        Guid lineId,
+        PricingRequest body,
+        CancellationToken cancellationToken) =>
+        ChangePricingCoreAsync(
+            dispatcher, salesOrderId, lineId, body, overrideMarginFloor: true, cancellationToken);
+
+    private static async Task<IResult> ChangePricingCoreAsync(
+        IDispatcher dispatcher,
+        Guid salesOrderId,
+        Guid lineId,
+        PricingRequest body,
+        bool overrideMarginFloor,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(body);
 
         Result result = await dispatcher.SendAsync(
             new ChangeSalesOrderLinePricingCommand(
-                salesOrderId, lineId, body.UnitPrice, body.DiscountPercent),
+                salesOrderId, lineId, body.UnitPrice, body.DiscountPercent, overrideMarginFloor),
             cancellationToken);
 
         return result.ToNoContent();

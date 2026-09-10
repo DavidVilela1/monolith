@@ -145,6 +145,10 @@ public sealed record SalesOrderDetail
 /// </param>
 /// <param name="Margin">What the line makes before VAT. Null when there is no cost to compare.</param>
 /// <param name="MarginPercent">That margin as a percentage of what the customer pays, before VAT.</param>
+/// <param name="MarginFloorOverridden">
+/// True when the line makes less than the customer's price list allows and somebody with the
+/// authority to say so let it through.
+/// </param>
 public sealed record SalesOrderLineDto(
     Guid Id,
     Guid PartId,
@@ -166,7 +170,8 @@ public sealed record SalesOrderLineDto(
     string? PriceSource,
     decimal? UnitCost,
     decimal? Margin,
-    decimal? MarginPercent);
+    decimal? MarginPercent,
+    bool MarginFloorOverridden);
 
 /// <summary>One row in a list of customer returns.</summary>
 /// <param name="Id">The return.</param>

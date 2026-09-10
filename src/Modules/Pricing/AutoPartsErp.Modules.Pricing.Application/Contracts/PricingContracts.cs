@@ -10,6 +10,9 @@ namespace AutoPartsErp.Modules.Pricing.Application.Contracts;
 /// <param name="EffectiveFrom">The first day it applies, or null for always.</param>
 /// <param name="EffectiveTo">The last day it applies, or null for never expiring.</param>
 /// <param name="IsDefault">True for the list customers with no agreement fall back to.</param>
+/// <param name="MinimumMarginPercent">
+/// The least a line priced from it may make, or null when the company figure applies.
+/// </param>
 /// <param name="PricedParts">How many parts it prices.</param>
 public sealed record PriceListSummary(
     Guid Id,
@@ -21,6 +24,7 @@ public sealed record PriceListSummary(
     DateOnly? EffectiveFrom,
     DateOnly? EffectiveTo,
     bool IsDefault,
+    decimal? MinimumMarginPercent,
     int PricedParts);
 
 /// <summary>What one part costs in one list.</summary>

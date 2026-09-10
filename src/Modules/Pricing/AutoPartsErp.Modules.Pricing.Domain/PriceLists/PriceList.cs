@@ -94,6 +94,22 @@ public sealed class PriceList : AggregateRoot<PriceListId>, IAuditable, ISoftDel
     /// </summary>
     public bool IsDefault { get; private set; }
 
+    /// <summary>
+    /// The least a line priced from this list may make, as a percentage of what the customer pays.
+    /// <para>
+    /// Null means the company-wide figure applies. That is the ordinary case: most lists have no
+    /// opinion of their own, and a per-list number is for the ones that do — a promotion sold
+    /// deliberately thin, or a contract list for a fleet where two per cent on volume is the
+    /// whole point.
+    /// </para>
+    /// <para>
+    /// Of revenue, like every other margin figure in this system. Somebody typing "30" here means
+    /// thirty per cent of the selling price, which is what their accounts are built on and not
+    /// what a mark-up over cost would be.
+    /// </para>
+    /// </summary>
+    public decimal? MinimumMarginPercent { get; private set; }
+
     /// <inheritdoc />
     public Guid TenantId { get; set; }
 
@@ -243,6 +259,31 @@ public sealed class PriceList : AggregateRoot<PriceListId>, IAuditable, ISoftDel
         Name = name.Trim();
         EffectiveFrom = effectiveFrom;
         EffectiveTo = effectiveTo;
+
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Sets the least a line priced from this list may make, or clears it back to the company
+    /// figure.
+    /// <para>
+    /// Allowed on an archived list as well as a live one, unlike a rename. A list nobody prices
+    /// from any more still explains documents that were raised while it was live, and the floor
+    /// it carried is part of that explanation.
+    /// </para>
+    /// </summary>
+    /// <param name="minimumMarginPercent">
+    /// The floor, 0 to 100, or null to fall back to the company figure. Zero is a real answer and
+    /// not the same as null: it says this list may sell at cost and is not an accident.
+    /// </param>
+    public Result SetMinimumMargin(decimal? minimumMarginPercent)
+    {
+        if (minimumMarginPercent is { } floor and (< 0m or >= 100m))
+        {
+            return PricingErrors.List.MarginFloorOutOfRange;
+        }
+
+        MinimumMarginPercent = minimumMarginPercent;
 
         return Result.Success();
     }

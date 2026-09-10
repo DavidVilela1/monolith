@@ -212,6 +212,143 @@ public sealed class AddSalesOrderLineTests
         order.HasUncostedLines.Should().BeTrue();
     }
 
+    /// <summary>
+    /// The floor refuses. 24.50 against a cost of 22.00 makes 10.20 per cent, and a list that says
+    /// twenty is a list that says no.
+    /// </summary>
+    [Fact]
+    public async Task A_line_below_the_floor_is_refused_and_says_both_figures()
+    {
+        SalesOrder order = NewOrder();
+        var handler = NewHandler(
+            order, Describe(sellable: true), Quote(24.50m, 0m), unitCost: 22.00m, marginFloor: 20m);
+
+        Result<Guid> result = await handler.HandleAsync(
+            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m));
+
+        result.Error.Code.Should().Be("sales.line.below_margin_floor");
+        result.Error.Description.Should().Contain("10.2").And.Contain("20");
+        order.Lines.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// The same line through the other route. The order keeps it, and keeps the fact that somebody
+    /// had to authorise it — three weeks later "who let this through?" is a question with an
+    /// answer.
+    /// </summary>
+    [Fact]
+    public async Task The_override_route_takes_the_line_and_the_line_remembers()
+    {
+        SalesOrder order = NewOrder();
+        var handler = NewHandler(
+            order, Describe(sellable: true), Quote(24.50m, 0m), unitCost: 22.00m, marginFloor: 20m);
+
+        Result<Guid> result = await handler.HandleAsync(
+            new AddSalesOrderLineCommand(
+                order.Id.Value, PartId, Quantity: 4m, OverrideMarginFloor: true));
+
+        result.IsSuccess.Should().BeTrue();
+
+        SalesOrderLine line = order.Lines.Single();
+
+        line.MarginFloorOverridden.Should().BeTrue();
+        line.MarginPercent.Should().Be(10.20m);
+    }
+
+    /// <summary>
+    /// A line exactly on the floor is not below it. Getting this wrong turns every list with a
+    /// round number on it into a list one cent stricter than whoever typed it meant.
+    /// </summary>
+    [Fact]
+    public async Task A_line_exactly_on_the_floor_is_allowed()
+    {
+        SalesOrder order = NewOrder();
+
+        // 20.00 sold against 16.00 of cost is 20.00% on the nose.
+        var handler = NewHandler(
+            order, Describe(sellable: true), Quote(20.00m, 0m), unitCost: 16.00m, marginFloor: 20m);
+
+        Result<Guid> result = await handler.HandleAsync(
+            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m));
+
+        result.IsSuccess.Should().BeTrue();
+        order.Lines.Single().MarginFloorOverridden.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The floor is compared in money, not in the rounded percentage people read. A line at
+    /// 29.996 per cent displays as 30.00 and is still below a floor of 30 — and a check that
+    /// compared the displayed figure would be a hole somebody eventually finds and starts using.
+    /// </summary>
+    [Fact]
+    public async Task A_line_that_rounds_up_to_the_floor_is_still_below_it()
+    {
+        SalesOrder order = NewOrder();
+
+        // 200.10 against 140.08 makes 60.02, which is 29.995002% — it displays as 30.00, and
+        // thirty per cent of 200.10 is 60.03, which is a cent more than the line makes.
+        var handler = NewHandler(
+            order, Describe(sellable: true), Quote(200.10m, 0m), unitCost: 140.08m, marginFloor: 30m);
+
+        Result<Guid> result = await handler.HandleAsync(
+            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 1m));
+
+        result.Error.Code.Should().Be("sales.line.below_margin_floor");
+
+        // The figure a person would have been shown, had it been let through.
+        order.AddLine(
+            new PartRef(PartId), "BP-1188", "Brake pad set, front axle",
+            Quantity.Create(1m, UnitOfMeasure.Set).Value, Money.Of(200.10m, Currency.Eur),
+            unitCost: Money.Of(140.08m, Currency.Eur)).IsSuccess.Should().BeTrue();
+
+        order.Lines.Single().MarginPercent.Should().Be(30.00m);
+    }
+
+    /// <summary>
+    /// A part Inventory cannot cost is a part the floor has nothing to say about. Refusing every
+    /// one of them would stop a counter dead the first time a warehouse had never received a line.
+    /// The round trip is not even made.
+    /// </summary>
+    [Fact]
+    public async Task An_uncosted_line_is_not_measured_against_the_floor_or_asked_about()
+    {
+        SalesOrder order = NewOrder();
+        var pricing = new FakePricing(Quote(24.50m, 0m), floor: 90m);
+
+        var handler = new AddSalesOrderLineCommandHandler(
+            new FakeOrders(order),
+            new FakeCatalogue(Describe(sellable: true)),
+            pricing,
+            new FakeCosting(null),
+            new FakeUnitOfWork());
+
+        Result<Guid> result = await handler.HandleAsync(
+            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m));
+
+        result.IsSuccess.Should().BeTrue();
+        pricing.FloorWasAsked.Should().BeFalse();
+        order.Lines.Single().MarginFloorOverridden.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Nothing configured is not a floor of zero. An installation that has never heard of margin
+    /// floors upgrades into this and nothing it used to sell starts being refused — including the
+    /// obsolete stock it clears at a loss on purpose.
+    /// </summary>
+    [Fact]
+    public async Task With_no_floor_anywhere_a_line_sold_under_cost_is_still_taken()
+    {
+        SalesOrder order = NewOrder();
+        var handler = NewHandler(
+            order, Describe(sellable: true), Quote(9.00m, 0m), unitCost: 14.00m, marginFloor: null);
+
+        Result<Guid> result = await handler.HandleAsync(
+            new AddSalesOrderLineCommand(order.Id.Value, PartId, Quantity: 4m));
+
+        result.IsSuccess.Should().BeTrue();
+        order.Lines.Single().Margin!.Amount.Should().Be(-20.00m);
+    }
+
     [Fact]
     public async Task A_part_nothing_prices_is_refused_by_name()
     {
@@ -320,11 +457,12 @@ public sealed class AddSalesOrderLineTests
         SalesOrder order,
         PartDescriptor? descriptor,
         PartPrice? quote = null,
-        decimal? unitCost = null) =>
+        decimal? unitCost = null,
+        decimal? marginFloor = null) =>
         new(
             new FakeOrders(order),
             new FakeCatalogue(descriptor),
-            new FakePricing(quote ?? Quote(30m, 0m)),
+            new FakePricing(quote ?? Quote(30m, 0m), marginFloor),
             new FakeCosting(unitCost),
             new FakeUnitOfWork());
 
@@ -437,13 +575,18 @@ public sealed class AddSalesOrderLineTests
     private sealed class FakePricing : IPriceProvider
     {
         private readonly PartPrice? _quote;
+        private readonly decimal? _floor;
 
-        public FakePricing(PartPrice? quote)
+        public FakePricing(PartPrice? quote, decimal? floor = null)
         {
             _quote = quote;
+            _floor = floor;
         }
 
         public bool WasAsked { get; private set; }
+
+        /// <summary>True once somebody asked what the line was allowed to make.</summary>
+        public bool FloorWasAsked { get; private set; }
 
         public Task<PartPrice?> GetAsync(
             Guid partId,
@@ -454,6 +597,14 @@ public sealed class AddSalesOrderLineTests
         {
             WasAsked = true;
             return Task.FromResult(_quote);
+        }
+
+        public Task<decimal?> GetMinimumMarginPercentAsync(
+            Guid? customerId = null,
+            CancellationToken cancellationToken = default)
+        {
+            FloorWasAsked = true;
+            return Task.FromResult(_floor);
         }
     }
 

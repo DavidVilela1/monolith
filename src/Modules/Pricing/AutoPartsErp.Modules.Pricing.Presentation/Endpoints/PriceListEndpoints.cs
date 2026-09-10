@@ -57,6 +57,15 @@ public sealed class PriceListEndpoints : IEndpointGroup
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
+        group.MapPut("/lists/{priceListId:guid}/margin-floor", SetMarginFloorAsync)
+            .WithName("SetPriceListMarginFloor")
+            .RequirePermission(Permissions.Pricing.Manage)
+            .WithSummary(
+                "Set the least a line priced from this list may make. Null falls back to the company figure.")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
         group.MapPost("/lists/{priceListId:guid}/activate", ActivateAsync)
             .WithName("ActivatePriceList")
             .RequirePermission(Permissions.Pricing.Manage)
@@ -188,6 +197,21 @@ public sealed class PriceListEndpoints : IEndpointGroup
         return result.ToNoContent();
     }
 
+    private static async Task<IResult> SetMarginFloorAsync(
+        IDispatcher dispatcher,
+        Guid priceListId,
+        SetMarginFloorRequest body,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+
+        Result result = await dispatcher.SendAsync(
+            new SetPriceListMarginFloorCommand(priceListId, body.MinimumMarginPercent),
+            cancellationToken);
+
+        return result.ToNoContent();
+    }
+
     private static async Task<IResult> ActivateAsync(
         IDispatcher dispatcher,
         Guid priceListId,
@@ -298,6 +322,13 @@ public sealed record AmendPriceListRequest(
     string Name,
     DateOnly? EffectiveFrom,
     DateOnly? EffectiveTo);
+
+/// <summary>Body of a request that sets a list's margin floor.</summary>
+/// <param name="MinimumMarginPercent">
+/// The least a line priced from the list may make, as a percentage of the selling price, or null
+/// to fall back to the company figure. Zero is a real answer and not the same as null.
+/// </param>
+public sealed record SetMarginFloorRequest(decimal? MinimumMarginPercent);
 
 /// <summary>Body of a request that sets a price from a quantity upwards.</summary>
 /// <param name="MinimumQuantity">The quantity the price applies from. Usually 1.</param>

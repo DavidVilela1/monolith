@@ -333,6 +333,15 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
     /// is snapshotted for the margin and never revisited. The deposit line gets none: a deposit
     /// is money held, not goods sold.
     /// </param>
+    /// <param name="minimumMarginPercent">
+    /// The least the line may make, as a percentage of what the customer pays, or null when
+    /// nothing sets a floor. Resolved by the caller from the customer's price list, because which
+    /// list applies to whom is Pricing's question and not this aggregate's.
+    /// </param>
+    /// <param name="overrideMarginFloor">
+    /// Whether somebody with the authority to sell under the floor has said to. The line records
+    /// that it happened.
+    /// </param>
     public Result<SalesOrderLineId> AddLine(
         PartRef partId,
         string? sku,
@@ -343,7 +352,9 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
         decimal vatRatePercent = 0m,
         string? priceSource = null,
         Money? coreDeposit = null,
-        Money? unitCost = null)
+        Money? unitCost = null,
+        decimal? minimumMarginPercent = null,
+        bool overrideMarginFloor = false)
     {
         ArgumentNullException.ThrowIfNull(quantity);
         ArgumentNullException.ThrowIfNull(unitPrice);
@@ -383,6 +394,15 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
         }
 
         line.Value.RecordUnitCost(unitCost);
+
+        // After the cost, because there is nothing to test before it, and before anything is
+        // added to the order, so a refused line leaves no half of a core pair behind.
+        Result floor = line.Value.ApplyMarginFloor(minimumMarginPercent, overrideMarginFloor);
+
+        if (floor.IsFailure)
+        {
+            return Result.Failure<SalesOrderLineId>(floor.Error);
+        }
 
         if (coreDeposit is not null)
         {
@@ -451,7 +471,16 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
     /// <param name="lineId">The line to change.</param>
     /// <param name="unitPrice">The new list price per unit.</param>
     /// <param name="discountPercent">The new discount, 0 to 100.</param>
-    public Result ChangeLinePricing(SalesOrderLineId lineId, Money unitPrice, decimal discountPercent)
+    /// <param name="minimumMarginPercent">The least the line may make, or null when nothing sets one.</param>
+    /// <param name="overrideMarginFloor">
+    /// Whether somebody with the authority to sell under the floor has said to.
+    /// </param>
+    public Result ChangeLinePricing(
+        SalesOrderLineId lineId,
+        Money unitPrice,
+        decimal discountPercent,
+        decimal? minimumMarginPercent = null,
+        bool overrideMarginFloor = false)
     {
         ArgumentNullException.ThrowIfNull(unitPrice);
 
@@ -474,7 +503,8 @@ public sealed class SalesOrder : AggregateRoot<SalesOrderId>, IAuditable, ISoftD
 
         return line.IsCoreDeposit
             ? SalesErrors.Line.CoreDepositNotPriceable
-            : line.ChangePricing(unitPrice, discountPercent);
+            : line.ChangePricing(
+                unitPrice, discountPercent, minimumMarginPercent, overrideMarginFloor);
     }
 
     /// <summary>Takes a part off the order.</summary>

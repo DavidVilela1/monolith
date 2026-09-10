@@ -1,9 +1,11 @@
 using AutoPartsErp.ModuleContracts.Pricing;
 using AutoPartsErp.Modules.Pricing.Domain;
 using AutoPartsErp.Modules.Pricing.Domain.Customers;
+using AutoPartsErp.Modules.Pricing.Domain.PriceLists;
 using AutoPartsErp.Modules.Pricing.Domain.Quotes;
 using AutoPartsErp.SharedKernel.Abstractions;
 using AutoPartsErp.SharedKernel.Results;
+using Microsoft.Extensions.Options;
 
 namespace AutoPartsErp.Modules.Pricing.Infrastructure.Contracts;
 
@@ -24,16 +26,24 @@ public sealed class PriceProvider : IPriceProvider
 {
     private readonly IPriceCandidateSource _candidates;
     private readonly ICustomerPricingRepository _agreements;
+    private readonly IPriceListRepository _lists;
+    private readonly PricingOptions _options;
     private readonly IDateTimeProvider _clock;
 
     /// <summary>Initializes the adapter.</summary>
     public PriceProvider(
         IPriceCandidateSource candidates,
         ICustomerPricingRepository agreements,
+        IPriceListRepository lists,
+        IOptions<PricingOptions> options,
         IDateTimeProvider clock)
     {
+        ArgumentNullException.ThrowIfNull(options);
+
         _candidates = candidates;
         _agreements = agreements;
+        _lists = lists;
+        _options = options.Value;
         _clock = clock;
     }
 
@@ -84,5 +94,45 @@ public sealed class PriceProvider : IPriceProvider
             resolved.PriceListId.Value,
             resolved.PriceListCode,
             resolved.AppliedBreakQuantity);
+    }
+
+    /// <inheritdoc />
+    public async Task<decimal?> GetMinimumMarginPercentAsync(
+        Guid? customerId = null,
+        CancellationToken cancellationToken = default)
+    {
+        // Their own list first. A fleet on a contract list sold deliberately thin has a floor
+        // that says so, and applying the company figure to them would refuse the contract the
+        // company signed.
+        if (customerId is { } customer)
+        {
+            CustomerPricing? agreement = await _agreements
+                .GetForCustomerAsync(new CustomerRef(customer), cancellationToken)
+                .ConfigureAwait(false);
+
+            if (agreement is not null)
+            {
+                PriceList? agreed = await _lists
+                    .GetByIdAsync(agreement.PriceListId, cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (agreed?.MinimumMarginPercent is { } agreedFloor)
+                {
+                    return agreedFloor;
+                }
+
+                // An agreement whose list has no opinion falls through to the company figure,
+                // not to the default list's. The default list is where customers with no
+                // agreement land; borrowing its floor for somebody who has one would apply a
+                // number chosen for walk-ins to a negotiated account.
+                return _options.DefaultMinimumMarginPercent;
+            }
+        }
+
+        PriceList? fallback = await _lists
+            .GetDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return fallback?.MinimumMarginPercent ?? _options.DefaultMinimumMarginPercent;
     }
 }

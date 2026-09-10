@@ -36,6 +36,28 @@ public interface IPriceProvider
         Guid? customerId = null,
         DateOnly? on = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The least a line for this customer may make, as a percentage of what they pay, or null
+    /// when nothing anywhere sets a floor.
+    /// <para>
+    /// Resolved from their agreement's list, falling back to the company figure. Null is not
+    /// zero, and the difference is the whole point: zero says "never below cost", which is a
+    /// decision somebody made, and null says nobody has made one. An installation that has never
+    /// heard of margin floors gets null and nothing is refused — which is what upgrading into
+    /// this feature has to feel like, because clearing obsolete stock at a loss is a real thing a
+    /// distributor does and a floor nobody chose should not stop it.
+    /// </para>
+    /// <para>
+    /// Of revenue, like every other margin figure in this system — a part bought at 10 and sold
+    /// at 15 makes 33.33, not 50.
+    /// </para>
+    /// </summary>
+    /// <param name="customerId">The customer, or null for a walk-in with no account.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<decimal?> GetMinimumMarginPercentAsync(
+        Guid? customerId = null,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

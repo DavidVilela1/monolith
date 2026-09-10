@@ -167,6 +167,62 @@ public sealed class AmendPriceListCommandHandler : ICommandHandler<AmendPriceLis
     }
 }
 
+/// <summary>
+/// Sets the least a line priced from this list may make, or clears it back to the company figure.
+/// </summary>
+/// <param name="PriceListId">The list.</param>
+/// <param name="MinimumMarginPercent">
+/// The floor as a percentage of the selling price, or null to fall back to the company figure.
+/// </param>
+public sealed record SetPriceListMarginFloorCommand(
+    Guid PriceListId,
+    decimal? MinimumMarginPercent) : ICommand;
+
+/// <summary>Sets the list's margin floor.</summary>
+public sealed class SetPriceListMarginFloorCommandHandler
+    : ICommandHandler<SetPriceListMarginFloorCommand>
+{
+    private readonly IPriceListRepository _lists;
+    private readonly IPricingUnitOfWork _unitOfWork;
+
+    /// <summary>Initializes the handler.</summary>
+    public SetPriceListMarginFloorCommandHandler(
+        IPriceListRepository lists,
+        IPricingUnitOfWork unitOfWork)
+    {
+        _lists = lists;
+        _unitOfWork = unitOfWork;
+    }
+
+    /// <inheritdoc />
+    public async Task<Result> HandleAsync(
+        SetPriceListMarginFloorCommand request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        PriceList? list = await _lists
+            .GetByIdAsync(new PriceListId(request.PriceListId), cancellationToken)
+            .ConfigureAwait(false);
+
+        if (list is null)
+        {
+            return PricingErrors.List.NotFound(request.PriceListId.ToString());
+        }
+
+        Result set = list.SetMinimumMargin(request.MinimumMarginPercent);
+
+        if (set.IsFailure)
+        {
+            return set;
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        return Result.Success();
+    }
+}
+
 /// <summary>Puts a list into service, so quotes start coming from it.</summary>
 /// <param name="PriceListId">The list.</param>
 public sealed record ActivatePriceListCommand(Guid PriceListId) : ICommand;

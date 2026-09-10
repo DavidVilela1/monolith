@@ -3,6 +3,7 @@ using AutoPartsErp.Modules.Abstractions.DependencyInjection;
 using AutoPartsErp.Modules.Abstractions.Modules;
 using AutoPartsErp.Modules.Pricing.Application.Abstractions;
 using AutoPartsErp.Modules.Pricing.Domain;
+using AutoPartsErp.Modules.Pricing.Infrastructure;
 using AutoPartsErp.Modules.Pricing.Infrastructure.Contracts;
 using AutoPartsErp.Modules.Pricing.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Pricing.Infrastructure.Persistence.ReadStore;
@@ -80,6 +81,17 @@ public sealed class PricingModule : IModule
 
         // The question this module answers for the rest of the system, synchronously.
         services.AddScoped<IPriceProvider, PriceProvider>();
+
+        // The margin floor a list says nothing about. Validated at startup rather than trusted:
+        // a figure of 100 or more would refuse every sale in the company, and finding that out
+        // from a counter rather than from the console is the wrong way round.
+        services.AddOptions<PricingOptions>()
+            .Bind(configuration.GetSection(PricingOptions.SectionName))
+            .Validate(
+                options => options.DefaultMinimumMarginPercent is null or (>= 0m and < 100m),
+                $"{PricingOptions.SectionName}:DefaultMinimumMarginPercent must be at least zero "
+                + "and below 100. A hundred per cent margin means the goods cost nothing.")
+            .ValidateOnStart();
 
         services.AddModuleHandlers(
             typeof(Application.PriceLists.Commands.OpenPriceListCommand).Assembly);

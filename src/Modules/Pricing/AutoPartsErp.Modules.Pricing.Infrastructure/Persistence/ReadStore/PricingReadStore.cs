@@ -229,6 +229,7 @@ public sealed class PricingReadStore : IPricingReadStore
             list.EffectiveFrom,
             list.EffectiveTo,
             list.IsDefault,
+            list.MinimumMarginPercent,
             _context.PriceListEntries.Count(entry => entry.PriceListId == list.Id)));
 
     private IQueryable<AgreementRow> ProjectAgreements(IQueryable<CustomerPricing> agreements) =>
@@ -256,6 +257,7 @@ public sealed class PricingReadStore : IPricingReadStore
             row.EffectiveFrom,
             row.EffectiveTo,
             row.IsDefault,
+            row.MinimumMarginPercent,
             row.PricedParts);
 
     private static CustomerPricingDto ToAgreement(AgreementRow row) =>
@@ -286,6 +288,7 @@ public sealed class PricingReadStore : IPricingReadStore
         DateOnly? EffectiveFrom,
         DateOnly? EffectiveTo,
         bool IsDefault,
+        decimal? MinimumMarginPercent,
         int PricedParts);
 
     private sealed record AgreementRow(

@@ -171,6 +171,22 @@ public static class Permissions
         /// </para>
         /// </summary>
         public const string OverrideCredit = "sales.credit.override";
+
+        /// <summary>
+        /// Price a line below the least its price list allows it to make.
+        /// <para>
+        /// Its own permission rather than part of <see cref="Manage"/>, because the two answer
+        /// different questions. Everyone at a counter raises orders; deciding that this one part
+        /// on this one order is worth selling thin is a commercial call, and the whole reason for
+        /// a floor is that it is not the same call as typing a price.
+        /// </para>
+        /// <para>
+        /// Apart from <see cref="OverrideCredit"/> for the same reason those two are apart. One is
+        /// about whether the company gets paid, the other about whether the sale was worth making,
+        /// and the people trusted with each are not always the same people.
+        /// </para>
+        /// </summary>
+        public const string OverrideMarginFloor = "sales.margin.override";
     }
 
     /// <summary>Legal documents.</summary>
@@ -252,7 +268,7 @@ public static class Permissions
         Pricing.Quote, Pricing.Read, Pricing.Manage,
         Purchasing.Read, Purchasing.Manage, Purchasing.Submit, Purchasing.Receive,
         Sales.Read, Sales.Manage, Sales.Confirm, Sales.Dispatch, Sales.Return,
-        Sales.OverrideCredit,
+        Sales.OverrideCredit, Sales.OverrideMarginFloor,
         Invoicing.Read, Invoicing.Draft, Invoicing.Issue, Invoicing.Void,
         Invoicing.ManageSeries, Invoicing.ExportSaft,
         Finance.Read, Finance.RecordReceipt,

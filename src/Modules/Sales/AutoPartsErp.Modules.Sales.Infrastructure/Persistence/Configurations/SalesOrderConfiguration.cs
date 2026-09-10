@@ -229,6 +229,13 @@ public sealed class SalesOrderConfiguration : IEntityTypeConfiguration<SalesOrde
                     .HasMaxLength(3);
             });
 
+            // The record of somebody having said "sell it anyway". Not nullable: false is the
+            // honest answer for every line nobody had to authorise, which is nearly all of them.
+            line.Property(l => l.MarginFloorOverridden)
+                .HasColumnName("margin_floor_overridden")
+                .HasDefaultValue(false)
+                .IsRequired();
+
             // Percentages, not money. Four decimal places because a trade discount of 12.5%
             // is ordinary and 33.333% happens.
             line.Property(l => l.DiscountPercent).HasPrecision(9, 4).IsRequired();

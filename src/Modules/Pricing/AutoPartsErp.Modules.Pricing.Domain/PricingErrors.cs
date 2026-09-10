@@ -1,3 +1,4 @@
+using System.Globalization;
 using AutoPartsErp.SharedKernel.Results;
 
 namespace AutoPartsErp.Modules.Pricing.Domain;
@@ -11,6 +12,13 @@ public static class PricingErrors
         /// <summary>The list does not exist.</summary>
         public static Error NotFound(string identifier) =>
             Error.NotFound("pricing.list.not_found", $"No price list matches '{identifier}'.");
+
+        /// <summary>A margin floor has to be a percentage of the selling price.</summary>
+        public static readonly Error MarginFloorOutOfRange =
+            Error.Validation(
+                "pricing.list.margin_floor_out_of_range",
+                "A margin floor is a percentage of the selling price, from 0 up to but not " +
+                "including 100. A hundred per cent margin means the goods cost nothing.");
 
         /// <summary>A code is required.</summary>
         public static readonly Error CodeRequired =
@@ -156,7 +164,9 @@ public static class PricingErrors
         public static Error BreakNotFound(decimal minimumQuantity) =>
             Error.NotFound(
                 "pricing.entry.break_not_found",
-                $"There is no quantity break starting at {minimumQuantity} on that price.");
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"There is no quantity break starting at {minimumQuantity} on that price."));
 
         /// <summary>The last break cannot go.</summary>
         public static readonly Error LastBreak =

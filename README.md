@@ -504,7 +504,7 @@ returns both.
 so a route added later without a thought about who may call it is refused rather than open. Three
 routes say otherwise — sign in, refresh, sign out — because they are where a token comes from.
 
-**Every one of the 149 routes behind a permission names which one.** Not a group-wide check per module:
+**Every one of the 152 routes behind a permission names which one.** Not a group-wide check per module:
 `GET /api/inventory/stock/replenishment` needs `inventory.stock.read` and
 `POST /api/inventory/stock/adjust` needs `inventory.stock.adjust`, and they sit four lines apart
 in the same file. The catalogue lives in the shared kernel rather than in Access, and it has to —
@@ -516,7 +516,7 @@ a way of saying "I am company B" that company A could also say: anybody who coul
 could read anybody's data by changing one header. A claim inside a signed token cannot be edited
 by whoever is holding it.
 
-**Permissions, grouped into roles.** Thirty-six permissions named `module.thing.verb`, and roles
+**Permissions, grouped into roles.** Thirty-seven permissions named `module.thing.verb`, and roles
 are named bundles of them. Permissions live on the role rather than on the user, so giving
 somebody an exception means giving them a second role — which keeps "why can she do this?" to a
 list of role names instead of an audit of one person's history.
@@ -809,6 +809,40 @@ one is of revenue, which is what a distributor's accounts are built on.
 it would make every part sold on a core look like the best margin in the branch — right up until
 the old unit comes back and the money goes out again.
 
+**The margin floor lives on the price list, with a company figure behind it.** A promotion sold
+deliberately thin and a fleet contract where two per cent on volume is the whole point are lists
+with an opinion; most lists have none and fall back to `Erp:Pricing:DefaultMinimumMarginPercent`.
+A customer with an agreement whose list says nothing falls back to the company figure and not to
+the default list's — the default list is where walk-ins land, and borrowing its floor for a
+negotiated account would apply a number chosen for strangers to somebody the company signed with.
+
+**No floor is not a floor of zero, and the difference is what makes upgrading safe.** Null means
+nobody has made this decision, and nothing is refused. Zero means somebody made it and the answer
+is "never below cost" — which is a real policy and a real refusal, and not one a system should
+adopt on an installation's behalf the first time it is updated. Clearing obsolete stock at a loss
+is something a distributor does on purpose.
+
+**The floor is compared in money, never in the percentage people read.** `MarginPercent` is
+rounded to two places for a screen, and a line making 29.995 per cent displays as 30.00. A check
+written against the displayed figure would let that line past a floor of 30 — which is exactly the
+kind of hole somebody finds by accident and then starts using on purpose. Multiplying out is
+exact.
+
+**A line Inventory cannot cost is a line the floor says nothing about.** Refusing every part with
+no stock record would stop a counter dead on the first part a warehouse has never received. The
+line reports no margin, the order reports that it has uncosted lines, and nobody is blocked on a
+figure nobody has. The round trip into Pricing is not even made.
+
+**Going under the floor is its own route, like going over the credit limit.**
+`POST /orders/{id}/lines/below-floor` and `PUT /orders/{id}/lines/{lineId}/pricing-below-floor`
+need `sales.margin.override` on top of `sales.order.manage`, and the line records that it was let
+through. The flag is a record of one decision, not an exemption: pricing the line back above the
+floor clears it, because a flag that stayed set would wave the next edit past unexamined.
+
+**`sales.margin.override` is not `sales.credit.override`.** One is about whether the company gets
+paid, the other about whether the sale was worth making, and the people trusted with each are not
+always the same people.
+
 **A core deposit is a line, not a field.** A remanufactured starter motor is sold twice over: the
 part, and a sum held until the old one comes back. The deposit prints as its own line, is credited
 on its own, and is what a customer pays when they keep the old unit — none of which a number
@@ -1068,9 +1102,6 @@ concurrency in all three modules that hand out numbers.
 2. **Accounts payable, the general ledger, VAT returns and period close.** Finance covers what
    customers owe and nothing else yet: there is no supplier invoice to owe anything against,
    because Purchasing has an order and a goods receipt and no document between them.
-3. **A floor under the margin.** The margin is now on the line and on the order; nothing yet
-   refuses a price that goes under it, or asks somebody senior to sign one off. The credit-limit
-   override is the shape that fits.
 
 **Known issues:**
 
@@ -1104,8 +1135,15 @@ concurrency in all three modules that hand out numbers.
   half — what is missing is a lead time anywhere in the system, on the supplier or on the
   part/supplier pair.
 - Cost of sale is on the ledger but nowhere else. Nothing posts it to a general ledger, because
-  there is no general ledger; nothing shows margin on a sales order line; and the margin floor
-  Pricing would want is now possible and not built.
+  there is no general ledger.
+- The margin floor is checked when a line is added and when it is re-priced, and never again. A
+  line raised above the floor and then discounted through the quantity route, or one whose floor
+  was raised after the order was taken, is not re-tested. Confirming an order is where a
+  whole-order check would belong, and there is none.
+- A line that overrode the floor records that it did, and not by how much or against what figure.
+  The floor lives on a price list that can be changed the next morning, so reconstructing "how far
+  under was it?" months later means reading a margin against a number that has since moved — the
+  same gap the credit-limit override has.
 - A return is valued proportionally across every shipment of the line it came from. A line
   dispatched twice at two costs has no single unit cost, and the customer bringing three of ten
   back does not say which van they came on — so the figure is the average of what left, and there

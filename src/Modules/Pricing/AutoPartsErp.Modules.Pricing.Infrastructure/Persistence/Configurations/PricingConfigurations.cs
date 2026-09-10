@@ -58,6 +58,14 @@ public sealed class PriceListConfiguration : IEntityTypeConfiguration<PriceList>
         builder.Property(list => list.EffectiveTo).HasColumnName("effective_to");
         builder.Property(list => list.IsDefault).HasColumnName("is_default").IsRequired();
 
+        // Nullable on purpose, and it is the whole design of the feature. Null means this list has
+        // no opinion and the company figure applies; zero means it does have one and the answer is
+        // "never below cost". Defaulting it to zero would turn every existing list into a policy
+        // nobody wrote.
+        builder.Property(list => list.MinimumMarginPercent)
+            .HasColumnName("minimum_margin_percent")
+            .HasPrecision(9, 4);
+
         builder.Property(list => list.CreatedAtUtc).IsRequired();
         builder.Property(list => list.CreatedBy).HasMaxLength(120).IsRequired();
         builder.Property(list => list.ModifiedBy).HasMaxLength(120);

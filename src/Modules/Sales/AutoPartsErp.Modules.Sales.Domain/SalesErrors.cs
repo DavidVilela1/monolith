@@ -1,3 +1,4 @@
+using System.Globalization;
 using AutoPartsErp.SharedKernel.Results;
 
 namespace AutoPartsErp.Modules.Sales.Domain;
@@ -83,6 +84,26 @@ public static class SalesErrors
         /// <summary>The line is not on this order.</summary>
         public static Error NotFound(string identifier) =>
             Error.NotFound("sales.line.not_found", $"Line '{identifier}' is not on this order.");
+
+        /// <summary>
+        /// The line makes less than the least this customer's list allows.
+        /// <para>
+        /// The two figures are in the message on purpose. "Below the margin floor" sends somebody
+        /// to a manager with nothing to say; "makes 12.40 against a floor of 20" lets them decide
+        /// whether to ask for the override or go back and re-price it, which is usually the
+        /// cheaper of the two.
+        /// </para>
+        /// </summary>
+        public static Error BelowMarginFloor(string sku, decimal? marginPercent, decimal floorPercent) =>
+            Error.DomainRule(
+                "sales.line.below_margin_floor",
+                marginPercent is { } made
+                    ? string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"'{sku}' makes {made}% and the least allowed is {floorPercent}%.")
+                    : string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"'{sku}' is given away at a cost and the least allowed is {floorPercent}%."));
 
         /// <summary>A cost in another currency cannot be compared with the price.</summary>
         public static readonly Error CostCurrencyMismatch =
