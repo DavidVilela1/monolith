@@ -769,6 +769,79 @@ an active supplier and takes their code from there.
 
 **Receipts are idempotent.** A redelivered goods-receipt event does not book the stock twice.
 
+**What was agreed is data, not something somebody retypes.** A supplier agreement carries the
+currency, the rebate and its life; a supplier price carries what one part costs from a given day.
+Both are entered once, by the person who negotiated them, and every delivery afterwards prices
+itself from them. The two figures on a purchase document worth arguing about are the ones both
+sides settled months apart, and a person retyping them is a person who will eventually retype one
+of them wrong.
+
+**A price is never edited when it changes.** The supplier announces a rise from the first of
+October, the buyer records a second row, and both survive: the old one explains the invoices
+already received and the new one prices everything after. There is a `Correct` for the afternoon
+somebody notices the 4,50 should have read 45,00, and it is for mistakes, not for changes.
+
+**A rebate scale is one object for both shapes of rappel.** A flat agreed percentage is a scale
+with one step starting at nothing, so "desconto de rappel 4%" and a three-step volume ladder are
+the same arithmetic rather than two code paths that will disagree in the fifth year.
+
+**The step reached pays on everything, not only on the excess.** 48.000 against a scale of
+25.000 → 2% and 50.000 → 3% earns 2% of 48.000. Two thousand euros more and it becomes 3% of the
+whole 50.000, first 25.000 included. That is how a distribution rappel is written in this market,
+and it is why `ToNextStep` exists: "another 1.850 and the whole year goes to three per cent" is a
+decision, and "your rebate is two per cent" is not. A marginal scale, where each slice keeps its
+own rate, is a different contract and this object does not express it.
+
+**Each step has to pay more than the one below it.** A scale that pays less for buying more is
+percentages typed into the wrong rows, and letting it through stops a buyer ordering at exactly
+the wrong moment for a reason nobody can see.
+
+**A rebate settled by credit note takes nothing off the invoice.** The company pays the full
+figure and is credited later, so `InvoiceRateOn` answers zero for it. Applying the rate in both
+places is how the same discount gets taken twice, and it is the kind of error that shows up as an
+unexplained gap on a supplier's statement eleven months later.
+
+**A supplier invoice is their document, not ours.** It never touches the certified series in
+Invoicing and never gets a number of ours — numbering it would be forging it. What is stored is
+what they sent, alongside what the system worked out they should have sent. Both figures stay:
+overwriting ours with theirs would be the system agreeing with the supplier and then losing the
+evidence that it ever thought otherwise.
+
+**It is drafted from receipts, one per supplier per delivery day.** A supplier invoices a
+delivery, and a delivery is a van on a day. Grouping by order would split one van into three
+documents whenever the warehouse had ordered twice; grouping by nothing would leave a draft
+accumulating for a month. The warehouse counting the pallet stays a person's job — a person is
+the only thing that can tell a full box from an empty one — and nothing else is typed.
+
+**The rebate rate is stamped when the draft opens and never recomputed.** It depends on what the
+period had bought when the delivery arrived. A figure that quietly followed the year's running
+total would make a document raised in March re-explain itself with November's numbers every time
+somebody opened it.
+
+**VAT comes after the rebate, per rate.** A rebate reduces the taxable amount, so VAT charged on
+the pre-rebate figure is VAT the company would be deducting without having paid it. A van carrying
+parts at 23 and books at 6 is ordinary, so the rebate is spread across the bands in proportion to
+what each is worth — one blended percentage would match neither the supplier's document nor the
+return the company has to file.
+
+**Automatic entry is not automatic acceptance.** The whole reason for computing the figure
+independently is to have something to disagree with. Their number, their date and their total are
+the only things entered; if the two totals agree the document settles, and if they do not it goes
+into dispute owing nothing to anybody. The tolerance is for the cents both sides round differently
+— a tolerance of zero would put every delivery in front of somebody to approve a cent, which is
+how people learn to approve everything without looking.
+
+**Leaving a dispute has two doors, and both leave a trace.** Accepting their figure needs a
+sentence somebody wrote, because in a year that sentence is the only thing that will explain
+paying more than was counted at prices that were agreed. Or the line is corrected to their price —
+which does not touch the agreed price. A supplier overcharging on one delivery is a conversation
+about that delivery; a supplier who has genuinely raised their prices is a new agreed price with a
+date on it. Otherwise one unchallenged invoice quietly becomes the new contract.
+
+**What is owed is their figure, not ours.** A payable opened for the computed total would never
+match the money leaving the bank, and reconciling those two afterwards is the job this whole
+document exists to avoid.
+
 ### Sales
 
 **Customer accounts are a projection.** Sales does not own the customer — Partners does. It keeps
@@ -1099,9 +1172,11 @@ concurrency in all three modules that hand out numbers.
 1. **Communicating documents to the AT.** The webservice that reports each document within days
    of issuing it. The paperwork around certification is paperwork; this is the last piece of code
    between here and a legally usable installation.
-2. **Accounts payable, the general ledger, VAT returns and period close.** Finance covers what
-   customers owe and nothing else yet: there is no supplier invoice to owe anything against,
-   because Purchasing has an order and a goods receipt and no document between them.
+2. **Accounts payable, the general ledger, VAT returns and period close.** The supplier invoice
+   now exists and settles into a figure somebody owes, which was the missing document between a
+   purchase order and a goods receipt. What is not built is the other end: nothing in Finance
+   opens a payable from it, nothing ages what the company owes, and there is still no general
+   ledger for either side to post to.
 
 **Known issues:**
 
@@ -1148,6 +1223,19 @@ concurrency in all three modules that hand out numbers.
   dispatched twice at two costs has no single unit cost, and the customer bringing three of ten
   back does not say which van they came on — so the figure is the average of what left, and there
   is no more precise one to be had short of serial numbers.
+- The supplier agreement, the agreed prices and the supplier invoice are domain and tests only.
+  Nothing persists them, no route reaches them, and no goods receipt drafts one yet — the wiring
+  is the next delivery. The shapes were settled first on purpose: a rebate scale is cheaper to
+  argue about before it has a table and eleven endpoints hanging off it.
+- A rebate settled on the invoice is taken at the rate the period had reached on the day. A rate
+  reached in October cannot be applied to invoices that went out in March, so crossing a step
+  leaves a claim on the difference that nothing here chases.
+- A rebate settled by credit note leaves stock overvalued for the whole period, and the credit
+  note then lands looking like profit that fell out of the sky. Accruing it as it is earned is
+  the piece that makes the margin on every sale in between true, and it is not built.
+- A supplier invoice values what is owed; it does not revalue the shelf. Inventory still costs a
+  receipt at the purchase order's price, so a delivery invoiced at a different figure leaves a
+  price variance nothing posts or reports.
 - A shortfall written off in transit produces no shrinkage posting, because there is no general
   ledger to post it to. The `StockTransferClosedShort` event carries the lost value ready for one.
 - Storage bins are recorded but never used: `StockMovement.InBin` has no caller, so no movement

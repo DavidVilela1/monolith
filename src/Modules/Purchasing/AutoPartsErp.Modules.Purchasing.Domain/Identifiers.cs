@@ -104,6 +104,74 @@ public readonly record struct WarehouseRef(Guid Value)
     public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
 }
 
+/// <summary>Identity of an <see cref="Agreements.SupplierAgreement"/>.</summary>
+/// <param name="Value">The underlying identifier.</param>
+public readonly record struct SupplierAgreementId(Guid Value)
+{
+    /// <summary>The unset identifier.</summary>
+    public static readonly SupplierAgreementId Empty = new(Guid.Empty);
+
+    /// <summary>Generates a new identifier.</summary>
+    public static SupplierAgreementId New() => new(OrderedGuid.Create());
+
+    /// <summary>True when the identifier has not been set.</summary>
+    public bool IsEmpty => Value == Guid.Empty;
+
+    /// <inheritdoc />
+    public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
+}
+
+/// <summary>Identity of a <see cref="Agreements.SupplierPrice"/>.</summary>
+/// <param name="Value">The underlying identifier.</param>
+public readonly record struct SupplierPriceId(Guid Value)
+{
+    /// <summary>The unset identifier.</summary>
+    public static readonly SupplierPriceId Empty = new(Guid.Empty);
+
+    /// <summary>Generates a new identifier.</summary>
+    public static SupplierPriceId New() => new(OrderedGuid.Create());
+
+    /// <summary>True when the identifier has not been set.</summary>
+    public bool IsEmpty => Value == Guid.Empty;
+
+    /// <inheritdoc />
+    public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
+}
+
+/// <summary>Identity of a <see cref="Invoices.SupplierInvoice"/>.</summary>
+/// <param name="Value">The underlying identifier.</param>
+public readonly record struct SupplierInvoiceId(Guid Value)
+{
+    /// <summary>The unset identifier.</summary>
+    public static readonly SupplierInvoiceId Empty = new(Guid.Empty);
+
+    /// <summary>Generates a new identifier.</summary>
+    public static SupplierInvoiceId New() => new(OrderedGuid.Create());
+
+    /// <summary>True when the identifier has not been set.</summary>
+    public bool IsEmpty => Value == Guid.Empty;
+
+    /// <inheritdoc />
+    public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
+}
+
+/// <summary>Identity of a <see cref="Invoices.SupplierInvoiceLine"/>.</summary>
+/// <param name="Value">The underlying identifier.</param>
+public readonly record struct SupplierInvoiceLineId(Guid Value)
+{
+    /// <summary>The unset identifier.</summary>
+    public static readonly SupplierInvoiceLineId Empty = new(Guid.Empty);
+
+    /// <summary>Generates a new identifier.</summary>
+    public static SupplierInvoiceLineId New() => new(OrderedGuid.Create());
+
+    /// <summary>True when the identifier has not been set.</summary>
+    public bool IsEmpty => Value == Guid.Empty;
+
+    /// <inheritdoc />
+    public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
+}
+
 /// <summary>Creates time-ordered <see cref="Guid"/> values so inserts stay at the right edge of the index.</summary>
 internal static class OrderedGuid
 {
