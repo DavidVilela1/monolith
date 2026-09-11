@@ -124,3 +124,50 @@ public sealed record PurchaseOrderClosedShortIntegrationEvent(
     string Reason,
     IReadOnlyList<OrderedPartLine> Lines,
     Guid TenantId) : IntegrationEvent;
+
+/// <summary>
+/// A supplier's invoice was settled, and it charged something the purchase order had not predicted.
+/// <para>
+/// Published so Inventory can correct what the shelf is worth. The goods were booked in at the
+/// price the order was placed at; the supplier billed a different figure, and until this is
+/// applied the balance sheet disagrees with the money about to leave the bank.
+/// </para>
+/// <para>
+/// Only lines whose invoiced price differs from the order's are carried. Most deliveries are
+/// invoiced at the price they were ordered at, and an event listing every line of every document
+/// would be almost entirely rows asking the other module to do nothing.
+/// </para>
+/// </summary>
+/// <param name="SupplierInvoiceId">The document that settled.</param>
+/// <param name="SupplierDocumentNumber">Their document number, which is what the ledger row points at.</param>
+/// <param name="DocumentDate">The date on their document.</param>
+/// <param name="Lines">The lines that were charged at a different price.</param>
+/// <param name="TenantId">The tenant.</param>
+public sealed record SupplierInvoicePricedIntegrationEvent(
+    Guid SupplierInvoiceId,
+    string SupplierDocumentNumber,
+    DateOnly DocumentDate,
+    IReadOnlyList<InvoicedLine> Lines,
+    Guid TenantId) : IntegrationEvent;
+
+/// <summary>
+/// One line of a settled supplier invoice, flattened for another module.
+/// </summary>
+/// <param name="OrderNumber">
+/// The purchase order number. With <paramref name="PurchaseOrderLineId"/> it is how the receipt
+/// this line paid for is found again in the other module's own ledger.
+/// </param>
+/// <param name="PurchaseOrderLineId">The order line the goods arrived against.</param>
+/// <param name="PartId">The part.</param>
+/// <param name="WarehouseId">The warehouse the goods went into.</param>
+/// <param name="Quantity">How much was charged for.</param>
+/// <param name="InvoicedUnitPrice">What the supplier charged per unit, before any rebate.</param>
+/// <param name="CurrencyCode">The currency.</param>
+public sealed record InvoicedLine(
+    string OrderNumber,
+    Guid PurchaseOrderLineId,
+    Guid PartId,
+    Guid WarehouseId,
+    decimal Quantity,
+    decimal InvoicedUnitPrice,
+    string CurrencyCode);

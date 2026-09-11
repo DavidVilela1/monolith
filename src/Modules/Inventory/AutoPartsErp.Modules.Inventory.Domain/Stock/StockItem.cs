@@ -312,6 +312,79 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
     }
 
     /// <summary>
+    /// Corrects what the shelf is worth when the supplier's invoice charged something the purchase
+    /// order had not predicted.
+    /// <para>
+    /// No quantity moves. Nothing arrived and nothing left — the goods were booked in at the price
+    /// the order was placed at, the supplier billed a different figure, and the balance sheet now
+    /// has to agree with the money that will leave the bank. The ledger row carries a quantity of
+    /// zero and a value, which is the honest shape of the fact and the reason
+    /// <see cref="MovementType.PriceVariance"/> exists.
+    /// </para>
+    /// <para>
+    /// <b>Only the part still on the shelf is corrected, and the caller works out how much that
+    /// is.</b> Goods already sold went out at the old cost and are gone; their share of the
+    /// difference belongs in cost of sale, and there is no general ledger to put it in. Moving it
+    /// onto the shelf anyway would make the remaining units carry the whole error — twenty units
+    /// left out of a hundred would each absorb five times what they should, and the stock value
+    /// would stop being a number anybody could explain.
+    /// </para>
+    /// <para>
+    /// The value may be negative: a supplier who charged less than the order said makes the shelf
+    /// worth less, not more. What is refused is a correction that would take the shelf below
+    /// nothing, because a negative stock value is not a fact about any warehouse.
+    /// </para>
+    /// </summary>
+    /// <param name="difference">
+    /// What to add to the shelf's value. Positive when the supplier charged more than the order
+    /// said, negative when they charged less.
+    /// </param>
+    /// <param name="reference">The supplier's document that caused it.</param>
+    /// <param name="now">The current instant.</param>
+    public Result<StockMovement> Revalue(Money difference, MovementReference reference, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(difference);
+        ArgumentNullException.ThrowIfNull(reference);
+
+        if (difference.Currency != StockValue.Currency)
+        {
+            return Result.Failure<StockMovement>(
+                InventoryErrors.Stock.CostCurrencyMismatch(
+                    difference.Currency.Code, StockValue.Currency.Code));
+        }
+
+        // Nothing to record. A variance of zero is the ordinary case — most deliveries are
+        // invoiced at the price they were ordered at — and writing a ledger row for it would bury
+        // the ones that matter under thousands that do not.
+        if (difference.Amount == 0m)
+        {
+            return Result.Failure<StockMovement>(InventoryErrors.Stock.NoVariance);
+        }
+
+        Money revalued = StockValue.Add(difference);
+
+        if (revalued.IsNegative)
+        {
+            return Result.Failure<StockMovement>(InventoryErrors.Stock.VarianceBelowZero);
+        }
+
+        StockValue = revalued;
+
+        StockMovement movement = StockMovement.Record(
+            Part,
+            WarehouseId,
+            MovementType.PriceVariance,
+            Quantity.Zero(Unit),
+            OnHand,
+            reference,
+            now);
+
+        movement.AtValue(difference);
+
+        return movement;
+    }
+
+    /// <summary>
     /// Puts a customer's return back on the shelf, at what it was worth when it left.
     /// <para>
     /// The arithmetic is <see cref="ReceiveValued"/>'s — a known total joins the balance rather

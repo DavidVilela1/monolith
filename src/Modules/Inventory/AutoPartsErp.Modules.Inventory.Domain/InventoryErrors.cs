@@ -53,6 +53,21 @@ public static class InventoryErrors
                 "inventory.stock.already_exists",
                 $"Part '{part}' already has a stock record in warehouse '{warehouse}'.");
 
+        /// <summary>The supplier's invoice agreed with the order. There is nothing to correct.</summary>
+        public static readonly Error NoVariance =
+            Error.DomainRule(
+                "inventory.stock.no_variance",
+                "The invoice matched what the receipt was valued at, so there is nothing to " +
+                "revalue. Writing a ledger row for a difference of zero would bury the ones that " +
+                "matter under thousands that do not.");
+
+        /// <summary>A correction that would take the shelf below nothing.</summary>
+        public static readonly Error VarianceBelowZero =
+            Error.DomainRule(
+                "inventory.stock.variance_below_zero",
+                "That correction would leave the shelf worth less than nothing, which is not a " +
+                "fact about any warehouse. Something earlier is wrong and this would hide it.");
+
         /// <summary>There is not enough on the shelf.</summary>
         public static Error InsufficientOnHand(decimal onHand, decimal requested, string unit) =>
             Error.DomainRule(

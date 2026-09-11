@@ -116,4 +116,14 @@ public enum ReferenceType
 
     /// <summary>A returnable core coming back from a customer.</summary>
     CoreReturn = 11,
+
+    /// <summary>
+    /// A supplier's own invoice, which is where a price variance comes from.
+    /// <para>
+    /// Their number, not one of ours. It is the only reference in this ledger that points at a
+    /// document the company did not write, and it is the right one: "why did this shelf change
+    /// value on a day nothing moved?" is answered by the piece of paper that caused it.
+    /// </para>
+    /// </summary>
+    SupplierInvoice = 12,
 }

@@ -32,6 +32,17 @@ public enum MovementType
 
     /// <summary>Written off: damaged, lost, or expired.</summary>
     WriteOff = 8,
+
+    /// <summary>
+    /// The shelf was worth something different from what the receipt said.
+    /// <para>
+    /// The one movement type that carries no quantity. Nothing arrived and nothing left — the
+    /// supplier's invoice simply charged a figure the purchase order had not predicted, and the
+    /// balance sheet has to agree with the money. A quantity of zero is not a bug here; it is the
+    /// whole shape of the fact.
+    /// </para>
+    /// </summary>
+    PriceVariance = 9,
 }
 
 /// <summary>
