@@ -76,6 +76,7 @@ public sealed class PurchasingModule : IModule
         services.AddScoped<ISupplierAgreementRepository, SupplierAgreementRepository>();
         services.AddScoped<ISupplierPriceRepository, SupplierPriceRepository>();
         services.AddScoped<ISupplierInvoiceRepository, SupplierInvoiceRepository>();
+        services.AddScoped<IRappelAccrualRepository, RappelAccrualRepository>();
         services.AddScoped<IPurchasingReadStore, PurchasingReadStore>();
 
         services.AddModuleHandlers(

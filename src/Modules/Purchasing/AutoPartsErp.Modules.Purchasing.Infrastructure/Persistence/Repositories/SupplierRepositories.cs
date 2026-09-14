@@ -197,3 +197,69 @@ public sealed class SupplierInvoiceRepository : ISupplierInvoiceRepository
         _context.SupplierInvoices.Remove(aggregate);
     }
 }
+
+/// <summary>Write-side access to what a supplier's rebate has earned so far.</summary>
+public sealed class RappelAccrualRepository : IRappelAccrualRepository
+{
+    private readonly PurchasingDbContext _context;
+
+    /// <summary>Initializes the repository.</summary>
+    public RappelAccrualRepository(PurchasingDbContext context)
+    {
+        _context = context;
+    }
+
+    /// <inheritdoc />
+    public Task<RappelAccrual?> GetByIdAsync(
+        RappelAccrualId id,
+        CancellationToken cancellationToken = default) =>
+        _context.RappelAccruals.FirstOrDefaultAsync(accrual => accrual.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> ExistsAsync(RappelAccrualId id, CancellationToken cancellationToken = default) =>
+        _context.RappelAccruals.AnyAsync(accrual => accrual.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<RappelAccrual?> GetForPeriodAsync(
+        SupplierRef supplierId,
+        DateOnly on,
+        CancellationToken cancellationToken = default) =>
+        _context.RappelAccruals.FirstOrDefaultAsync(
+            accrual => accrual.SupplierId == supplierId
+                && accrual.PeriodFrom <= on
+                && accrual.PeriodTo >= on,
+            cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<RappelAccrual>> GetOutstandingAsync(
+        CancellationToken cancellationToken = default)
+    {
+        // Filtered in the database on the same subtraction the aggregate exposes, rather than
+        // loading every open period and asking each one. Written out because Outstanding is
+        // computed and has no column to query.
+        List<RappelAccrual> accruals = await _context.RappelAccruals
+            .Where(accrual => !accrual.IsClosed)
+            .Where(accrual =>
+                accrual.Earned.Amount > accrual.TakenOnInvoices.Amount + accrual.Credited.Amount)
+            .OrderByDescending(accrual =>
+                accrual.Earned.Amount - accrual.TakenOnInvoices.Amount - accrual.Credited.Amount)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return accruals;
+    }
+
+    /// <inheritdoc />
+    public void Add(RappelAccrual aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.RappelAccruals.Add(aggregate);
+    }
+
+    /// <inheritdoc />
+    public void Remove(RappelAccrual aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.RappelAccruals.Remove(aggregate);
+    }
+}

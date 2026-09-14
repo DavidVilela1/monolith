@@ -50,6 +50,9 @@ public sealed class PurchasingDbContext : ModuleDbContext, IPurchasingUnitOfWork
     /// <summary>Suppliers' own documents, with the lines drafted from receipts.</summary>
     public DbSet<SupplierInvoice> SupplierInvoices => Set<SupplierInvoice>();
 
+    /// <summary>What each supplier's rebate has earned so far, one row per period.</summary>
+    public DbSet<RappelAccrual> RappelAccruals => Set<RappelAccrual>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -72,6 +75,9 @@ public sealed class PurchasingDbContext : ModuleDbContext, IPurchasingUnitOfWork
 
         modelBuilder.Entity<SupplierInvoice>()
             .HasQueryFilter(invoice => !invoice.IsDeleted && invoice.TenantId == CurrentTenantId);
+
+        modelBuilder.Entity<RappelAccrual>()
+            .HasQueryFilter(accrual => accrual.TenantId == CurrentTenantId);
 
         base.OnModelCreating(modelBuilder);
     }

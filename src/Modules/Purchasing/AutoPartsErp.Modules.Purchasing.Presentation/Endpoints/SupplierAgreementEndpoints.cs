@@ -73,6 +73,31 @@ public sealed class SupplierAgreementEndpoints : IEndpointGroup
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
+        group.MapGet("/rappel/outstanding", OutstandingRappelAsync)
+            .WithName("GetOutstandingRappel")
+            .RequirePermission(Permissions.Purchasing.ManageAgreements)
+            .WithSummary(
+                "What every supplier still owes in rebate, worst first. The shortfall from "
+                + "crossing a step after documents went out, and the whole of any credit-note "
+                + "rebate that has not arrived.")
+            .Produces<IReadOnlyList<RappelAccrualDto>>();
+
+        group.MapPost("/rappel/{rappelAccrualId:guid}/credit-notes", RecordRappelCreditAsync)
+            .WithName("RecordRappelCreditNote")
+            .RequirePermission(Permissions.Purchasing.ManageAgreements)
+            .WithSummary("Record a rebate credit note the supplier sent against a period.")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
+        group.MapPost("/rappel/{rappelAccrualId:guid}/close", CloseRappelPeriodAsync)
+            .WithName("CloseRappelPeriod")
+            .RequirePermission(Permissions.Purchasing.ManageAgreements)
+            .WithSummary("Close a rebate period once it is over. What is outstanding becomes a claim.")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
         group.MapPut("/supplier-invoices/{supplierInvoiceId:guid}/reconcile", ReconcileAsync)
             .WithName("ReconcileSupplierInvoice")
             .RequirePermission(Permissions.Purchasing.ManageInvoices)
@@ -186,6 +211,41 @@ public sealed class SupplierAgreementEndpoints : IEndpointGroup
         return result.ToNoContent();
     }
 
+    private static async Task<IResult> OutstandingRappelAsync(
+        IDispatcher dispatcher,
+        CancellationToken cancellationToken)
+    {
+        Result<IReadOnlyList<RappelAccrualDto>> result = await dispatcher.SendAsync(
+            new GetOutstandingRappelQuery(), cancellationToken);
+
+        return result.ToOk();
+    }
+
+    private static async Task<IResult> RecordRappelCreditAsync(
+        IDispatcher dispatcher,
+        Guid rappelAccrualId,
+        RappelCreditRequest body,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+
+        Result result = await dispatcher.SendAsync(
+            new RecordRappelCreditNoteCommand(rappelAccrualId, body.Amount), cancellationToken);
+
+        return result.ToNoContent();
+    }
+
+    private static async Task<IResult> CloseRappelPeriodAsync(
+        IDispatcher dispatcher,
+        Guid rappelAccrualId,
+        CancellationToken cancellationToken)
+    {
+        Result result = await dispatcher.SendAsync(
+            new CloseRappelPeriodCommand(rappelAccrualId), cancellationToken);
+
+        return result.ToNoContent();
+    }
+
     private static async Task<IResult> ReconcileAsync(
         IDispatcher dispatcher,
         Guid supplierInvoiceId,
@@ -293,3 +353,7 @@ public sealed record ReconcileRequest(
 /// <summary>Body of a request that takes the supplier's price on one line.</summary>
 /// <param name="UnitPrice">What their document says one unit costs.</param>
 public sealed record LinePriceRequest(decimal UnitPrice);
+
+/// <summary>Body of a request that records a rebate credit note.</summary>
+/// <param name="Amount">What the credit note is for.</param>
+public sealed record RappelCreditRequest(decimal Amount);

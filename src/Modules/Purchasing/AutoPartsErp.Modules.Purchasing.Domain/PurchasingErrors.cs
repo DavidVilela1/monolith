@@ -448,4 +448,48 @@ public static class PurchasingErrors
                 "purchasing.supplier_invoice.already_cancelled",
                 "That draft has already been withdrawn.");
     }
+
+    /// <summary>Failures relating to a <see cref="Agreements.RappelAccrual"/>.</summary>
+    public static class Accrual
+    {
+        /// <summary>The period does not exist.</summary>
+        public static Error NotFound(string identifier) =>
+            Error.NotFound(
+                "purchasing.rappel_accrual.not_found",
+                $"No rebate period matches '{identifier}'.");
+
+        /// <summary>There is no rebate, so there is nothing to accrue.</summary>
+        public static readonly Error NoRebateToAccrue =
+            Error.DomainRule(
+                "purchasing.rappel_accrual.no_rebate",
+                "That agreement has no rebate, so there is nothing to accrue. A period tracking " +
+                "zero would be a screen telling a buyer to chase nothing.");
+
+        /// <summary>The period is closed.</summary>
+        public static readonly Error AlreadyClosed =
+            Error.DomainRule(
+                "purchasing.rappel_accrual.already_closed",
+                "That rebate period is closed. What it earned is settled, and reopening it would " +
+                "restate a figure somebody has already taken to the supplier.");
+
+        /// <summary>The period is not over yet.</summary>
+        public static readonly Error PeriodNotOver =
+            Error.DomainRule(
+                "purchasing.rappel_accrual.period_not_over",
+                "That period has not ended yet. Closing it early stops counting purchases that " +
+                "still belong to it, and the year settles at a step it had not finished climbing.");
+
+        /// <summary>A reversal larger than what the period has bought.</summary>
+        public static readonly Error ReversalTooLarge =
+            Error.DomainRule(
+                "purchasing.rappel_accrual.reversal_too_large",
+                "That is more than the period has bought. Something earlier is wrong, and taking " +
+                "it out anyway would leave the period claiming to have bought less than nothing.");
+
+        /// <summary>A credit note has to be worth something.</summary>
+        public static readonly Error CreditNotPositive =
+            Error.Validation(
+                "purchasing.rappel_accrual.credit_not_positive",
+                "A rebate credit note has to be above zero.");
+    }
 }

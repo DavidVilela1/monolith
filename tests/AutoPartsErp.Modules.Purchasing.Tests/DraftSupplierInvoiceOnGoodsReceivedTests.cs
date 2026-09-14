@@ -178,12 +178,44 @@ public sealed class DraftSupplierInvoiceOnGoodsReceivedTests
         world.Invoices.Single().Lines.Should().ContainSingle();
     }
 
+    /// <summary>
+    /// The draft is stamped at the step the year has actually reached, not at the first one. This
+    /// used to pass zero: every scaled rebate settled at its lowest rate, and the shortfall was
+    /// carried silently until somebody reconciled a statement.
+    /// </summary>
+    [Fact]
+    public async Task The_draft_takes_the_step_the_period_has_already_climbed_to()
+    {
+        var world = new World();
+        world.AgreeScaledRebate();
+        world.AgreePrice(4.50m);
+        world.AlreadyBought(30_000m);
+
+        await world.Receive(quantity: 100);
+
+        world.Invoices.Single().RappelRatePercent.Should().Be(2m);
+    }
+
+    /// <summary>A year that has bought nothing has reached no step, and the rate says so.</summary>
+    [Fact]
+    public async Task A_period_that_has_bought_nothing_is_stamped_at_no_rebate()
+    {
+        var world = new World();
+        world.AgreeScaledRebate();
+        world.AgreePrice(4.50m);
+
+        await world.Receive(quantity: 100);
+
+        world.Invoices.Single().RappelRatePercent.Should().Be(0m);
+    }
+
     /// <summary>Everything one of these tests needs, wired by hand like the rest of this suite.</summary>
     private sealed class World
     {
         private readonly FakeInvoices _invoices = new();
         private readonly FakeAgreements _agreements = new();
         private readonly FakePrices _prices = new();
+        private readonly FakeAccruals _accruals = new();
         private readonly PurchaseOrder _order;
 
         public World()
@@ -201,12 +233,35 @@ public sealed class DraftSupplierInvoiceOnGoodsReceivedTests
             _agreements.Agreement = agreement;
         }
 
+        public void AgreeScaledRebate()
+        {
+            SupplierAgreement agreement = NewAgreement();
+            agreement.RebateOnInvoice(RappelScale.Of(
+            [
+                new RappelStep(Eur(25_000m), 2m),
+                new RappelStep(Eur(50_000m), 3m),
+            ]).Value);
+            _agreements.Agreement = agreement;
+        }
+
         public void AgreeRebateByCreditNote(decimal percent)
         {
             SupplierAgreement agreement = NewAgreement();
             agreement.RebateByCreditNote(
                 RappelScale.Flat(percent, Currency.Eur).Value, RappelPeriod.Annual);
             _agreements.Agreement = agreement;
+        }
+
+        /// <summary>What the period has already bought, which is what decides the step.</summary>
+        public void AlreadyBought(decimal amount, RappelBasis basis = RappelBasis.OnInvoice)
+        {
+            RappelAccrual accrual = RappelAccrual.Open(
+                Fixture.Supplier, "BOSCH", basis,
+                new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), Currency.Eur).Value;
+
+            accrual.Record(Eur(amount), Eur(0m), RappelScale.Flat(1m, Currency.Eur).Value);
+
+            _accruals.Accrual = accrual;
         }
 
         public void AgreePrice(decimal unitPrice, DateOnly? from = null) =>
@@ -236,6 +291,7 @@ public sealed class DraftSupplierInvoiceOnGoodsReceivedTests
                 _invoices,
                 _agreements,
                 _prices,
+                _accruals,
                 new FakeOrders(_order),
                 new FakeCatalogue(),
                 new FixedClock()).HandleAsync(receipt);
@@ -332,6 +388,30 @@ public sealed class DraftSupplierInvoiceOnGoodsReceivedTests
         public void Add(SupplierPrice aggregate) => Price = aggregate;
 
         public void Remove(SupplierPrice aggregate) => Price = null;
+    }
+
+    private sealed class FakeAccruals : IRappelAccrualRepository
+    {
+        public RappelAccrual? Accrual { get; set; }
+
+        public Task<RappelAccrual?> GetByIdAsync(
+            RappelAccrualId id, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Accrual);
+
+        public Task<bool> ExistsAsync(RappelAccrualId id, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Accrual is not null);
+
+        public Task<RappelAccrual?> GetForPeriodAsync(
+            SupplierRef supplierId, DateOnly on, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Accrual is not null && Accrual.Covers(on) ? Accrual : null);
+
+        public Task<IReadOnlyList<RappelAccrual>> GetOutstandingAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<RappelAccrual>>(Accrual is null ? [] : [Accrual]);
+
+        public void Add(RappelAccrual aggregate) => Accrual = aggregate;
+
+        public void Remove(RappelAccrual aggregate) => Accrual = null;
     }
 
     private sealed class FakeOrders : IPurchaseOrderRepository

@@ -323,6 +323,40 @@ public sealed class SupplierAgreement : AggregateRoot<SupplierAgreementId>, IAud
         _rappelSteps.AddRange(scale.Steps);
     }
 
+    /// <summary>
+    /// The stretch of days the rebate for a given day is measured over.
+    /// <para>
+    /// Calendar periods, not anniversaries of the agreement. A rebate is reconciled against a
+    /// supplier's own accounts and theirs run on the calendar — an annual scale that reset every
+    /// April because that is when somebody signed would produce a figure the supplier has never
+    /// heard of.
+    /// </para>
+    /// <para>
+    /// Null when there is no rebate, because then there is no period: a question about what the
+    /// quarter bought is only worth asking when something depends on the answer.
+    /// </para>
+    /// </summary>
+    /// <param name="on">A day inside the period.</param>
+    public (DateOnly From, DateOnly To)? PeriodFor(DateOnly on) => RappelPeriod switch
+    {
+        RappelPeriod.Monthly => (
+            new DateOnly(on.Year, on.Month, 1),
+            new DateOnly(on.Year, on.Month, DateTime.DaysInMonth(on.Year, on.Month))),
+        RappelPeriod.Quarterly => QuarterOf(on),
+        RappelPeriod.Annual => (new DateOnly(on.Year, 1, 1), new DateOnly(on.Year, 12, 31)),
+        _ => null,
+    };
+
+    private static (DateOnly From, DateOnly To) QuarterOf(DateOnly on)
+    {
+        int firstMonth = (((on.Month - 1) / 3) * 3) + 1;
+        int lastMonth = firstMonth + 2;
+
+        return (
+            new DateOnly(on.Year, firstMonth, 1),
+            new DateOnly(on.Year, lastMonth, DateTime.DaysInMonth(on.Year, lastMonth)));
+    }
+
     /// <summary>True when the given day falls inside the agreement's life.</summary>
     /// <param name="on">The day being priced for.</param>
     public bool IsEffectiveOn(DateOnly on) =>

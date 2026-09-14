@@ -504,7 +504,7 @@ returns both.
 so a route added later without a thought about who may call it is refused rather than open. Three
 routes say otherwise — sign in, refresh, sign out — because they are where a token comes from.
 
-**Every one of the 152 routes behind a permission names which one.** Not a group-wide check per module:
+**Every one of the 165 routes behind a permission names which one.** Not a group-wide check per module:
 `GET /api/inventory/stock/replenishment` needs `inventory.stock.read` and
 `POST /api/inventory/stock/adjust` needs `inventory.stock.adjust`, and they sit four lines apart
 in the same file. The catalogue lives in the shared kernel rather than in Access, and it has to —
@@ -837,6 +837,28 @@ paying more than was counted at prices that were agreed. Or the line is correcte
 which does not touch the agreed price. A supplier overcharging on one delivery is a conversation
 about that delivery; a supplier who has genuinely raised their prices is a new agreed price with a
 date on it. Otherwise one unchallenged invoice quietly becomes the new contract.
+
+**The rebate shortfall and the rebate accrual are the same subtraction.** A rebate taken on the
+invoice is taken at the rate the period had reached that day, so crossing a step in October leaves
+March's documents short by the difference — a claim the supplier will not send unasked. A rebate
+taken by credit note is not taken at all until the end, so the whole of it is outstanding and the
+shelf is carried too high meanwhile. Both are what the scale says the period earned, less what has
+already come off: one object answers both, and neither was visible before it existed.
+
+**The earned figure is recomputed on the whole period, never added to.** The scale is not marginal,
+so crossing a step re-rates everything bought so far. A running sum of per-document rebates would
+keep the earlier ones at the rate they were bought at, which is precisely the error worth finding —
+and it is usually far larger than the order that crossed the step.
+
+**A period can go back down through a step.** A cancelled order or a credited document takes
+purchases out again, and without that the year would permanently claim a rate it never reached.
+Taking more off documents than the year turned out to earn is reported rather than clamped away:
+the outstanding figure stays at nothing, because the company is not owed money, and a separate flag
+says it owes some back.
+
+**Calendar periods, not anniversaries of the agreement.** A rebate is reconciled against the
+supplier's own accounts and theirs run on the calendar. An annual scale resetting every April
+because that is when somebody signed would produce a figure the supplier has never heard of.
 
 **What is owed is their figure, not ours.** A payable opened for the computed total would never
 match the money leaving the bank, and reconciling those two afterwards is the job this whole
@@ -1223,19 +1245,15 @@ concurrency in all three modules that hand out numbers.
   dispatched twice at two costs has no single unit cost, and the customer bringing three of ten
   back does not say which van they came on — so the figure is the average of what left, and there
   is no more precise one to be had short of serial numbers.
-- The supplier agreement, the agreed prices and the supplier invoice are domain and tests only.
-  Nothing persists them, no route reaches them, and no goods receipt drafts one yet — the wiring
-  is the next delivery. The shapes were settled first on purpose: a rebate scale is cheaper to
-  argue about before it has a table and eleven endpoints hanging off it.
-- A rebate settled on the invoice is taken at the rate the period had reached on the day. A rate
-  reached in October cannot be applied to invoices that went out in March, so crossing a step
-  leaves a claim on the difference that nothing here chases.
-- A rebate settled by credit note leaves stock overvalued for the whole period, and the credit
-  note then lands looking like profit that fell out of the sky. Accruing it as it is earned is
-  the piece that makes the margin on every sale in between true, and it is not built.
-- A supplier invoice values what is owed; it does not revalue the shelf. Inventory still costs a
-  receipt at the purchase order's price, so a delivery invoiced at a different figure leaves a
-  price variance nothing posts or reports.
+- A rebate period is opened by the first settled document that falls into it, and closed by
+  hand. Nothing closes last year's periods on its own, so a buyer who never presses the button
+  leaves them open and the claim sitting on a screen nobody reads.
+- A price variance only reaches the part of the delivery still on the shelf. What was already
+  sold went out at the old cost, and its share of the difference belongs in cost of sale — which
+  needs a general ledger this system does not have. The figure is knowable and nothing reports it.
+- A draft is stamped at the step the period had reached when the goods arrived, and documents
+  already settled are never re-rated. That is the shortfall the accrual reports rather than
+  something it removes: the company still has to ask the supplier for it.
 - A shortfall written off in transit produces no shrinkage posting, because there is no general
   ledger to post it to. The `StockTransferClosedShort` event carries the lost value ready for one.
 - Storage bins are recorded but never used: `StockMovement.InBin` has no caller, so no movement

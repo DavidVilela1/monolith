@@ -135,5 +135,32 @@ public interface ISupplierInvoiceRepository : IRepository<SupplierInvoice, Suppl
         CancellationToken cancellationToken = default);
 }
 
+/// <summary>Write-side access to what a supplier's rebate has earned so far.</summary>
+public interface IRappelAccrualRepository : IRepository<RappelAccrual, RappelAccrualId>
+{
+    /// <summary>
+    /// The period covering a given day for a supplier, or null when none has been opened.
+    /// <para>
+    /// Opened lazily, by the first settled document that falls into it. A job that pre-created
+    /// every period for every supplier every January would fill the table with rows for suppliers
+    /// nobody bought from that year.
+    /// </para>
+    /// </summary>
+    Task<RappelAccrual?> GetForPeriodAsync(
+        SupplierRef supplierId,
+        DateOnly on,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every open period with something still owed on it, worst first.
+    /// <para>
+    /// The buyer's screen before a supplier meeting, and the reason any of this exists: a figure
+    /// nobody can see is a figure nobody chases.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<RappelAccrual>> GetOutstandingAsync(
+        CancellationToken cancellationToken = default);
+}
+
 /// <summary>The Purchasing module's unit of work.</summary>
 public interface IPurchasingUnitOfWork : IUnitOfWork;

@@ -44,3 +44,68 @@ public sealed record SupplierAgreementEndedDomainEvent(
     SupplierAgreementId AgreementId,
     SupplierRef SupplierId,
     DateOnly LastDay) : DomainEvent;
+
+/// <summary>
+/// The period crossed a step and the whole of it is now worth more.
+/// <para>
+/// Announced only when the rate actually moves. A buyer wants to be told the year has gone to
+/// three per cent; being told another eleven euros were bought is noise, and noise is what makes
+/// people stop reading.
+/// </para>
+/// </summary>
+/// <param name="AccrualId">The period.</param>
+/// <param name="SupplierId">The supplier.</param>
+/// <param name="SupplierCode">Their short code.</param>
+/// <param name="RatePercent">The rate the period has now reached.</param>
+/// <param name="PurchasedAmount">What the period has bought, net.</param>
+/// <param name="GainedAmount">
+/// What crossing the step was worth on its own — the re-rating of everything already bought, which
+/// is usually far more than the goods that crossed it.
+/// </param>
+/// <param name="OutstandingAmount">What the supplier still owes for the period.</param>
+/// <param name="CurrencyCode">The currency.</param>
+public sealed record RappelStepReachedDomainEvent(
+    RappelAccrualId AccrualId,
+    SupplierRef SupplierId,
+    string SupplierCode,
+    decimal RatePercent,
+    decimal PurchasedAmount,
+    decimal GainedAmount,
+    decimal OutstandingAmount,
+    string CurrencyCode) : DomainEvent;
+
+/// <summary>The supplier credited some of what the period earned.</summary>
+/// <param name="AccrualId">The period.</param>
+/// <param name="SupplierId">The supplier.</param>
+/// <param name="CreditedAmount">What the credit note was for.</param>
+/// <param name="OutstandingAmount">What is still owed after it.</param>
+/// <param name="CurrencyCode">The currency.</param>
+public sealed record RappelCreditedDomainEvent(
+    RappelAccrualId AccrualId,
+    SupplierRef SupplierId,
+    decimal CreditedAmount,
+    decimal OutstandingAmount,
+    string CurrencyCode) : DomainEvent;
+
+/// <summary>
+/// A rebate period ended, and what it is still owed became a claim.
+/// </summary>
+/// <param name="AccrualId">The period.</param>
+/// <param name="SupplierId">The supplier.</param>
+/// <param name="SupplierCode">Their short code.</param>
+/// <param name="PeriodFrom">The first day.</param>
+/// <param name="PeriodTo">The last day, inclusive.</param>
+/// <param name="PurchasedAmount">What the period bought, net.</param>
+/// <param name="EarnedAmount">What the scale says it earned.</param>
+/// <param name="OutstandingAmount">What the supplier still owes for it.</param>
+/// <param name="CurrencyCode">The currency.</param>
+public sealed record RappelPeriodClosedDomainEvent(
+    RappelAccrualId AccrualId,
+    SupplierRef SupplierId,
+    string SupplierCode,
+    DateOnly PeriodFrom,
+    DateOnly PeriodTo,
+    decimal PurchasedAmount,
+    decimal EarnedAmount,
+    decimal OutstandingAmount,
+    string CurrencyCode) : DomainEvent;

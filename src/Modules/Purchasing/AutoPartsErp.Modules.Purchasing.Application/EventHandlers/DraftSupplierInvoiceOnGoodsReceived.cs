@@ -55,6 +55,7 @@ public sealed class DraftSupplierInvoiceOnGoodsReceived
     private readonly ISupplierInvoiceRepository _invoices;
     private readonly ISupplierAgreementRepository _agreements;
     private readonly ISupplierPriceRepository _prices;
+    private readonly IRappelAccrualRepository _accruals;
     private readonly IPurchaseOrderRepository _orders;
     private readonly ICatalogDirectory _catalogue;
     private readonly IDateTimeProvider _clock;
@@ -64,6 +65,7 @@ public sealed class DraftSupplierInvoiceOnGoodsReceived
         ISupplierInvoiceRepository invoices,
         ISupplierAgreementRepository agreements,
         ISupplierPriceRepository prices,
+        IRappelAccrualRepository accruals,
         IPurchaseOrderRepository orders,
         ICatalogDirectory catalogue,
         IDateTimeProvider clock)
@@ -71,6 +73,7 @@ public sealed class DraftSupplierInvoiceOnGoodsReceived
         _invoices = invoices;
         _agreements = agreements;
         _prices = prices;
+        _accruals = accruals;
         _orders = orders;
         _catalogue = catalogue;
         _clock = clock;
@@ -200,11 +203,16 @@ public sealed class DraftSupplierInvoiceOnGoodsReceived
 
         if (agreement is not null && agreement.Currency == currency)
         {
-            // Zero purchases so far, for now. What the period has bought is a figure this module
-            // can compute and does not yet — until it does, a scaled rebate settles at its first
-            // step, which is the safe end to be wrong at: the company under-claims rather than
-            // taking a discount the supplier has not granted.
-            rate = agreement.InvoiceRateOn(Money.Zero(currency));
+            // What the period has bought so far, which is what decides the step. It used to be
+            // zero here, and every scaled rebate therefore settled at its first step — the safe
+            // end to be wrong at, but wrong. The shortfall it left is the same figure the accrual
+            // now reports as outstanding, so getting this right shrinks the claim rather than
+            // hiding it.
+            RappelAccrual? accrual = await _accruals
+                .GetForPeriodAsync(order.SupplierId, today, cancellationToken)
+                .ConfigureAwait(false);
+
+            rate = agreement.InvoiceRateOn(accrual?.Purchased ?? Money.Zero(currency));
         }
 
         return SupplierInvoice.DraftFor(
