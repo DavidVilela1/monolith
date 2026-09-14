@@ -56,4 +56,29 @@ public sealed class PartnerDirectory : IPartnerDirectory
                 partner.CanTakeNewOrders,
                 partner.CanPlacePurchaseOrders);
     }
+
+    /// <inheritdoc />
+    public async Task<SupplierPaymentTerms?> GetSupplierTermsAsync(
+        Guid partnerId,
+        CancellationToken cancellationToken = default)
+    {
+        var id = new PartnerId(partnerId);
+
+        Partner? partner = await _context.Partners
+            .AsNoTracking()
+            .AsSingleQuery()
+            .FirstOrDefaultAsync(candidate => candidate.Id == id, cancellationToken)
+            .ConfigureAwait(false);
+
+        // Null for a partner who is not a supplier, rather than terms of zero days. A purchase
+        // ledger asking about somebody the company does not buy from has found a bug upstream,
+        // and answering "pay them immediately" would bury it.
+        return partner?.SupplierTerms is not { } terms
+            ? null
+            : new SupplierPaymentTerms(
+                partner.Id.Value,
+                partner.Code,
+                terms.PaymentTerms.DueInDays,
+                terms.OurAccountNumber);
+    }
 }

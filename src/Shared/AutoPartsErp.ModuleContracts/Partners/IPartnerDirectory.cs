@@ -24,6 +24,21 @@ public interface IPartnerDirectory
     /// <param name="partnerId">The partner.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     Task<PartnerTradingStatus?> GetAsync(Guid partnerId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// When a supplier expects to be paid, or null when the partner is not one.
+    /// <para>
+    /// Separate from <see cref="GetAsync"/> rather than another field on it, and the separation is
+    /// the usual one: whether a company can be traded with is asked on every screen that names
+    /// them, and what the company owes them and when is asked by the two or three places that
+    /// settle money. Two questions, two audiences.
+    /// </para>
+    /// </summary>
+    /// <param name="partnerId">The partner.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<SupplierPaymentTerms?> GetSupplierTermsAsync(
+        Guid partnerId,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -44,3 +59,19 @@ public sealed record PartnerTradingStatus(
     bool IsSupplier,
     bool CanTakeNewOrders,
     bool CanPlacePurchaseOrders);
+
+/// <summary>
+/// What was agreed about paying a supplier, flattened.
+/// </summary>
+/// <param name="PartnerId">The supplier.</param>
+/// <param name="Code">Their short code.</param>
+/// <param name="PaymentDays">
+/// Days from the document's date to when it falls due. Zero means on receipt, which is a real
+/// arrangement and not a missing figure.
+/// </param>
+/// <param name="OurAccountNumber">Our account number with them, as it appears on their paperwork.</param>
+public sealed record SupplierPaymentTerms(
+    Guid PartnerId,
+    string Code,
+    int PaymentDays,
+    string? OurAccountNumber);

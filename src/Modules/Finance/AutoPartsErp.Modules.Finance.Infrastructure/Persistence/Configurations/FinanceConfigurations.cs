@@ -1,6 +1,7 @@
 using AutoPartsErp.Modules.Finance.Domain;
 using AutoPartsErp.Modules.Finance.Domain.Customers;
 using AutoPartsErp.Modules.Finance.Domain.Receipts;
+using AutoPartsErp.Modules.Finance.Domain.Payables;
 using AutoPartsErp.Modules.Finance.Domain.Receivables;
 using AutoPartsErp.SharedKernel.ValueObjects;
 using Microsoft.EntityFrameworkCore;
@@ -138,6 +139,111 @@ public sealed class OpenItemConfiguration : IEntityTypeConfiguration<OpenItem>
         builder.HasIndex(item => new { item.TenantId, item.CustomerId, item.DueDate })
             .HasFilter("status IN ('Open', 'PartiallySettled')")
             .HasDatabaseName("ix_open_items_tenant_outstanding");
+    }
+}
+
+/// <summary>
+/// Maps <see cref="PayableItem"/> onto <c>finance.payable_items</c>.
+/// <para>
+/// Its own table, not a side flag on <c>open_items</c>. A sales ledger and a purchase ledger
+/// sharing one table would, one afternoon, meet a query that forgot the filter and net what a
+/// customer owes against what the company owes a supplier.
+/// </para>
+/// </summary>
+public sealed class PayableItemConfiguration : IEntityTypeConfiguration<PayableItem>
+{
+    /// <inheritdoc />
+    public void Configure(EntityTypeBuilder<PayableItem> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.ToTable("payable_items");
+
+        builder.HasKey(item => item.Id);
+
+        builder.Property(item => item.Id)
+            .HasConversion(id => id.Value, value => new PayableItemId(value))
+            .ValueGeneratedNever();
+
+        builder.Property(item => item.Version)
+            .IsRowVersion()
+            .HasColumnName("xmin")
+            .HasColumnType("xid");
+
+        builder.Property(item => item.TenantId).IsRequired();
+
+        builder.Property(item => item.SupplierId)
+            .HasConversion(supplier => supplier.Value, value => new SupplierRef(value))
+            .HasColumnName("supplier_id")
+            .IsRequired();
+
+        builder.Property(item => item.SupplierCode).HasMaxLength(30).IsRequired();
+
+        builder.Property(item => item.SupplierInvoiceId)
+            .HasConversion(document => document.Value, value => new SupplierInvoiceRef(value))
+            .HasColumnName("supplier_invoice_id")
+            .IsRequired();
+
+        // No unique index on the supplier's number: it is their sequence, and they restart series
+        // and resend copies of documents already settled.
+        builder.Property(item => item.DocumentNumber)
+            .HasMaxLength(PayableItem.MaxDocumentNumberLength)
+            .IsRequired();
+
+        builder.Property(item => item.Kind)
+            .HasConversion<string>()
+            .HasMaxLength(30)
+            .IsRequired();
+
+        builder.Property(item => item.Status)
+            .HasConversion<string>()
+            .HasMaxLength(30)
+            .IsRequired();
+
+        builder.Property(item => item.DocumentDate).IsRequired();
+        builder.Property(item => item.DueDate).IsRequired();
+
+        builder.Property(item => item.CancellationReason)
+            .HasMaxLength(PayableItem.MaxReasonLength);
+
+        builder.OwnsOne(item => item.OriginalAmount, amount =>
+        {
+            amount.Property(value => value.Amount)
+                .HasColumnName("original_amount")
+                .HasPrecision(18, 4)
+                .IsRequired();
+
+            amount.Property(value => value.Currency).AsCurrency("currency");
+        });
+
+        builder.OwnsOne(item => item.SettledAmount, amount =>
+        {
+            amount.Property(value => value.Amount)
+                .HasColumnName("settled_amount")
+                .HasPrecision(18, 4)
+                .IsRequired();
+
+            amount.Property(value => value.Currency).AsCurrency("settled_currency");
+        });
+
+        builder.Navigation(item => item.OriginalAmount).IsRequired();
+        builder.Navigation(item => item.SettledAmount).IsRequired();
+
+        // One item per supplier document. The handler checks before raising one; this is what
+        // makes that check a guarantee rather than a race, and a race here pays a supplier twice.
+        builder.HasIndex(item => new { item.TenantId, item.SupplierInvoiceId })
+            .IsUnique()
+            .HasDatabaseName("ux_payable_items_tenant_document");
+
+        // The payment run and the supplier statement, both. Partial on the two live statuses so it
+        // stays the size of what is owed rather than of everything ever bought.
+        builder.HasIndex(item => new { item.TenantId, item.DueDate })
+            .HasFilter("status IN ('Open', 'PartiallySettled')")
+            .HasDatabaseName("ix_payable_items_tenant_due");
+
+        builder.HasIndex(item => new { item.TenantId, item.SupplierId, item.DueDate })
+            .HasFilter("status IN ('Open', 'PartiallySettled')")
+            .HasDatabaseName("ix_payable_items_tenant_supplier_outstanding");
     }
 }
 

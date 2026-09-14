@@ -1,6 +1,7 @@
 using AutoPartsErp.Modules.Finance.Domain;
 using AutoPartsErp.Modules.Finance.Domain.Customers;
 using AutoPartsErp.Modules.Finance.Domain.Receipts;
+using AutoPartsErp.Modules.Finance.Domain.Payables;
 using AutoPartsErp.Modules.Finance.Domain.Receivables;
 using AutoPartsErp.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -37,6 +38,9 @@ public sealed class FinanceDbContext : ModuleDbContext, IFinanceUnitOfWork
     /// <summary>The documents on customers' accounts.</summary>
     public DbSet<OpenItem> OpenItems => Set<OpenItem>();
 
+    /// <summary>The purchase ledger: what the company owes its suppliers.</summary>
+    public DbSet<PayableItem> PayableItems => Set<PayableItem>();
+
     /// <summary>Money received, with what it paid.</summary>
     public DbSet<Receipt> Receipts => Set<Receipt>();
 
@@ -56,6 +60,9 @@ public sealed class FinanceDbContext : ModuleDbContext, IFinanceUnitOfWork
         // as losing it. A document that is no longer owed is Cancelled, and a cancelled item stays
         // in every list it was ever in.
         modelBuilder.Entity<OpenItem>()
+            .HasQueryFilter(item => item.TenantId == CurrentTenantId);
+
+        modelBuilder.Entity<PayableItem>()
             .HasQueryFilter(item => item.TenantId == CurrentTenantId);
 
         modelBuilder.Entity<Receipt>()

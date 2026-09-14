@@ -203,4 +203,100 @@ public static class FinanceErrors
                 $"A credit period is between 0 and {Customers.CustomerTerms.MaxPaymentDueInDays} "
                 + "days.");
     }
+
+    /// <summary>Failures relating to a <see cref="Payables.PayableItem"/>.</summary>
+    public static class Payable
+    {
+        /// <summary>The item does not exist.</summary>
+        public static Error NotFound(string identifier) =>
+            Error.NotFound("finance.payable.not_found", $"No payable item matches '{identifier}'.");
+
+        /// <summary>A supplier is required.</summary>
+        public static readonly Error SupplierRequired =
+            Error.Validation("finance.payable.supplier_required", "A supplier is required.");
+
+        /// <summary>A supplier code is required.</summary>
+        public static readonly Error SupplierCodeRequired =
+            Error.Validation("finance.payable.supplier_code_required", "A supplier code is required.");
+
+        /// <summary>The document behind it is required.</summary>
+        public static readonly Error DocumentRequired =
+            Error.Validation(
+                "finance.payable.document_required",
+                "A payable item has to say which document it came from. A figure on a supplier's " +
+                "account with nothing behind it is one nobody can check.");
+
+        /// <summary>Their document number is required.</summary>
+        public static readonly Error DocumentNumberRequired =
+            Error.Validation(
+                "finance.payable.document_number_required",
+                "The supplier's own document number is required. It is what a payment references " +
+                "and what their statement is reconciled against.");
+
+        /// <summary>Their document number is too long.</summary>
+        public static readonly Error DocumentNumberTooLong =
+            Error.Validation(
+                "finance.payable.document_number_too_long",
+                "A supplier document number cannot be longer than 60 characters.");
+
+        /// <summary>Invoice, credit note or debit note.</summary>
+        public static readonly Error KindRequired =
+            Error.Validation(
+                "finance.payable.kind_required",
+                "Say what kind of document this is: an invoice, a credit note or a debit note.");
+
+        /// <summary>A document for nothing is not something a purchase ledger should carry.</summary>
+        public static readonly Error AmountNotPositive =
+            Error.Validation(
+                "finance.payable.amount_not_positive",
+                "A payable item has to be worth something. Which way it points is its kind, not " +
+                "the sign of its amount.");
+
+        /// <summary>Everything on one item is in one currency.</summary>
+        public static readonly Error CurrencyMismatch =
+            Error.Validation(
+                "finance.payable.currency_mismatch",
+                "That amount is not in the item's currency. A purchase ledger that quietly " +
+                "converts is one that stops reconciling to the bank.");
+
+        /// <summary>Nothing is left outstanding.</summary>
+        public static readonly Error AlreadySettled =
+            Error.DomainRule("finance.payable.already_settled", "That item is already settled.");
+
+        /// <summary>The item was withdrawn.</summary>
+        public static readonly Error Cancelled =
+            Error.DomainRule(
+                "finance.payable.cancelled",
+                "That item was withdrawn, so nothing is owed on it.");
+
+        /// <summary>A settlement has to be worth something.</summary>
+        public static readonly Error SettlementNotPositive =
+            Error.Validation(
+                "finance.payable.settlement_not_positive", "A settlement has to be above zero.");
+
+        /// <summary>More than is outstanding.</summary>
+        public static readonly Error SettlementExceedsOutstanding =
+            Error.DomainRule(
+                "finance.payable.settlement_exceeds_outstanding",
+                "That is more than is still owed on the item. Overpaying a supplier is a real " +
+                "thing, and it belongs on their account as money on account rather than as a " +
+                "document paid twice over.");
+
+        /// <summary>Something has already been paid against it.</summary>
+        public static readonly Error PartlyPaid =
+            Error.DomainRule(
+                "finance.payable.partly_paid",
+                "Something has already been paid against that item. Withdrawing it now would " +
+                "leave a payment pointing at a row that owes nothing, and the bank would be short " +
+                "by exactly that amount with nothing to explain it.");
+
+        /// <summary>A withdrawal needs an explanation.</summary>
+        public static readonly Error CancelReasonRequired =
+            Error.Validation("finance.payable.cancel_reason_required", "Say why it is being withdrawn.");
+
+        /// <summary>A reason is too long.</summary>
+        public static readonly Error ReasonTooLong =
+            Error.Validation(
+                "finance.payable.reason_too_long", "A reason cannot be longer than 500 characters.");
+    }
 }

@@ -1,4 +1,5 @@
 using AutoPartsErp.Modules.Finance.Domain.Customers;
+using AutoPartsErp.Modules.Finance.Domain.Payables;
 using AutoPartsErp.Modules.Finance.Domain.Receipts;
 using AutoPartsErp.Modules.Finance.Domain.Receivables;
 using AutoPartsErp.SharedKernel.Abstractions;
@@ -68,3 +69,31 @@ public interface ICustomerTermsRepository : IRepository<CustomerTerms, CustomerR
 
 /// <summary>The Finance module's unit of work.</summary>
 public interface IFinanceUnitOfWork : IUnitOfWork;
+
+/// <summary>Write-side access to the purchase ledger.</summary>
+public interface IPayableItemRepository : IRepository<PayableItem, PayableItemId>
+{
+    /// <summary>
+    /// The item raised from a supplier's document, or null when there is none.
+    /// <para>
+    /// What makes the handler idempotent: the outbox delivers at least once, and an item that
+    /// already exists for this document means the message has been seen before. Paying a supplier
+    /// twice because a message was redelivered is the failure this one line prevents.
+    /// </para>
+    /// </summary>
+    Task<PayableItem?> GetByDocumentAsync(
+        SupplierInvoiceRef supplierInvoiceId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Everything still owed to one supplier, oldest due date first.</summary>
+    Task<IReadOnlyList<PayableItem>> GetOutstandingForAsync(
+        SupplierRef supplierId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Everything due on or before a day, oldest first: the payment run.
+    /// </summary>
+    Task<IReadOnlyList<PayableItem>> GetDueByAsync(
+        DateOnly on,
+        CancellationToken cancellationToken = default);
+}

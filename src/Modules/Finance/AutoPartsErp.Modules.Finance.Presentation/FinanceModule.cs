@@ -73,6 +73,7 @@ public sealed class FinanceModule : IModule
             provider.GetRequiredService<FinanceDbContext>());
 
         services.AddScoped<IOpenItemRepository, OpenItemRepository>();
+        services.AddScoped<IPayableItemRepository, PayableItemRepository>();
         services.AddScoped<IReceiptRepository, ReceiptRepository>();
         services.AddScoped<ICustomerTermsRepository, CustomerTermsRepository>();
         services.AddScoped<IFinanceReadStore, FinanceReadStore>();

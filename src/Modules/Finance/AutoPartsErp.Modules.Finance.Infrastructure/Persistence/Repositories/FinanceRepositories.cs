@@ -2,6 +2,7 @@ using System.Globalization;
 using AutoPartsErp.Modules.Finance.Domain;
 using AutoPartsErp.Modules.Finance.Domain.Customers;
 using AutoPartsErp.Modules.Finance.Domain.Receipts;
+using AutoPartsErp.Modules.Finance.Domain.Payables;
 using AutoPartsErp.Modules.Finance.Domain.Receivables;
 using Microsoft.EntityFrameworkCore;
 
@@ -194,5 +195,81 @@ public sealed class CustomerTermsRepository : ICustomerTermsRepository
     {
         ArgumentNullException.ThrowIfNull(aggregate);
         _context.CustomerTerms.Remove(aggregate);
+    }
+}
+
+/// <summary>Write-side access to the purchase ledger.</summary>
+public sealed class PayableItemRepository : IPayableItemRepository
+{
+    private readonly FinanceDbContext _context;
+
+    /// <summary>Initializes the repository.</summary>
+    public PayableItemRepository(FinanceDbContext context)
+    {
+        _context = context;
+    }
+
+    /// <inheritdoc />
+    public Task<PayableItem?> GetByIdAsync(
+        PayableItemId id,
+        CancellationToken cancellationToken = default) =>
+        _context.PayableItems.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> ExistsAsync(PayableItemId id, CancellationToken cancellationToken = default) =>
+        _context.PayableItems.AnyAsync(item => item.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<PayableItem?> GetByDocumentAsync(
+        SupplierInvoiceRef supplierInvoiceId,
+        CancellationToken cancellationToken = default) =>
+        _context.PayableItems.FirstOrDefaultAsync(
+            item => item.SupplierInvoiceId == supplierInvoiceId, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<PayableItem>> GetOutstandingForAsync(
+        SupplierRef supplierId,
+        CancellationToken cancellationToken = default)
+    {
+        List<PayableItem> items = await _context.PayableItems
+            .Where(item => item.SupplierId == supplierId)
+            .Where(item => item.Status == PayableItemStatus.Open
+                || item.Status == PayableItemStatus.PartiallySettled)
+            .OrderBy(item => item.DueDate)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return items;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<PayableItem>> GetDueByAsync(
+        DateOnly on,
+        CancellationToken cancellationToken = default)
+    {
+        List<PayableItem> items = await _context.PayableItems
+            .Where(item => item.DueDate <= on)
+            .Where(item => item.Status == PayableItemStatus.Open
+                || item.Status == PayableItemStatus.PartiallySettled)
+            .OrderBy(item => item.DueDate)
+            .ThenBy(item => item.SupplierCode)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return items;
+    }
+
+    /// <inheritdoc />
+    public void Add(PayableItem aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.PayableItems.Add(aggregate);
+    }
+
+    /// <inheritdoc />
+    public void Remove(PayableItem aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.PayableItems.Remove(aggregate);
     }
 }

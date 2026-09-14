@@ -171,3 +171,40 @@ public sealed record InvoicedLine(
     decimal Quantity,
     decimal InvoicedUnitPrice,
     string CurrencyCode);
+
+/// <summary>
+/// A supplier's invoice was accepted and the company owes it.
+/// <para>
+/// Published so Finance can open a payable. The gross figure is the supplier's own stated total,
+/// not the one the system worked out: a payable opened for anything else would never match the
+/// money leaving the bank, and reconciling those two afterwards is the work the whole three-way
+/// check exists to avoid.
+/// </para>
+/// </summary>
+/// <param name="SupplierInvoiceId">The document in Purchasing.</param>
+/// <param name="SupplierId">The supplier.</param>
+/// <param name="SupplierCode">Their short code.</param>
+/// <param name="SupplierDocumentNumber">Their document number, which is what a payment references.</param>
+/// <param name="DocumentDate">The date on their document.</param>
+/// <param name="DueDate">
+/// When the company has to pay, from the supplier's agreed terms. The document date when nothing
+/// is agreed, which is the safe direction: it shows up on the payment run today rather than
+/// falling quietly past a date nobody set.
+/// </param>
+/// <param name="NetAmount">What is owed before VAT, after any rebate on the document.</param>
+/// <param name="VatAmount">The VAT the company can deduct.</param>
+/// <param name="GrossAmount">What will actually be paid.</param>
+/// <param name="CurrencyCode">The currency.</param>
+/// <param name="TenantId">The tenant.</param>
+public sealed record SupplierInvoiceSettledIntegrationEvent(
+    Guid SupplierInvoiceId,
+    Guid SupplierId,
+    string SupplierCode,
+    string SupplierDocumentNumber,
+    DateOnly DocumentDate,
+    DateOnly DueDate,
+    decimal NetAmount,
+    decimal VatAmount,
+    decimal GrossAmount,
+    string CurrencyCode,
+    Guid TenantId) : IntegrationEvent;
