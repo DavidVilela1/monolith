@@ -1,5 +1,6 @@
 using AutoPartsErp.Modules.Finance.Domain.Customers;
 using AutoPartsErp.Modules.Finance.Domain.Payables;
+using AutoPartsErp.Modules.Finance.Domain.Payments;
 using AutoPartsErp.Modules.Finance.Domain.Receipts;
 using AutoPartsErp.Modules.Finance.Domain.Receivables;
 using AutoPartsErp.SharedKernel.Abstractions;
@@ -95,5 +96,36 @@ public interface IPayableItemRepository : IRepository<PayableItem, PayableItemId
     /// </summary>
     Task<IReadOnlyList<PayableItem>> GetDueByAsync(
         DateOnly on,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>Write-side access to money paid to suppliers.</summary>
+public interface ISupplierPaymentRepository : IRepository<SupplierPayment, SupplierPaymentId>
+{
+    /// <summary>Loads a payment by our number for it.</summary>
+    Task<SupplierPayment?> GetByNumberAsync(
+        string number,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Takes the next payment number for the year.
+    /// <para>
+    /// From the database counter, in one statement, like every other run of numbers in this
+    /// system. Reading the highest and adding one is unique only while two people never press the
+    /// button at the same moment, and two payments sharing a number is a remittance nobody can
+    /// reconcile.
+    /// </para>
+    /// </summary>
+    Task<string> NextPaymentNumberAsync(int year, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Payments to a supplier with money still matched to nothing, oldest first.
+    /// <para>
+    /// The screen that explains why a statement disagrees: money left the bank and is sitting on
+    /// their account against no document.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<SupplierPayment>> GetUnallocatedForAsync(
+        SupplierRef supplierId,
         CancellationToken cancellationToken = default);
 }

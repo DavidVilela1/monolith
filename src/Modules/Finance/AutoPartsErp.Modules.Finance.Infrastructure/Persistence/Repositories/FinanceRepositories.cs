@@ -3,6 +3,7 @@ using AutoPartsErp.Modules.Finance.Domain;
 using AutoPartsErp.Modules.Finance.Domain.Customers;
 using AutoPartsErp.Modules.Finance.Domain.Receipts;
 using AutoPartsErp.Modules.Finance.Domain.Payables;
+using AutoPartsErp.Modules.Finance.Domain.Payments;
 using AutoPartsErp.Modules.Finance.Domain.Receivables;
 using Microsoft.EntityFrameworkCore;
 
@@ -271,5 +272,88 @@ public sealed class PayableItemRepository : IPayableItemRepository
     {
         ArgumentNullException.ThrowIfNull(aggregate);
         _context.PayableItems.Remove(aggregate);
+    }
+}
+
+/// <summary>Write-side access to money paid to suppliers.</summary>
+public sealed class SupplierPaymentRepository : ISupplierPaymentRepository
+{
+    private const string NumberPrefix = "SP";
+
+    /// <summary>Identifies this run of numbers in the module's counter table.</summary>
+    private const string NumberKey = "supplier-payment";
+
+    private readonly FinanceDbContext _context;
+
+    /// <summary>Initializes the repository.</summary>
+    public SupplierPaymentRepository(FinanceDbContext context)
+    {
+        _context = context;
+    }
+
+    /// <inheritdoc />
+    public Task<SupplierPayment?> GetByIdAsync(
+        SupplierPaymentId id,
+        CancellationToken cancellationToken = default) =>
+        _context.SupplierPayments.FirstOrDefaultAsync(
+            payment => payment.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> ExistsAsync(
+        SupplierPaymentId id,
+        CancellationToken cancellationToken = default) =>
+        _context.SupplierPayments.AnyAsync(payment => payment.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<SupplierPayment?> GetByNumberAsync(
+        string number,
+        CancellationToken cancellationToken = default)
+    {
+        string normalized = number?.Trim().ToUpperInvariant() ?? string.Empty;
+
+        return _context.SupplierPayments.FirstOrDefaultAsync(
+            payment => payment.Number == normalized, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<string> NextPaymentNumberAsync(
+        int year,
+        CancellationToken cancellationToken = default)
+    {
+        int next = await _context
+            .TakeNextNumberAsync(NumberKey, year, cancellationToken)
+            .ConfigureAwait(false);
+
+        return string.Create(CultureInfo.InvariantCulture, $"{NumberPrefix}-{year}-{next:D5}");
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<SupplierPayment>> GetUnallocatedForAsync(
+        SupplierRef supplierId,
+        CancellationToken cancellationToken = default)
+    {
+        List<SupplierPayment> payments = await _context.SupplierPayments
+            .Where(payment => payment.SupplierId == supplierId)
+            .Where(payment => payment.Status == PaymentStatus.Unallocated
+                || payment.Status == PaymentStatus.PartiallyAllocated)
+            .OrderBy(payment => payment.PaidOn)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return payments;
+    }
+
+    /// <inheritdoc />
+    public void Add(SupplierPayment aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.SupplierPayments.Add(aggregate);
+    }
+
+    /// <inheritdoc />
+    public void Remove(SupplierPayment aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.SupplierPayments.Remove(aggregate);
     }
 }

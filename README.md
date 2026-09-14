@@ -504,7 +504,7 @@ returns both.
 so a route added later without a thought about who may call it is refused rather than open. Three
 routes say otherwise — sign in, refresh, sign out — because they are where a token comes from.
 
-**Every one of the 165 routes behind a permission names which one.** Not a group-wide check per module:
+**Every one of the 167 routes behind a permission names which one.** Not a group-wide check per module:
 `GET /api/inventory/stock/replenishment` needs `inventory.stock.read` and
 `POST /api/inventory/stock/adjust` needs `inventory.stock.adjust`, and they sit four lines apart
 in the same file. The catalogue lives in the shared kernel rather than in Access, and it has to —
@@ -516,7 +516,7 @@ a way of saying "I am company B" that company A could also say: anybody who coul
 could read anybody's data by changing one header. A claim inside a signed token cannot be edited
 by whoever is holding it.
 
-**Permissions, grouped into roles.** Thirty-seven permissions named `module.thing.verb`, and roles
+**Permissions, grouped into roles.** Forty-two permissions named `module.thing.verb`, and roles
 are named bundles of them. Permissions live on the role rather than on the user, so giving
 somebody an exception means giving them a second role — which keeps "why can she do this?" to a
 list of role names instead of an audit of one person's history.
@@ -996,6 +996,37 @@ through a different event, and all it does with it is mark the return settled.
 what was dispatched, and the two aggregates move in the same transaction. The dispatched figure
 itself does not go down: a line that quietly un-dispatched itself would make the order outstanding
 again, put it back on the picking list, and promise the customer goods they have just sent back.
+
+**A purchase ledger is its own table, not a side flag on the sales one.** Both shapes are nearly
+identical and merging them was tempting. The reason not to is a query that forgets the filter: one
+afternoon it would net what a customer owes against what the company owes a supplier and report a
+balance wrong in a way nobody would question. They are also different partners, different screens,
+different people, and different halves of a general ledger that does not exist yet.
+
+**A payable arrives from Purchasing; no route creates one.** They appear when a supplier's invoice
+is accepted, at the supplier's own stated figure — a payable opened for anything else would never
+match the money leaving the bank. A route that let somebody type one would be a way of owing money
+no document stands behind.
+
+**The due date is worked out in Purchasing, not here.** Partners owns the supplier's terms and
+Purchasing already talks to them; Finance asking as well would be the same question from two
+modules with two chances of answering differently. No agreed terms means due today, not due never —
+a payable with no date sits outside every payment run and every ageing bucket.
+
+**Money can leave before anybody knows what it paid.** A transfer goes out on Friday against a
+statement; which of eleven invoices it covered is answered on Monday with the remittance in hand.
+Forcing the match when the money moves would mean guessing, or not recording the payment and
+leaving the bank balance wrong meanwhile.
+
+**Settling is a domain service, because it is one fact about two aggregates.** It changes the
+payment and it changes every document that payment settled. Both sides expose their half as
+`internal`, so nothing can do half the job, and everything is checked before anything changes — a
+four-line remittance failing on the fourth would otherwise leave three settled in memory with
+nothing to roll back.
+
+**Recording what arrives and deciding what leaves are different permissions.** The oldest
+separation in bookkeeping, and the reason is the direction: money going out is the one somebody
+steals in.
 
 ### Invoicing
 

@@ -2,6 +2,7 @@ using AutoPartsErp.Modules.Finance.Domain;
 using AutoPartsErp.Modules.Finance.Domain.Customers;
 using AutoPartsErp.Modules.Finance.Domain.Receipts;
 using AutoPartsErp.Modules.Finance.Domain.Payables;
+using AutoPartsErp.Modules.Finance.Domain.Payments;
 using AutoPartsErp.Modules.Finance.Domain.Receivables;
 using AutoPartsErp.SharedKernel.ValueObjects;
 using Microsoft.EntityFrameworkCore;
@@ -413,5 +414,139 @@ public sealed class CustomerTermsConfiguration : IEntityTypeConfiguration<Custom
 
         builder.HasIndex(terms => new { terms.TenantId, terms.Code })
             .HasDatabaseName("ix_customer_terms_tenant_code");
+    }
+}
+
+/// <summary>
+/// Maps <see cref="SupplierPayment"/> onto <c>finance.supplier_payments</c>, with its allocations.
+/// </summary>
+public sealed class SupplierPaymentConfiguration : IEntityTypeConfiguration<SupplierPayment>
+{
+    /// <inheritdoc />
+    public void Configure(EntityTypeBuilder<SupplierPayment> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.ToTable("supplier_payments");
+
+        builder.HasKey(payment => payment.Id);
+
+        builder.Property(payment => payment.Id)
+            .HasConversion(id => id.Value, value => new SupplierPaymentId(value))
+            .ValueGeneratedNever();
+
+        builder.Property(payment => payment.Version)
+            .IsRowVersion()
+            .HasColumnName("xmin")
+            .HasColumnType("xid");
+
+        builder.Property(payment => payment.TenantId).IsRequired();
+
+        builder.Property(payment => payment.Number)
+            .HasMaxLength(SupplierPayment.MaxNumberLength)
+            .IsRequired();
+
+        builder.Property(payment => payment.SupplierId)
+            .HasConversion(supplier => supplier.Value, value => new SupplierRef(value))
+            .HasColumnName("supplier_id")
+            .IsRequired();
+
+        builder.Property(payment => payment.SupplierCode).HasMaxLength(30).IsRequired();
+
+        builder.Property(payment => payment.PaidOn).IsRequired();
+
+        builder.Property(payment => payment.Method)
+            .HasConversion<string>()
+            .HasMaxLength(30)
+            .IsRequired();
+
+        builder.Property(payment => payment.Status)
+            .HasConversion<string>()
+            .HasMaxLength(30)
+            .IsRequired();
+
+        builder.Property(payment => payment.Reference)
+            .HasMaxLength(SupplierPayment.MaxReferenceLength);
+
+        builder.Property(payment => payment.Notes).HasMaxLength(SupplierPayment.MaxNotesLength);
+
+        builder.OwnsOne(payment => payment.Amount, amount =>
+        {
+            amount.Property(value => value.Amount)
+                .HasColumnName("amount")
+                .HasPrecision(18, 4)
+                .IsRequired();
+
+            amount.Property(value => value.Currency).AsCurrency("currency");
+        });
+
+        builder.OwnsOne(payment => payment.AllocatedAmount, amount =>
+        {
+            amount.Property(value => value.Amount)
+                .HasColumnName("allocated_amount")
+                .HasPrecision(18, 4)
+                .IsRequired();
+
+            amount.Property(value => value.Currency).AsCurrency("allocated_currency");
+        });
+
+        builder.Navigation(payment => payment.Amount).IsRequired();
+        builder.Navigation(payment => payment.AllocatedAmount).IsRequired();
+
+        builder.OwnsMany(payment => payment.Allocations, allocation =>
+        {
+            allocation.ToTable("supplier_payment_allocations");
+            allocation.WithOwner().HasForeignKey("supplier_payment_id");
+
+            allocation.HasKey(item => item.Id);
+
+            allocation.Property(item => item.Id)
+                .HasConversion(id => id.Value, value => new SupplierPaymentAllocationId(value))
+                .HasColumnName("id")
+                .ValueGeneratedNever();
+
+            allocation.Property(item => item.TenantId).IsRequired();
+
+            allocation.Property(item => item.PayableItemId)
+                .HasConversion(id => id.Value, value => new PayableItemId(value))
+                .HasColumnName("payable_item_id")
+                .IsRequired();
+
+            allocation.Property(item => item.DocumentNumber)
+                .HasMaxLength(PayableItem.MaxDocumentNumberLength)
+                .IsRequired();
+
+            allocation.Property(item => item.AllocatedOn).IsRequired();
+
+            allocation.OwnsOne(item => item.Amount, amount =>
+            {
+                amount.Property(value => value.Amount)
+                    .HasColumnName("amount")
+                    .HasPrecision(18, 4)
+                    .IsRequired();
+
+                amount.Property(value => value.Currency).AsCurrency("currency");
+            });
+
+            allocation.Navigation(item => item.Amount).IsRequired();
+
+            // "What paid this document?" is asked as often as "what did this payment pay", and
+            // without this it is a scan of every allocation ever made.
+            allocation.HasIndex(item => item.PayableItemId)
+                .HasDatabaseName("ix_supplier_payment_allocations_payable_item");
+        });
+
+        builder.Navigation(payment => payment.Allocations)
+            .UsePropertyAccessMode(PropertyAccessMode.Field);
+
+        builder.HasIndex(payment => new { payment.TenantId, payment.Number })
+            .IsUnique()
+            .HasDatabaseName("ux_supplier_payments_tenant_number");
+
+        // Money that left the bank and is matched to nothing is what makes a statement disagree.
+        // Partial, so the index is the size of the problem rather than of every payment ever made.
+        builder.HasIndex(payment => new { payment.TenantId, payment.SupplierId, payment.PaidOn })
+            .HasFilter("status IN ('Unallocated', 'PartiallyAllocated')")
+            .HasDatabaseName("ix_supplier_payments_tenant_unallocated");
     }
 }

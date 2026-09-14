@@ -299,4 +299,80 @@ public static class FinanceErrors
             Error.Validation(
                 "finance.payable.reason_too_long", "A reason cannot be longer than 500 characters.");
     }
+
+    /// <summary>Failures relating to a <see cref="Payments.SupplierPayment"/>.</summary>
+    public static class Payment
+    {
+        /// <summary>The payment does not exist.</summary>
+        public static Error NotFound(string identifier) =>
+            Error.NotFound("finance.payment.not_found", $"No payment matches '{identifier}'.");
+
+        /// <summary>A payment number is required.</summary>
+        public static readonly Error NumberRequired =
+            Error.Validation("finance.payment.number_required", "A payment number is required.");
+
+        /// <summary>A payment has to be worth something.</summary>
+        public static readonly Error AmountNotPositive =
+            Error.Validation(
+                "finance.payment.amount_not_positive", "A payment has to be above zero.");
+
+        /// <summary>Say how the money left.</summary>
+        public static readonly Error MethodRequired =
+            Error.Validation(
+                "finance.payment.method_required",
+                "Say how the money left: cash, transfer, direct debit, cheque or card. A bank " +
+                "reconciliation that cannot tell a transfer from a cheque is one nobody can finish.");
+
+        /// <summary>Everything on one payment is in one currency.</summary>
+        public static readonly Error CurrencyMismatch =
+            Error.Validation(
+                "finance.payment.currency_mismatch",
+                "That amount is not in the payment's currency.");
+
+        /// <summary>An allocation has to be worth something.</summary>
+        public static readonly Error AllocationNotPositive =
+            Error.Validation(
+                "finance.payment.allocation_not_positive", "An allocation has to be above zero.");
+
+        /// <summary>A remittance with no lines settles nothing.</summary>
+        public static readonly Error NothingToAllocate =
+            Error.Validation(
+                "finance.payment.nothing_to_allocate",
+                "Say which documents the payment settled.");
+
+        /// <summary>More than the payment has left unmatched.</summary>
+        public static Error ExceedsUnallocated(string number, decimal unallocated) =>
+            Error.DomainRule(
+                "finance.payment.exceeds_unallocated",
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Payment {number} has only {unallocated} left to match. Matching more than " +
+                    $"left the bank is how a purchase ledger stops reconciling to it."));
+
+        /// <summary>A document on somebody else's account.</summary>
+        public static Error WrongSupplier(string documentNumber) =>
+            Error.DomainRule(
+                "finance.payment.wrong_supplier",
+                $"Document '{documentNumber}' is on another supplier's account.");
+
+        /// <summary>The same document twice on one remittance.</summary>
+        public static Error DuplicateDocument(string documentNumber) =>
+            Error.Validation(
+                "finance.payment.duplicate_document",
+                $"Document '{documentNumber}' is on this remittance twice. If it really takes two " +
+                "bites of one payment, say so as one line.");
+
+        /// <summary>Nothing is owed on it.</summary>
+        public static Error NothingOwed(string documentNumber) =>
+            Error.DomainRule(
+                "finance.payment.nothing_owed",
+                $"Nothing is owed on document '{documentNumber}'.");
+
+        /// <summary>Money paid against a credit note.</summary>
+        public static Error PaymentAgainstCredit(string documentNumber) =>
+            Error.DomainRule(
+                "finance.payment.against_credit",
+                $"'{documentNumber}' is a credit note, which the supplier owes back. A credit note " +
+                "is matched against an invoice, not paid with cash.");
+    }
 }

@@ -252,6 +252,20 @@ public static class Permissions
         /// <summary>Record money arriving and match it to documents.</summary>
         public const string RecordReceipt = "finance.receipt.record";
 
+        /// <summary>See what the company owes its suppliers and when it falls due.</summary>
+        public const string ReadPayables = "finance.payable.read";
+
+        /// <summary>
+        /// Record money leaving and match it to supplier documents.
+        /// <para>
+        /// Its own permission, apart from <see cref="RecordReceipt"/>, and the separation is the
+        /// oldest one in bookkeeping: the person who records what arrives and the person who
+        /// decides what leaves should not be the same person. Money going out is the direction
+        /// somebody steals in.
+        /// </para>
+        /// </summary>
+        public const string PaySupplier = "finance.payment.record";
+
         // There is no finance.terms.manage. Payment terms sit on the partner, next to the credit
         // limit and on the same value object, and partners.credit.manage already names that job.
         // A second permission for the same write would have been a name for a decision nobody
@@ -298,7 +312,7 @@ public static class Permissions
         Sales.OverrideCredit, Sales.OverrideMarginFloor,
         Invoicing.Read, Invoicing.Draft, Invoicing.Issue, Invoicing.Void,
         Invoicing.ManageSeries, Invoicing.ExportSaft,
-        Finance.Read, Finance.RecordReceipt,
+        Finance.Read, Finance.RecordReceipt, Finance.ReadPayables, Finance.PaySupplier,
         Access.Read, Access.ManageUsers, Access.ManageRoles,
     };
 

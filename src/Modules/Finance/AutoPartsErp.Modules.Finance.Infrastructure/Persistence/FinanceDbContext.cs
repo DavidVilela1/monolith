@@ -2,6 +2,7 @@ using AutoPartsErp.Modules.Finance.Domain;
 using AutoPartsErp.Modules.Finance.Domain.Customers;
 using AutoPartsErp.Modules.Finance.Domain.Receipts;
 using AutoPartsErp.Modules.Finance.Domain.Payables;
+using AutoPartsErp.Modules.Finance.Domain.Payments;
 using AutoPartsErp.Modules.Finance.Domain.Receivables;
 using AutoPartsErp.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -41,6 +42,9 @@ public sealed class FinanceDbContext : ModuleDbContext, IFinanceUnitOfWork
     /// <summary>The purchase ledger: what the company owes its suppliers.</summary>
     public DbSet<PayableItem> PayableItems => Set<PayableItem>();
 
+    /// <summary>Money that left, with what each payment settled.</summary>
+    public DbSet<SupplierPayment> SupplierPayments => Set<SupplierPayment>();
+
     /// <summary>Money received, with what it paid.</summary>
     public DbSet<Receipt> Receipts => Set<Receipt>();
 
@@ -64,6 +68,9 @@ public sealed class FinanceDbContext : ModuleDbContext, IFinanceUnitOfWork
 
         modelBuilder.Entity<PayableItem>()
             .HasQueryFilter(item => item.TenantId == CurrentTenantId);
+
+        modelBuilder.Entity<SupplierPayment>()
+            .HasQueryFilter(payment => payment.TenantId == CurrentTenantId);
 
         modelBuilder.Entity<Receipt>()
             .HasQueryFilter(receipt => receipt.TenantId == CurrentTenantId);

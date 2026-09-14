@@ -74,6 +74,7 @@ public sealed class FinanceModule : IModule
 
         services.AddScoped<IOpenItemRepository, OpenItemRepository>();
         services.AddScoped<IPayableItemRepository, PayableItemRepository>();
+        services.AddScoped<ISupplierPaymentRepository, SupplierPaymentRepository>();
         services.AddScoped<IReceiptRepository, ReceiptRepository>();
         services.AddScoped<ICustomerTermsRepository, CustomerTermsRepository>();
         services.AddScoped<IFinanceReadStore, FinanceReadStore>();
@@ -93,5 +94,6 @@ public sealed class FinanceModule : IModule
 
         new ReceivableEndpoints().Map(group);
         new ReceiptEndpoints().Map(group);
+        new PayableEndpoints().Map(group);
     }
 }
