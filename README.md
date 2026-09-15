@@ -504,7 +504,7 @@ returns both.
 so a route added later without a thought about who may call it is refused rather than open. Three
 routes say otherwise — sign in, refresh, sign out — because they are where a token comes from.
 
-**Every one of the 167 routes behind a permission names which one.** Not a group-wide check per module:
+**Every one of the 171 routes behind a permission names which one.** Not a group-wide check per module:
 `GET /api/inventory/stock/replenishment` needs `inventory.stock.read` and
 `POST /api/inventory/stock/adjust` needs `inventory.stock.adjust`, and they sit four lines apart
 in the same file. The catalogue lives in the shared kernel rather than in Access, and it has to —
@@ -516,7 +516,7 @@ a way of saying "I am company B" that company A could also say: anybody who coul
 could read anybody's data by changing one header. A claim inside a signed token cannot be edited
 by whoever is holding it.
 
-**Permissions, grouped into roles.** Forty-two permissions named `module.thing.verb`, and roles
+**Permissions, grouped into roles.** Forty-five permissions named `module.thing.verb`, and roles
 are named bundles of them. Permissions live on the role rather than on the user, so giving
 somebody an exception means giving them a second role — which keeps "why can she do this?" to a
 list of role names instead of an audit of one person's history.
@@ -1028,6 +1028,42 @@ nothing to roll back.
 separation in bookkeeping, and the reason is the direction: money going out is the one somebody
 steals in.
 
+**An entry balances or nothing happens.** Debits equal credits to the cent, with no tolerance:
+the lines were each rounded when they were written, and two sides that do not meet exactly mean
+whoever built the entry divided something and lost a cent. An unbalanced ledger is not a small
+error to fix later — it is one that no longer proves anything, and every report built on it
+inherits the doubt.
+
+**Debits balancing debits is arithmetic, not bookkeeping.** An entry needs both sides to exist,
+not only to agree, and that is caught at posting rather than by somebody reading a trial balance
+in April.
+
+**Posted once, edited never.** A correction is a second entry that mirrors the first, because the
+month somebody has already reported has to keep saying what it said. A reversal cannot be dated
+before what it reverses either, or it would change a period that closed before the mistake was
+made.
+
+**The amount is positive and the side carries the direction.** A credit written as a negative
+debit is the same fact in a form the other half of the ledger cannot see, and once one is in the
+data every sum has to know to look for it.
+
+**Nothing posts to a group account.** A balance that is partly its own postings and partly the
+total of its children is one nobody can take apart again. An account is never deleted either —
+every entry ever posted to it still points there, and a trial balance for last year has to be
+readable next year.
+
+**The account code is copied onto each line, not joined.** A trial balance printed in March has to
+keep reading the same way in December, and an account renamed in between would silently restate
+every report that ever showed it.
+
+**The side an account grows on is computed, not stored.** It is a fact about what the account
+measures, and a stored copy could disagree with the type — an asset growing on the credit side
+makes every report built on it wrong in a direction nobody checks.
+
+**No chart of accounts ships with this.** Portugal's SNC has a standard one and an accountant will
+have opinions about the sub-accounts within it. The structure is here and the codes are data;
+guessing them would produce a chart that looks official and reconciles to nobody's expectations.
+
 ### Invoicing
 
 The part of Portuguese invoicing that is law rather than design, end to end: schema, endpoints,
@@ -1225,11 +1261,13 @@ concurrency in all three modules that hand out numbers.
 1. **Communicating documents to the AT.** The webservice that reports each document within days
    of issuing it. The paperwork around certification is paperwork; this is the last piece of code
    between here and a legally usable installation.
-2. **Accounts payable, the general ledger, VAT returns and period close.** The supplier invoice
-   now exists and settles into a figure somebody owes, which was the missing document between a
-   purchase order and a goods receipt. What is not built is the other end: nothing in Finance
-   opens a payable from it, nothing ages what the company owes, and there is still no general
-   ledger for either side to post to.
+2. **VAT returns and period close, and the postings that feed them.** Accounts payable and the
+   general ledger both exist now: a supplier's accepted invoice opens a debt, the debt is payable
+   and matched to the money that pays it, and entries reach a ledger that refuses to hold an
+   unbalanced one. What is missing is the bridge between them — nothing yet turns a document into
+   a posting on its own, because that needs a mapping from facts to account codes that an
+   accountant owns. After that: a period that can be closed, and a VAT return read off the
+   postings rather than off the documents.
 
 **Known issues:**
 
@@ -1280,8 +1318,15 @@ concurrency in all three modules that hand out numbers.
   hand. Nothing closes last year's periods on its own, so a buyer who never presses the button
   leaves them open and the claim sitting on a screen nobody reads.
 - A price variance only reaches the part of the delivery still on the shelf. What was already
-  sold went out at the old cost, and its share of the difference belongs in cost of sale — which
-  needs a general ledger this system does not have. The figure is knowable and nothing reports it.
+  sold went out at the old cost, and its share of the difference belongs in cost of sale. The
+  ledger to post it to now exists; what does not is anything that maps that fact to an account
+  code and writes the entry.
+- Nothing posts to the ledger automatically. Every entry is written by hand, which makes the
+  ledger true and the bookkeeping manual. The mapping from a fact — cost of sale, a shrinkage, a
+  price variance, a VAT amount — to the account codes it lands on is configuration an accountant
+  owns, and it is the next piece.
+- A period cannot be closed. Nothing stops an entry being posted into a month already reported,
+  which is the guard that makes everything above worth trusting.
 - A draft is stamped at the step the period had reached when the goods arrived, and documents
   already settled are never re-rated. That is the shortfall the accrual reports rather than
   something it removes: the company still has to ask the supplier for it.

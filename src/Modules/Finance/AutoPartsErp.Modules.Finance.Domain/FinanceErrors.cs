@@ -375,4 +375,164 @@ public static class FinanceErrors
                 $"'{documentNumber}' is a credit note, which the supplier owes back. A credit note " +
                 "is matched against an invoice, not paid with cash.");
     }
+
+    /// <summary>Failures relating to an <see cref="Ledger.Account"/>.</summary>
+    public static class Account
+    {
+        /// <summary>The account does not exist.</summary>
+        public static Error NotFound(string identifier) =>
+            Error.NotFound("finance.account.not_found", $"No account matches '{identifier}'.");
+
+        /// <summary>An account code is required.</summary>
+        public static readonly Error CodeRequired =
+            Error.Validation("finance.account.code_required", "An account code is required.");
+
+        /// <summary>The code is too long.</summary>
+        public static readonly Error CodeTooLong =
+            Error.Validation(
+                "finance.account.code_too_long",
+                "An account code cannot be longer than 20 characters.");
+
+        /// <summary>An account name is required.</summary>
+        public static readonly Error NameRequired =
+            Error.Validation("finance.account.name_required", "An account name is required.");
+
+        /// <summary>The name is too long.</summary>
+        public static readonly Error NameTooLong =
+            Error.Validation(
+                "finance.account.name_too_long",
+                "An account name cannot be longer than 160 characters.");
+
+        /// <summary>Say what kind of thing the account measures.</summary>
+        public static readonly Error TypeRequired =
+            Error.Validation(
+                "finance.account.type_required",
+                "Say what the account measures: an asset, a liability, equity, income or an " +
+                "expense. It is what decides the side it grows on, and nothing downstream can " +
+                "guess it.");
+
+        /// <summary>That code is already taken.</summary>
+        public static readonly Error CodeExists =
+            Error.Conflict(
+                "finance.account.code_exists",
+                "An account with that code already exists. Two accounts sharing a code is a trial " +
+                "balance with two rows nobody can tell apart.");
+    }
+
+    /// <summary>Failures relating to a <see cref="Ledger.JournalEntry"/>.</summary>
+    public static class Journal
+    {
+        /// <summary>The entry does not exist.</summary>
+        public static Error NotFound(string identifier) =>
+            Error.NotFound("finance.journal.not_found", $"No journal entry matches '{identifier}'.");
+
+        /// <summary>The line is not on this entry.</summary>
+        public static Error LineNotFound(string identifier) =>
+            Error.NotFound(
+                "finance.journal.line_not_found", $"Line '{identifier}' is not on this entry.");
+
+        /// <summary>An entry number is required.</summary>
+        public static readonly Error NumberRequired =
+            Error.Validation("finance.journal.number_required", "An entry number is required.");
+
+        /// <summary>Say where the entry came from.</summary>
+        public static readonly Error SourceRequired =
+            Error.Validation(
+                "finance.journal.source_required",
+                "Say where the entry came from: sales, purchases, cash, inventory, or a person.");
+
+        /// <summary>A description is required.</summary>
+        public static readonly Error DescriptionRequired =
+            Error.Validation(
+                "finance.journal.description_required",
+                "Say what the entry is for. A trial balance of forty lines all reading " +
+                "'Adjustment' is one nobody can audit.");
+
+        /// <summary>The description is too long.</summary>
+        public static readonly Error DescriptionTooLong =
+            Error.Validation(
+                "finance.journal.description_too_long",
+                "A description cannot be longer than 300 characters.");
+
+        /// <summary>Debit or credit.</summary>
+        public static readonly Error SideRequired =
+            Error.Validation("finance.journal.side_required", "Say which side the line lands on.");
+
+        /// <summary>Everything in one entry is in one currency.</summary>
+        public static readonly Error CurrencyMismatch =
+            Error.Validation(
+                "finance.journal.currency_mismatch",
+                "That amount is not in the entry's currency. An entry that balanced across two " +
+                "currencies would not balance at all.");
+
+        /// <summary>A line has to be worth something, on one side.</summary>
+        public static readonly Error AmountNotPositive =
+            Error.Validation(
+                "finance.journal.amount_not_positive",
+                "A journal line has to be above zero. A credit written as a negative debit is the " +
+                "same fact in a form the other half of the ledger cannot see.");
+
+        /// <summary>Nothing posts to a group account.</summary>
+        public static Error AccountIsAGroup(string code) =>
+            Error.DomainRule(
+                "finance.journal.account_is_a_group",
+                $"Account '{code}' is a group. A balance that is partly its own postings and " +
+                "partly the total of its children is one nobody can take apart again.");
+
+        /// <summary>The account is no longer in use.</summary>
+        public static Error AccountInactive(string code) =>
+            Error.DomainRule(
+                "finance.journal.account_inactive",
+                $"Account '{code}' is no longer in use. What is already on it stays where it is; " +
+                "nothing new lands there.");
+
+        /// <summary>An entry with no lines posts nothing.</summary>
+        public static readonly Error NoLines =
+            Error.DomainRule("finance.journal.no_lines", "An entry with no lines posts nothing.");
+
+        /// <summary>All debits and no credits, or the other way round.</summary>
+        public static readonly Error OneSidedEntry =
+            Error.DomainRule(
+                "finance.journal.one_sided",
+                "An entry needs both sides. Debits balancing debits is arithmetic, not " +
+                "bookkeeping.");
+
+        /// <summary>The two sides do not meet.</summary>
+        public static Error OutOfBalance(decimal debits, decimal credits) =>
+            Error.DomainRule(
+                "finance.journal.out_of_balance",
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The entry does not balance: {debits} of debits against {credits} of " +
+                    $"credits. An unbalanced ledger is one that no longer proves anything, and " +
+                    $"every report built on it inherits the doubt."));
+
+        /// <summary>It has already been posted.</summary>
+        public static readonly Error AlreadyPosted =
+            Error.DomainRule(
+                "finance.journal.already_posted",
+                "That entry is posted and does not change again. A correction is a second entry " +
+                "that reverses it, so the month somebody has already reported keeps saying what " +
+                "it said.");
+
+        /// <summary>It has not been posted.</summary>
+        public static readonly Error NotPosted =
+            Error.DomainRule(
+                "finance.journal.not_posted",
+                "That entry has not been posted, so there is nothing to reverse. Delete the draft.");
+
+        /// <summary>A reversal needs an explanation.</summary>
+        public static readonly Error ReversalReasonRequired =
+            Error.Validation(
+                "finance.journal.reversal_reason_required",
+                "Say why the entry is being reversed. It is the only thing that will explain the " +
+                "pair to whoever reads them next.");
+
+        /// <summary>A reversal dated before what it reverses.</summary>
+        public static readonly Error ReversalBeforeOriginal =
+            Error.Validation(
+                "finance.journal.reversal_before_original",
+                "A reversal cannot be dated before the entry it reverses. It would change a " +
+                "period that closed before the mistake was made.");
+    }
 }

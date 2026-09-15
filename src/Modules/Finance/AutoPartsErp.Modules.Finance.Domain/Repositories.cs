@@ -1,4 +1,5 @@
 using AutoPartsErp.Modules.Finance.Domain.Customers;
+using AutoPartsErp.Modules.Finance.Domain.Ledger;
 using AutoPartsErp.Modules.Finance.Domain.Payables;
 using AutoPartsErp.Modules.Finance.Domain.Payments;
 using AutoPartsErp.Modules.Finance.Domain.Receipts;
@@ -127,5 +128,56 @@ public interface ISupplierPaymentRepository : IRepository<SupplierPayment, Suppl
     /// </summary>
     Task<IReadOnlyList<SupplierPayment>> GetUnallocatedForAsync(
         SupplierRef supplierId,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>Write-side access to the chart of accounts.</summary>
+public interface IAccountRepository : IRepository<Account, AccountId>
+{
+    /// <summary>Loads an account by the code the accountant refers to it by.</summary>
+    Task<Account?> GetByCodeAsync(string code, CancellationToken cancellationToken = default);
+
+    /// <summary>True when an account already uses that code.</summary>
+    Task<bool> CodeExistsAsync(
+        string code,
+        AccountId? excluding = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Loads several accounts by code at once.
+    /// <para>
+    /// What building an entry needs: a posting of four lines asks about four accounts, and asking
+    /// one at a time is four round trips to answer one question.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyDictionary<string, Account>> GetByCodesAsync(
+        IReadOnlyCollection<string> codes,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>The whole chart, by code.</summary>
+    Task<IReadOnlyList<Account>> GetAllAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>Write-side access to the general ledger.</summary>
+public interface IJournalEntryRepository : IRepository<JournalEntry, JournalEntryId>
+{
+    /// <summary>Loads an entry by our number for it.</summary>
+    Task<JournalEntry?> GetByNumberAsync(
+        string number,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Takes the next entry number for the year.
+    /// <para>
+    /// From the database counter, like every other run of numbers here. Two entries sharing a
+    /// number is a ledger where "which one was that?" has two answers.
+    /// </para>
+    /// </summary>
+    Task<string> NextEntryNumberAsync(int year, CancellationToken cancellationToken = default);
+
+    /// <summary>Posted entries falling inside a stretch of days, oldest first.</summary>
+    Task<IReadOnlyList<JournalEntry>> GetPostedBetweenAsync(
+        DateOnly from,
+        DateOnly to,
         CancellationToken cancellationToken = default);
 }

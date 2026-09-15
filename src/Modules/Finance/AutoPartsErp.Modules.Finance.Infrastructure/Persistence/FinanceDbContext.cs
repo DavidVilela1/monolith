@@ -1,6 +1,7 @@
 using AutoPartsErp.Modules.Finance.Domain;
 using AutoPartsErp.Modules.Finance.Domain.Customers;
 using AutoPartsErp.Modules.Finance.Domain.Receipts;
+using AutoPartsErp.Modules.Finance.Domain.Ledger;
 using AutoPartsErp.Modules.Finance.Domain.Payables;
 using AutoPartsErp.Modules.Finance.Domain.Payments;
 using AutoPartsErp.Modules.Finance.Domain.Receivables;
@@ -45,6 +46,12 @@ public sealed class FinanceDbContext : ModuleDbContext, IFinanceUnitOfWork
     /// <summary>Money that left, with what each payment settled.</summary>
     public DbSet<SupplierPayment> SupplierPayments => Set<SupplierPayment>();
 
+    /// <summary>The chart of accounts.</summary>
+    public DbSet<Account> Accounts => Set<Account>();
+
+    /// <summary>The general ledger, with the lines of each entry.</summary>
+    public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
+
     /// <summary>Money received, with what it paid.</summary>
     public DbSet<Receipt> Receipts => Set<Receipt>();
 
@@ -71,6 +78,12 @@ public sealed class FinanceDbContext : ModuleDbContext, IFinanceUnitOfWork
 
         modelBuilder.Entity<SupplierPayment>()
             .HasQueryFilter(payment => payment.TenantId == CurrentTenantId);
+
+        modelBuilder.Entity<Account>()
+            .HasQueryFilter(account => account.TenantId == CurrentTenantId);
+
+        modelBuilder.Entity<JournalEntry>()
+            .HasQueryFilter(entry => entry.TenantId == CurrentTenantId);
 
         modelBuilder.Entity<Receipt>()
             .HasQueryFilter(receipt => receipt.TenantId == CurrentTenantId);

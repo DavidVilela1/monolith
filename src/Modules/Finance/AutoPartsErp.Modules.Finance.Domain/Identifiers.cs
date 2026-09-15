@@ -174,6 +174,57 @@ public readonly record struct SupplierPaymentAllocationId(Guid Value)
     public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
 }
 
+/// <summary>Identity of a <see cref="Ledger.Account"/>.</summary>
+/// <param name="Value">The underlying identifier.</param>
+public readonly record struct AccountId(Guid Value)
+{
+    /// <summary>The unset identifier.</summary>
+    public static readonly AccountId Empty = new(Guid.Empty);
+
+    /// <summary>Generates a new identifier.</summary>
+    public static AccountId New() => new(OrderedGuid.Create());
+
+    /// <summary>True when the identifier has not been set.</summary>
+    public bool IsEmpty => Value == Guid.Empty;
+
+    /// <inheritdoc />
+    public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
+}
+
+/// <summary>Identity of a <see cref="Ledger.JournalEntry"/>.</summary>
+/// <param name="Value">The underlying identifier.</param>
+public readonly record struct JournalEntryId(Guid Value)
+{
+    /// <summary>The unset identifier.</summary>
+    public static readonly JournalEntryId Empty = new(Guid.Empty);
+
+    /// <summary>Generates a new identifier.</summary>
+    public static JournalEntryId New() => new(OrderedGuid.Create());
+
+    /// <summary>True when the identifier has not been set.</summary>
+    public bool IsEmpty => Value == Guid.Empty;
+
+    /// <inheritdoc />
+    public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
+}
+
+/// <summary>Identity of a <see cref="Ledger.JournalLine"/>.</summary>
+/// <param name="Value">The underlying identifier.</param>
+public readonly record struct JournalLineId(Guid Value)
+{
+    /// <summary>The unset identifier.</summary>
+    public static readonly JournalLineId Empty = new(Guid.Empty);
+
+    /// <summary>Generates a new identifier.</summary>
+    public static JournalLineId New() => new(OrderedGuid.Create());
+
+    /// <summary>True when the identifier has not been set.</summary>
+    public bool IsEmpty => Value == Guid.Empty;
+
+    /// <inheritdoc />
+    public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
+}
+
 /// <summary>Creates time-ordered <see cref="Guid"/> values so inserts stay at the right edge of the index.</summary>
 internal static class OrderedGuid
 {

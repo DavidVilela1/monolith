@@ -2,6 +2,7 @@ using System.Globalization;
 using AutoPartsErp.Modules.Finance.Domain;
 using AutoPartsErp.Modules.Finance.Domain.Customers;
 using AutoPartsErp.Modules.Finance.Domain.Receipts;
+using AutoPartsErp.Modules.Finance.Domain.Ledger;
 using AutoPartsErp.Modules.Finance.Domain.Payables;
 using AutoPartsErp.Modules.Finance.Domain.Payments;
 using AutoPartsErp.Modules.Finance.Domain.Receivables;
@@ -355,5 +356,184 @@ public sealed class SupplierPaymentRepository : ISupplierPaymentRepository
     {
         ArgumentNullException.ThrowIfNull(aggregate);
         _context.SupplierPayments.Remove(aggregate);
+    }
+}
+
+/// <summary>Write-side access to the chart of accounts.</summary>
+public sealed class AccountRepository : IAccountRepository
+{
+    private readonly FinanceDbContext _context;
+
+    /// <summary>Initializes the repository.</summary>
+    public AccountRepository(FinanceDbContext context)
+    {
+        _context = context;
+    }
+
+    /// <inheritdoc />
+    public Task<Account?> GetByIdAsync(AccountId id, CancellationToken cancellationToken = default) =>
+        _context.Accounts.FirstOrDefaultAsync(account => account.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> ExistsAsync(AccountId id, CancellationToken cancellationToken = default) =>
+        _context.Accounts.AnyAsync(account => account.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<Account?> GetByCodeAsync(string code, CancellationToken cancellationToken = default)
+    {
+        string normalized = Normalize(code);
+
+        return _context.Accounts.FirstOrDefaultAsync(
+            account => account.Code == normalized, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<bool> CodeExistsAsync(
+        string code,
+        AccountId? excluding = null,
+        CancellationToken cancellationToken = default)
+    {
+        string normalized = Normalize(code);
+
+        return _context.Accounts
+            .Where(account => account.Code == normalized)
+            .Where(account => excluding == null || account.Id != excluding.Value)
+            .AnyAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<string, Account>> GetByCodesAsync(
+        IReadOnlyCollection<string> codes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(codes);
+
+        if (codes.Count == 0)
+        {
+            return new Dictionary<string, Account>(StringComparer.Ordinal);
+        }
+
+        List<string> normalized = [.. codes.Select(Normalize).Distinct(StringComparer.Ordinal)];
+
+        List<Account> accounts = await _context.Accounts
+            .Where(account => normalized.Contains(account.Code))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return accounts.ToDictionary(account => account.Code, StringComparer.Ordinal);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<Account>> GetAllAsync(CancellationToken cancellationToken = default)
+    {
+        List<Account> accounts = await _context.Accounts
+            .OrderBy(account => account.Code)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return accounts;
+    }
+
+    /// <inheritdoc />
+    public void Add(Account aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.Accounts.Add(aggregate);
+    }
+
+    /// <inheritdoc />
+    public void Remove(Account aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.Accounts.Remove(aggregate);
+    }
+
+    private static string Normalize(string? code) => code?.Trim().ToUpperInvariant() ?? string.Empty;
+}
+
+/// <summary>
+/// Write-side access to the general ledger.
+/// <para>
+/// No <c>Include</c> for the lines: they are an owned collection, so EF loads them with the entry.
+/// Half a journal entry is an unbalanced one.
+/// </para>
+/// </summary>
+public sealed class JournalEntryRepository : IJournalEntryRepository
+{
+    private const string NumberPrefix = "JE";
+
+    /// <summary>Identifies this run of numbers in the module's counter table.</summary>
+    private const string NumberKey = "journal-entry";
+
+    private readonly FinanceDbContext _context;
+
+    /// <summary>Initializes the repository.</summary>
+    public JournalEntryRepository(FinanceDbContext context)
+    {
+        _context = context;
+    }
+
+    /// <inheritdoc />
+    public Task<JournalEntry?> GetByIdAsync(
+        JournalEntryId id,
+        CancellationToken cancellationToken = default) =>
+        _context.JournalEntries.FirstOrDefaultAsync(entry => entry.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> ExistsAsync(JournalEntryId id, CancellationToken cancellationToken = default) =>
+        _context.JournalEntries.AnyAsync(entry => entry.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<JournalEntry?> GetByNumberAsync(
+        string number,
+        CancellationToken cancellationToken = default)
+    {
+        string normalized = number?.Trim().ToUpperInvariant() ?? string.Empty;
+
+        return _context.JournalEntries.FirstOrDefaultAsync(
+            entry => entry.Number == normalized, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<string> NextEntryNumberAsync(
+        int year,
+        CancellationToken cancellationToken = default)
+    {
+        int next = await _context
+            .TakeNextNumberAsync(NumberKey, year, cancellationToken)
+            .ConfigureAwait(false);
+
+        return string.Create(CultureInfo.InvariantCulture, $"{NumberPrefix}-{year}-{next:D5}");
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<JournalEntry>> GetPostedBetweenAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken = default)
+    {
+        List<JournalEntry> entries = await _context.JournalEntries
+            .Where(entry => entry.Status == JournalEntryStatus.Posted)
+            .Where(entry => entry.EntryDate >= from && entry.EntryDate <= to)
+            .OrderBy(entry => entry.EntryDate)
+            .ThenBy(entry => entry.Number)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return entries;
+    }
+
+    /// <inheritdoc />
+    public void Add(JournalEntry aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.JournalEntries.Add(aggregate);
+    }
+
+    /// <inheritdoc />
+    public void Remove(JournalEntry aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.JournalEntries.Remove(aggregate);
     }
 }

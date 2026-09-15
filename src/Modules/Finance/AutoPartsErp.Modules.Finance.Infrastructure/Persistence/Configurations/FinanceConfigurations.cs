@@ -1,13 +1,15 @@
 using AutoPartsErp.Modules.Finance.Domain;
 using AutoPartsErp.Modules.Finance.Domain.Customers;
-using AutoPartsErp.Modules.Finance.Domain.Receipts;
+using AutoPartsErp.Modules.Finance.Domain.Ledger;
 using AutoPartsErp.Modules.Finance.Domain.Payables;
 using AutoPartsErp.Modules.Finance.Domain.Payments;
+using AutoPartsErp.Modules.Finance.Domain.Receipts;
 using AutoPartsErp.Modules.Finance.Domain.Receivables;
 using AutoPartsErp.SharedKernel.ValueObjects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace AutoPartsErp.Modules.Finance.Infrastructure.Persistence.Configurations;
 
@@ -548,5 +550,206 @@ public sealed class SupplierPaymentConfiguration : IEntityTypeConfiguration<Supp
         builder.HasIndex(payment => new { payment.TenantId, payment.SupplierId, payment.PaidOn })
             .HasFilter("status IN ('Unallocated', 'PartiallyAllocated')")
             .HasDatabaseName("ix_supplier_payments_tenant_unallocated");
+    }
+}
+
+/// <summary>Maps <see cref="Account"/> onto <c>finance.accounts</c>.</summary>
+public sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
+{
+    /// <inheritdoc />
+    public void Configure(EntityTypeBuilder<Account> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.ToTable("accounts");
+
+        builder.HasKey(account => account.Id);
+
+        builder.Property(account => account.Id)
+            .HasConversion(id => id.Value, value => new AccountId(value))
+            .ValueGeneratedNever();
+
+        builder.Property(account => account.Version)
+            .IsRowVersion()
+            .HasColumnName("xmin")
+            .HasColumnType("xid");
+
+        builder.Property(account => account.TenantId).IsRequired();
+
+        builder.Property(account => account.Code)
+            .HasMaxLength(Account.MaxCodeLength)
+            .IsRequired();
+
+        builder.Property(account => account.Name)
+            .HasMaxLength(Account.MaxNameLength)
+            .IsRequired();
+
+        builder.Property(account => account.Type)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .IsRequired();
+
+        builder.Property(account => account.AllowsPosting).IsRequired();
+        builder.Property(account => account.IsActive).IsRequired();
+
+        builder.Property(account => account.ParentId)
+            .HasConversion(new ValueConverter<AccountId, Guid>(
+                id => id.Value, value => new AccountId(value)))
+            .HasColumnName("parent_id");
+
+        // The side an account grows on is a fact about its kind, computed every time it is asked
+        // for. A stored copy could disagree with the type, and an asset growing on the credit side
+        // makes every report built on it wrong in a direction nobody checks.
+        builder.Ignore(account => account.NormalSide);
+        builder.Ignore(account => account.CanTakePostings);
+
+        builder.Property(account => account.CreatedAtUtc).IsRequired();
+        builder.Property(account => account.CreatedBy).HasMaxLength(120).IsRequired();
+        builder.Property(account => account.ModifiedBy).HasMaxLength(120);
+
+        // Two accounts sharing a code is a trial balance with two rows nobody can tell apart.
+        builder.HasIndex(account => new { account.TenantId, account.Code })
+            .IsUnique()
+            .HasDatabaseName("ux_accounts_tenant_code");
+    }
+}
+
+/// <summary>
+/// Maps <see cref="JournalEntry"/> onto <c>finance.journal_entries</c>, with its lines.
+/// <para>
+/// The lines are an owned collection: there is no line repository, EF always loads them with their
+/// entry, and nothing can save a line without saving the entry whose balance depends on it. An
+/// aggregate you can load half of is not an aggregate, and half a journal entry is an unbalanced
+/// one.
+/// </para>
+/// </summary>
+public sealed class JournalEntryConfiguration : IEntityTypeConfiguration<JournalEntry>
+{
+    /// <inheritdoc />
+    public void Configure(EntityTypeBuilder<JournalEntry> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.ToTable("journal_entries");
+
+        builder.HasKey(entry => entry.Id);
+
+        builder.Property(entry => entry.Id)
+            .HasConversion(id => id.Value, value => new JournalEntryId(value))
+            .ValueGeneratedNever();
+
+        builder.Property(entry => entry.Version)
+            .IsRowVersion()
+            .HasColumnName("xmin")
+            .HasColumnType("xid");
+
+        builder.Property(entry => entry.TenantId).IsRequired();
+
+        builder.Property(entry => entry.Number)
+            .HasMaxLength(JournalEntry.MaxNumberLength)
+            .IsRequired();
+
+        builder.Property(entry => entry.EntryDate).IsRequired();
+
+        builder.Property(entry => entry.Source)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .IsRequired();
+
+        builder.Property(entry => entry.Status)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .IsRequired();
+
+        builder.Property(entry => entry.Description)
+            .HasMaxLength(JournalEntry.MaxDescriptionLength)
+            .IsRequired();
+
+        builder.Property(entry => entry.Reference).HasMaxLength(JournalEntry.MaxReferenceLength);
+        builder.Property(entry => entry.CurrencyCode).HasMaxLength(3).IsRequired();
+        builder.Property(entry => entry.PostedAtUtc);
+
+        builder.Property(entry => entry.ReversesId)
+            .HasConversion(new ValueConverter<JournalEntryId, Guid>(
+                id => id.Value, value => new JournalEntryId(value)))
+            .HasColumnName("reverses_id");
+
+        // Every total is the sum of the lines. Storing one would create a second copy of a figure
+        // that has to agree with the first forever, and this is the one figure in the system where
+        // disagreement means the ledger has stopped proving anything.
+        builder.Ignore(entry => entry.TotalDebits);
+        builder.Ignore(entry => entry.TotalCredits);
+        builder.Ignore(entry => entry.IsBalanced);
+
+        builder.Property(entry => entry.CreatedAtUtc).IsRequired();
+        builder.Property(entry => entry.CreatedBy).HasMaxLength(120).IsRequired();
+        builder.Property(entry => entry.ModifiedBy).HasMaxLength(120);
+
+        builder.OwnsMany(entry => entry.Lines, line =>
+        {
+            line.ToTable("journal_lines");
+            line.WithOwner().HasForeignKey("journal_entry_id");
+
+            line.HasKey(item => item.Id);
+
+            line.Property(item => item.Id)
+                .HasConversion(id => id.Value, value => new JournalLineId(value))
+                .HasColumnName("id")
+                .ValueGeneratedNever();
+
+            line.Property(item => item.TenantId).IsRequired();
+
+            line.Property(item => item.AccountId)
+                .HasConversion(id => id.Value, value => new AccountId(value))
+                .HasColumnName("account_id")
+                .IsRequired();
+
+            // Copied, not joined. A trial balance printed in March has to keep reading the same
+            // way in December, and an account renamed in between would restate every report that
+            // ever showed it.
+            line.Property(item => item.AccountCode)
+                .HasMaxLength(Account.MaxCodeLength)
+                .IsRequired();
+
+            line.Property(item => item.Side)
+                .HasConversion<string>()
+                .HasMaxLength(10)
+                .IsRequired();
+
+            line.Property(item => item.Narrative)
+                .HasMaxLength(JournalEntry.MaxDescriptionLength);
+
+            line.OwnsOne(item => item.Amount, amount =>
+            {
+                amount.Property(value => value.Amount)
+                    .HasColumnName("amount")
+                    .HasPrecision(18, 4)
+                    .IsRequired();
+
+                amount.Property(value => value.Currency).AsCurrency("currency");
+            });
+
+            line.Navigation(item => item.Amount).IsRequired();
+
+            line.Ignore(item => item.SignedAmount);
+
+            // The trial balance: every line on an account, in date order. Without it, a balance
+            // for one account is a scan of the whole ledger.
+            line.HasIndex(item => new { item.TenantId, item.AccountId })
+                .HasDatabaseName("ix_journal_lines_tenant_account");
+        });
+
+        builder.Navigation(entry => entry.Lines)
+            .UsePropertyAccessMode(PropertyAccessMode.Field);
+
+        builder.HasIndex(entry => new { entry.TenantId, entry.Number })
+            .IsUnique()
+            .HasDatabaseName("ux_journal_entries_tenant_number");
+
+        // Everything a period asks: what is posted, between these two days. Partial on posted,
+        // because a draft is not in the ledger yet and no report should be able to find one.
+        builder.HasIndex(entry => new { entry.TenantId, entry.EntryDate })
+            .HasFilter("status = 'Posted'")
+            .HasDatabaseName("ix_journal_entries_tenant_posted_date");
     }
 }

@@ -266,6 +266,23 @@ public static class Permissions
         /// </summary>
         public const string PaySupplier = "finance.payment.record";
 
+        /// <summary>See the chart of accounts, the ledger and a trial balance.</summary>
+        public const string ReadLedger = "finance.ledger.read";
+
+        /// <summary>
+        /// Post entries to the general ledger by hand.
+        /// <para>
+        /// Apart from everything else in this module, and it is the strongest permission here.
+        /// Most of what reaches the ledger arrives from a document somebody already approved; a
+        /// hand-written entry is the one way to move a balance with nothing but a sentence behind
+        /// it, which is exactly why it is worth being able to say who may.
+        /// </para>
+        /// </summary>
+        public const string PostToLedger = "finance.ledger.post";
+
+        /// <summary>Open and rename accounts in the chart.</summary>
+        public const string ManageChart = "finance.account.manage";
+
         // There is no finance.terms.manage. Payment terms sit on the partner, next to the credit
         // limit and on the same value object, and partners.credit.manage already names that job.
         // A second permission for the same write would have been a name for a decision nobody
@@ -313,6 +330,7 @@ public static class Permissions
         Invoicing.Read, Invoicing.Draft, Invoicing.Issue, Invoicing.Void,
         Invoicing.ManageSeries, Invoicing.ExportSaft,
         Finance.Read, Finance.RecordReceipt, Finance.ReadPayables, Finance.PaySupplier,
+        Finance.ReadLedger, Finance.PostToLedger, Finance.ManageChart,
         Access.Read, Access.ManageUsers, Access.ManageRoles,
     };
 
