@@ -79,6 +79,8 @@ public sealed class FinanceModule : IModule
         services.AddScoped<IJournalEntryRepository, JournalEntryRepository>();
         services.AddScoped<IAccountingPeriodRepository, AccountingPeriodRepository>();
         services.AddScoped<IPostingRuleRepository, PostingRuleRepository>();
+        services.AddScoped<IFactPostingRepository, FactPostingRepository>();
+        services.AddScoped<Application.Ledger.ILedgerPoster, Application.Ledger.LedgerPoster>();
         services.AddScoped<IReceiptRepository, ReceiptRepository>();
         services.AddScoped<ICustomerTermsRepository, CustomerTermsRepository>();
         services.AddScoped<IFinanceReadStore, FinanceReadStore>();
@@ -101,5 +103,6 @@ public sealed class FinanceModule : IModule
         new PayableEndpoints().Map(group);
         new LedgerEndpoints().Map(group);
         new PostingRuleEndpoints().Map(group);
+        new FactPostingEndpoints().Map(group);
     }
 }

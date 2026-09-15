@@ -276,6 +276,40 @@ public readonly record struct PostingRuleLineId(Guid Value)
     public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
 }
 
+/// <summary>Identity of a <see cref="Ledger.FactPosting"/>.</summary>
+/// <param name="Value">The underlying identifier.</param>
+public readonly record struct FactPostingId(Guid Value)
+{
+    /// <summary>The unset identifier.</summary>
+    public static readonly FactPostingId Empty = new(Guid.Empty);
+
+    /// <summary>Generates a new identifier.</summary>
+    public static FactPostingId New() => new(OrderedGuid.Create());
+
+    /// <summary>True when the identifier has not been set.</summary>
+    public bool IsEmpty => Value == Guid.Empty;
+
+    /// <inheritdoc />
+    public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
+}
+
+/// <summary>Identity of a <see cref="Ledger.FactAmount"/>.</summary>
+/// <param name="Value">The underlying identifier.</param>
+public readonly record struct FactAmountId(Guid Value)
+{
+    /// <summary>The unset identifier.</summary>
+    public static readonly FactAmountId Empty = new(Guid.Empty);
+
+    /// <summary>Generates a new identifier.</summary>
+    public static FactAmountId New() => new(OrderedGuid.Create());
+
+    /// <summary>True when the identifier has not been set.</summary>
+    public bool IsEmpty => Value == Guid.Empty;
+
+    /// <inheritdoc />
+    public override string ToString() => Value.ToString("D", CultureInfo.InvariantCulture);
+}
+
 /// <summary>Creates time-ordered <see cref="Guid"/> values so inserts stay at the right edge of the index.</summary>
 internal static class OrderedGuid
 {

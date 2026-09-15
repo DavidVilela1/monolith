@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Modules\Finance\AutoPartsErp.Modules.Finance.Domain\AutoPartsErp.Modules.Finance.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Finance\AutoPartsErp.Modules.Finance.Application\AutoPartsErp.Modules.Finance.Application.csproj" />
   </ItemGroup>
 
   <ItemGroup>

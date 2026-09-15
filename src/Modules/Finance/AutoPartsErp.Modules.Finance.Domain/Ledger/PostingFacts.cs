@@ -77,7 +77,11 @@ public static class PostingFacts
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
         {
             [SalesInvoiceIssued] = [Net, Vat, Gross],
-            [SalesInvoiceVoided] = [Net, Vat, Gross],
+            // Gross only. Voiding changes a status and never a number, and the event that
+            // carries it carries the total rather than the split — so a rule for it reverses the
+            // debt and nothing else, and the VAT comes back through a credit note like everything
+            // else the tax authority has already been told about.
+            [SalesInvoiceVoided] = [Gross],
             [CustomerReceipt] = [Gross],
             [CostOfSale] = [Value],
             [StockAdjustment] = [Value],

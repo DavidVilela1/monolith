@@ -715,5 +715,62 @@ public static class FinanceErrors
         /// <summary>No such line on this rule.</summary>
         public static readonly Error LineNotFound =
             Error.NotFound("finance.posting.line_not_found", "That rule has no such line.");
+
+        /// <summary>A fact is about a document.</summary>
+        public static readonly Error ReferenceRequired =
+            Error.Validation(
+                "finance.posting.reference_required",
+                "Say which document the fact is about. It is half the key that stops the same " +
+                "sale being posted twice when the outbox redelivers it.");
+
+        /// <summary>A reference is too long.</summary>
+        public static readonly Error ReferenceTooLong =
+            Error.Validation(
+                "finance.posting.reference_too_long",
+                "A reference cannot be longer than 60 characters.");
+
+        /// <summary>A fact carries something.</summary>
+        public static readonly Error NoAmounts =
+            Error.Validation(
+                "finance.posting.no_amounts", "A fact with no amounts is not a fact to post.");
+
+        /// <summary>No such fact on the waiting list.</summary>
+        public static Error FactNotFound(string identifier) =>
+            Error.NotFound(
+                "finance.posting.fact_not_found", $"No recorded fact matches '{identifier}'.");
+
+        /// <summary>It is already in the ledger.</summary>
+        public static readonly Error AlreadyPosted =
+            Error.DomainRule(
+                "finance.posting.already_posted",
+                "That fact is already in the ledger. Posting it again would carry it twice.");
+
+        /// <summary>It was taken off the list.</summary>
+        public static readonly Error WasDismissed =
+            Error.DomainRule(
+                "finance.posting.was_dismissed",
+                "That fact was taken off the waiting list. Put it back before posting it.");
+
+        /// <summary>It is already off the list.</summary>
+        public static readonly Error AlreadyDismissed =
+            Error.DomainRule(
+                "finance.posting.already_dismissed", "That fact is already off the waiting list.");
+
+        /// <summary>It is not off the list.</summary>
+        public static readonly Error NotDismissed =
+            Error.DomainRule(
+                "finance.posting.not_dismissed", "That fact is not off the waiting list.");
+
+        /// <summary>Taking something off the list needs an explanation.</summary>
+        public static readonly Error DismissReasonRequired =
+            Error.Validation(
+                "finance.posting.dismiss_reason_required",
+                "Say why the fact does not belong in the ledger. \"Why is there no entry for " +
+                "invoice 4471?\" has to have an answer.");
+
+        /// <summary>A reason is too long.</summary>
+        public static readonly Error ReasonTooLong =
+            Error.Validation(
+                "finance.posting.reason_too_long", "A reason cannot be longer than 500 characters.");
     }
 }

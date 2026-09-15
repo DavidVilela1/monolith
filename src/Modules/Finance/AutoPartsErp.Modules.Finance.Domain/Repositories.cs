@@ -233,3 +233,26 @@ public interface IPostingRuleRepository : IRepository<PostingRule, PostingRuleId
     /// <summary>Every rule, for showing somebody what is wired and what is not.</summary>
     Task<IReadOnlyList<PostingRule>> GetAllAsync(CancellationToken cancellationToken = default);
 }
+
+/// <summary>Write-side access to the record of every fact handed to the ledger.</summary>
+public interface IFactPostingRepository : IRepository<FactPosting, FactPostingId>
+{
+    /// <summary>
+    /// The record of one fact about one document, or null when it has never arrived.
+    /// <para>
+    /// The natural key, and what makes every posting handler idempotent: a row already here means
+    /// the outbox has delivered this message before.
+    /// </para>
+    /// </summary>
+    Task<FactPosting?> GetForAsync(
+        string factType,
+        string reference,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Everything still waiting to be posted, oldest first.</summary>
+    Task<IReadOnlyList<FactPosting>> GetWaitingAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>How many facts are waiting, for a badge on a screen.</summary>
+    Task<int> CountWaitingAsync(CancellationToken cancellationToken = default);
+}

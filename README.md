@@ -504,7 +504,7 @@ returns both.
 so a route added later without a thought about who may call it is refused rather than open. Three
 routes say otherwise — sign in, refresh, sign out — because they are where a token comes from.
 
-**Every one of the 178 routes behind a permission names which one.** Not a group-wide check per module:
+**Every one of the 182 routes behind a permission names which one.** Not a group-wide check per module:
 `GET /api/inventory/stock/replenishment` needs `inventory.stock.read` and
 `POST /api/inventory/stock/adjust` needs `inventory.stock.adjust`, and they sit four lines apart
 in the same file. The catalogue lives in the shared kernel rather than in Access, and it has to —
@@ -1121,6 +1121,36 @@ because a line reading "0,00 to VAT payable" is noise on every exempt document t
 fact about the amounts, not about the mapping. The entry checks it at posting, so a badly written
 rule fails on the first fact it meets — visibly, rather than quietly.
 
+**Every fact handed to the ledger is kept, whether or not it posted.** This is the piece that stops
+the ledger being quietly incomplete. A fact arriving with no rule to map it has to go somewhere:
+dropping it leaves a general ledger missing a month of sales and saying so nowhere, which is the
+worst failure this module has, because every report built on it still looks right. So the fact is
+kept — what it was, when, what it was worth, and the sentence explaining why it is stuck — and it
+waits.
+
+**Waiting is not failing.** A fact that arrives before the accountant has written the rule is the
+normal way this system is installed: everything waits, the rules go in, somebody presses the
+button, and the backlog posts. An empty waiting list is a real statement — everything that happened
+is in the books.
+
+**The same row is what makes the handlers idempotent.** The outbox delivers at least once, and a
+row already there for this fact and this document means the message has been seen before. Posting a
+sale twice is an error nobody finds until the year-end, so the key that answers "has this been
+dealt with?" is the one that prevents it. A supplier's document number carries the supplier code
+with it, because two suppliers can both issue an "FA 1/2026".
+
+**A fact is taken off the list with a reason, never deleted.** Something that reached the ledger by
+another route still has to answer "why is there no entry for 4471?", and the row with the sentence
+on it is the answer.
+
+**The balance is checked before a journal number is taken.** The entry would refuse either way, but
+a rule that does not balance would otherwise burn a number on every document it met, and a ledger
+with gaps in its numbering is one an auditor asks about.
+
+**The handlers know nothing.** Each one reads its own event and says "this happened, on this day,
+worth these figures". What it turns into, whether the month is still open, and what to do when
+neither works out are decided in one place.
+
 ### Invoicing
 
 The part of Portuguese invoicing that is law rather than design, end to end: schema, endpoints,
@@ -1325,9 +1355,12 @@ concurrency in all three modules that hand out numbers.
    a posting on its own, because that needs a mapping from facts to account codes that an
    accountant owns, and `PostingRule` is now the table that configuration lives in — a fact, its
    amounts, and the codes each lands on, checked against a written catalogue of what this system
-   actually raises. The accounting calendar is in place too. What remains is the wiring: event
-   handlers that read each integration event, look up the rule, and post the entry — and then a
-   VAT return read off the postings rather than off the documents.
+   actually raises. The accounting calendar is in place, and three facts are wired end to end — a
+   sales document issued, one voided, and a supplier's invoice settled all reach the ledger on
+   their own, or wait on a list that says why they could not. What remains is the rest of the
+   wiring — cost of sale, price variance and shrinkage need Inventory to publish the figures it
+   currently keeps to itself — and then a VAT return read off the postings rather than off the
+   documents.
 
 **Known issues:**
 
@@ -1381,12 +1414,25 @@ concurrency in all three modules that hand out numbers.
   sold went out at the old cost, and its share of the difference belongs in cost of sale. The
   ledger to post it to now exists; what does not is anything that maps that fact to an account
   code and writes the entry.
-- Nothing posts to the ledger automatically yet. The mapping exists and can be configured; what
-  does not exist is the handler on each integration event that looks the rule up and writes the
-  entry. Until those are wired, a rule is a correct answer nobody asks.
+- Three facts are wired, not ten. A sales document issued, a sales document voided and a
+  supplier's invoice settled post on their own. Cost of sale, price variance and shrinkage do not,
+  and cannot yet: Inventory computes all three and publishes no event carrying the figure —
+  `StockIssued` has a quantity and no value, and `SupplierInvoicePriced` has unit prices and not
+  the variance. Adding the value to those events is a change in another module and is the next
+  piece. Receipts and supplier payments are domain events inside Finance and are not wired either.
 - No rule ships configured, and none can be guessed. Until an accountant fills the table in, every
-  fact maps to nothing — which is the honest state, and also one where the ledger stays empty
-  without saying so anywhere.
+  fact lands on the waiting list — which is the honest state, and unlike an empty ledger it says so
+  on a screen.
+- Nothing tells anybody the waiting list is growing. It is a screen somebody has to open, and a
+  company that never opens it has a ledger falling further behind in a place that is at least
+  recorded.
+- A voided document posts on the day it is processed, not the day of the document it cancels.
+  Backdating it would land in a month that may already have been reported, and the period guard
+  would refuse it — so the reversal belongs to the month it was noticed, which is also what an
+  accountant would do by hand.
+- The rebate on a supplier's invoice is carried as zero. The figure is already inside the net the
+  supplier charged; carrying the key means a company that wants the rebate on its own account can
+  map it, but nothing yet fills it in.
 - A rule that does not balance is caught by the entry, on the first fact it meets, and not when
   somebody writes it. There is no symbolic check that could catch it earlier: whether net plus VAT
   equals gross is a fact about the amounts, not about the mapping.

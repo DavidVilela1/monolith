@@ -58,6 +58,9 @@ public sealed class FinanceDbContext : ModuleDbContext, IFinanceUnitOfWork
     /// <summary>The mapping from facts to account codes.</summary>
     public DbSet<PostingRule> PostingRules => Set<PostingRule>();
 
+    /// <summary>Every fact handed to the ledger, and what became of it.</summary>
+    public DbSet<FactPosting> FactPostings => Set<FactPosting>();
+
     /// <summary>Money received, with what it paid.</summary>
     public DbSet<Receipt> Receipts => Set<Receipt>();
 
@@ -96,6 +99,9 @@ public sealed class FinanceDbContext : ModuleDbContext, IFinanceUnitOfWork
 
         modelBuilder.Entity<PostingRule>()
             .HasQueryFilter(rule => rule.TenantId == CurrentTenantId);
+
+        modelBuilder.Entity<FactPosting>()
+            .HasQueryFilter(posting => posting.TenantId == CurrentTenantId);
 
         modelBuilder.Entity<Receipt>()
             .HasQueryFilter(receipt => receipt.TenantId == CurrentTenantId);

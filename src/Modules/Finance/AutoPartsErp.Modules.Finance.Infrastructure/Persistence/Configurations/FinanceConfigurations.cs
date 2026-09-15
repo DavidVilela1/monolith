@@ -888,3 +888,107 @@ public sealed class PostingRuleConfiguration : IEntityTypeConfiguration<PostingR
             .HasDatabaseName("ux_posting_rules_tenant_fact");
     }
 }
+
+/// <summary>Maps <see cref="FactPosting"/> onto <c>finance.fact_postings</c>.</summary>
+public sealed class FactPostingConfiguration : IEntityTypeConfiguration<FactPosting>
+{
+    /// <inheritdoc />
+    public void Configure(EntityTypeBuilder<FactPosting> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.ToTable("fact_postings");
+
+        builder.HasKey(posting => posting.Id);
+
+        builder.Property(posting => posting.Id)
+            .HasConversion(id => id.Value, value => new FactPostingId(value))
+            .ValueGeneratedNever();
+
+        builder.Property(posting => posting.Version)
+            .IsRowVersion()
+            .HasColumnName("xmin")
+            .HasColumnType("xid");
+
+        builder.Property(posting => posting.TenantId).IsRequired();
+
+        builder.Property(posting => posting.FactType).HasMaxLength(80).IsRequired();
+
+        builder.Property(posting => posting.Reference)
+            .HasMaxLength(FactPosting.MaxReferenceLength)
+            .IsRequired();
+
+        builder.Property(posting => posting.OccurredOn).IsRequired();
+
+        builder.Property(posting => posting.Description)
+            .HasMaxLength(JournalEntry.MaxDescriptionLength)
+            .IsRequired();
+
+        builder.Property(posting => posting.CurrencyCode).HasMaxLength(3).IsRequired();
+
+        builder.Property(posting => posting.Status)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .IsRequired();
+
+        builder.Property(posting => posting.JournalEntryId)
+            .HasConversion(
+                id => id!.Value.Value,
+                value => new JournalEntryId(value));
+
+        builder.Property(posting => posting.Reason).HasMaxLength(FactPosting.MaxReasonLength);
+
+        builder.Property(posting => posting.PostedAtUtc);
+
+        builder.Ignore(posting => posting.Currency);
+        builder.Ignore(posting => posting.IsWaiting);
+
+        builder.Property(posting => posting.CreatedAtUtc).IsRequired();
+        builder.Property(posting => posting.CreatedBy).HasMaxLength(120).IsRequired();
+        builder.Property(posting => posting.ModifiedBy).HasMaxLength(120);
+
+        builder.OwnsMany(posting => posting.Amounts, amount =>
+        {
+            amount.ToTable("fact_posting_amounts");
+            amount.WithOwner().HasForeignKey("fact_posting_id");
+
+            amount.HasKey(item => item.Id);
+
+            amount.Property(item => item.Id)
+                .HasConversion(id => id.Value, value => new FactAmountId(value))
+                .HasColumnName("id")
+                .ValueGeneratedNever();
+
+            amount.Property(item => item.TenantId).IsRequired();
+
+            amount.Property(item => item.Key).HasMaxLength(40).IsRequired();
+
+            amount.OwnsOne(item => item.Amount, money =>
+            {
+                money.Property(value => value.Amount)
+                    .HasColumnName("amount")
+                    .HasPrecision(18, 4)
+                    .IsRequired();
+
+                money.Property(value => value.Currency).AsCurrency("currency");
+            });
+
+            amount.Navigation(item => item.Amount).IsRequired();
+        });
+
+        builder.Navigation(posting => posting.Amounts)
+            .UsePropertyAccessMode(PropertyAccessMode.Field);
+
+        // One row per fact per document. This is the idempotence key: the outbox delivers at
+        // least once, and without the constraint a redelivered invoice posts a second sale.
+        builder.HasIndex(posting => new { posting.TenantId, posting.FactType, posting.Reference })
+            .IsUnique()
+            .HasDatabaseName("ux_fact_postings_tenant_fact_reference");
+
+        // The waiting list, oldest first. Partial, because the rows that matter on a screen are
+        // the few that are stuck and not the years of ones that posted.
+        builder.HasIndex(posting => new { posting.TenantId, posting.OccurredOn })
+            .HasFilter("status = 'Waiting'")
+            .HasDatabaseName("ix_fact_postings_tenant_waiting");
+    }
+}

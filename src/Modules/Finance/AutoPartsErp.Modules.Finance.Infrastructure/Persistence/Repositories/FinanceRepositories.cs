@@ -686,3 +686,69 @@ public sealed class PostingRuleRepository : IPostingRuleRepository
         _context.PostingRules.Remove(aggregate);
     }
 }
+
+/// <summary>Reads and writes the record of every fact handed to the ledger.</summary>
+public sealed class FactPostingRepository : IFactPostingRepository
+{
+    private readonly FinanceDbContext _context;
+
+    /// <summary>Initializes the repository.</summary>
+    public FactPostingRepository(FinanceDbContext context)
+    {
+        _context = context;
+    }
+
+    /// <inheritdoc />
+    public Task<FactPosting?> GetByIdAsync(
+        FactPostingId id,
+        CancellationToken cancellationToken = default) =>
+        _context.FactPostings
+            .Include(posting => posting.Amounts)
+            .FirstOrDefaultAsync(posting => posting.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> ExistsAsync(
+        FactPostingId id,
+        CancellationToken cancellationToken = default) =>
+        _context.FactPostings.AnyAsync(posting => posting.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<FactPosting?> GetForAsync(
+        string factType,
+        string reference,
+        CancellationToken cancellationToken = default) =>
+        _context.FactPostings
+            .Include(posting => posting.Amounts)
+            .FirstOrDefaultAsync(
+                posting => posting.FactType == factType && posting.Reference == reference,
+                cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<FactPosting>> GetWaitingAsync(
+        CancellationToken cancellationToken = default) =>
+        await _context.FactPostings
+            .Include(posting => posting.Amounts)
+            .Where(posting => posting.Status == PostingStatus.Waiting)
+            .OrderBy(posting => posting.OccurredOn)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public Task<int> CountWaitingAsync(CancellationToken cancellationToken = default) =>
+        _context.FactPostings
+            .CountAsync(posting => posting.Status == PostingStatus.Waiting, cancellationToken);
+
+    /// <inheritdoc />
+    public void Add(FactPosting aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.FactPostings.Add(aggregate);
+    }
+
+    /// <inheritdoc />
+    public void Remove(FactPosting aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.FactPostings.Remove(aggregate);
+    }
+}
