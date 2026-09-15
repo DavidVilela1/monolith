@@ -52,6 +52,9 @@ public sealed class FinanceDbContext : ModuleDbContext, IFinanceUnitOfWork
     /// <summary>The general ledger, with the lines of each entry.</summary>
     public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
 
+    /// <summary>The accounting calendar: which months still take entries.</summary>
+    public DbSet<AccountingPeriod> AccountingPeriods => Set<AccountingPeriod>();
+
     /// <summary>Money received, with what it paid.</summary>
     public DbSet<Receipt> Receipts => Set<Receipt>();
 
@@ -84,6 +87,9 @@ public sealed class FinanceDbContext : ModuleDbContext, IFinanceUnitOfWork
 
         modelBuilder.Entity<JournalEntry>()
             .HasQueryFilter(entry => entry.TenantId == CurrentTenantId);
+
+        modelBuilder.Entity<AccountingPeriod>()
+            .HasQueryFilter(period => period.TenantId == CurrentTenantId);
 
         modelBuilder.Entity<Receipt>()
             .HasQueryFilter(receipt => receipt.TenantId == CurrentTenantId);

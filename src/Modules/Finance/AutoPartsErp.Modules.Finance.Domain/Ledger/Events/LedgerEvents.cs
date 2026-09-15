@@ -24,3 +24,35 @@ public sealed record JournalEntryPostedDomainEvent(
     string Description,
     decimal Total,
     string CurrencyCode) : DomainEvent;
+
+/// <summary>
+/// A month was closed and nothing more is posted into it.
+/// </summary>
+/// <param name="AccountingPeriodId">The period.</param>
+/// <param name="Year">The calendar year.</param>
+/// <param name="Month">The calendar month.</param>
+/// <param name="From">Its first day.</param>
+/// <param name="To">Its last day.</param>
+public sealed record AccountingPeriodClosedDomainEvent(
+    AccountingPeriodId AccountingPeriodId,
+    int Year,
+    int Month,
+    DateOnly From,
+    DateOnly To) : DomainEvent;
+
+/// <summary>
+/// A closed month was opened again.
+/// <para>
+/// Worth its own event rather than being folded into the close. Closing is routine; reopening is
+/// somebody deciding that a reported figure was wrong, and it is the one an auditor looks for.
+/// </para>
+/// </summary>
+/// <param name="AccountingPeriodId">The period.</param>
+/// <param name="Year">The calendar year.</param>
+/// <param name="Month">The calendar month.</param>
+/// <param name="Reason">Why.</param>
+public sealed record AccountingPeriodReopenedDomainEvent(
+    AccountingPeriodId AccountingPeriodId,
+    int Year,
+    int Month,
+    string Reason) : DomainEvent;

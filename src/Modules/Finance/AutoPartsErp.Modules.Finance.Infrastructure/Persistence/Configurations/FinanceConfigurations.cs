@@ -753,3 +753,56 @@ public sealed class JournalEntryConfiguration : IEntityTypeConfiguration<Journal
             .HasDatabaseName("ix_journal_entries_tenant_posted_date");
     }
 }
+
+/// <summary>Maps <see cref="AccountingPeriod"/> onto <c>finance.accounting_periods</c>.</summary>
+public sealed class AccountingPeriodConfiguration : IEntityTypeConfiguration<AccountingPeriod>
+{
+    /// <inheritdoc />
+    public void Configure(EntityTypeBuilder<AccountingPeriod> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.ToTable("accounting_periods");
+
+        builder.HasKey(period => period.Id);
+
+        builder.Property(period => period.Id)
+            .HasConversion(id => id.Value, value => new AccountingPeriodId(value))
+            .ValueGeneratedNever();
+
+        builder.Property(period => period.Version)
+            .IsRowVersion()
+            .HasColumnName("xmin")
+            .HasColumnType("xid");
+
+        builder.Property(period => period.TenantId).IsRequired();
+        builder.Property(period => period.Year).IsRequired();
+        builder.Property(period => period.Month).IsRequired();
+
+        builder.Property(period => period.Status)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .IsRequired();
+
+        builder.Property(period => period.ClosedAtUtc);
+
+        builder.Property(period => period.ReopenedReason)
+            .HasMaxLength(AccountingPeriod.MaxReasonLength);
+
+        // The ordinal and the two dates are the year and month arranged differently. Storing them
+        // would create three more copies of one fact, and one of them would eventually be stale.
+        builder.Ignore(period => period.Ordinal);
+        builder.Ignore(period => period.From);
+        builder.Ignore(period => period.To);
+        builder.Ignore(period => period.IsOpen);
+
+        builder.Property(period => period.CreatedAtUtc).IsRequired();
+        builder.Property(period => period.CreatedBy).HasMaxLength(120).IsRequired();
+        builder.Property(period => period.ModifiedBy).HasMaxLength(120);
+
+        // Two rows for one month would each have their own answer to whether it is closed.
+        builder.HasIndex(period => new { period.TenantId, period.Year, period.Month })
+            .IsUnique()
+            .HasDatabaseName("ux_accounting_periods_tenant_month");
+    }
+}

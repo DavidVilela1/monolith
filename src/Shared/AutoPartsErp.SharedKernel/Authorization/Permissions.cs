@@ -283,6 +283,17 @@ public static class Permissions
         /// <summary>Open and rename accounts in the chart.</summary>
         public const string ManageChart = "finance.account.manage";
 
+        /// <summary>
+        /// Open, close and reopen accounting months.
+        /// <para>
+        /// Apart from <see cref="PostToLedger"/> deliberately. Closing a month is what stops other
+        /// people posting into it, and reopening one lets a figure that has already been reported
+        /// change — neither is something the person writing the day's entries should be able to do
+        /// to get their own entry to go through.
+        /// </para>
+        /// </summary>
+        public const string ManagePeriods = "finance.period.manage";
+
         // There is no finance.terms.manage. Payment terms sit on the partner, next to the credit
         // limit and on the same value object, and partners.credit.manage already names that job.
         // A second permission for the same write would have been a name for a decision nobody
@@ -330,7 +341,7 @@ public static class Permissions
         Invoicing.Read, Invoicing.Draft, Invoicing.Issue, Invoicing.Void,
         Invoicing.ManageSeries, Invoicing.ExportSaft,
         Finance.Read, Finance.RecordReceipt, Finance.ReadPayables, Finance.PaySupplier,
-        Finance.ReadLedger, Finance.PostToLedger, Finance.ManageChart,
+        Finance.ReadLedger, Finance.PostToLedger, Finance.ManageChart, Finance.ManagePeriods,
         Access.Read, Access.ManageUsers, Access.ManageRoles,
     };
 

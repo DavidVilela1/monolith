@@ -77,6 +77,7 @@ public sealed class FinanceModule : IModule
         services.AddScoped<ISupplierPaymentRepository, SupplierPaymentRepository>();
         services.AddScoped<IAccountRepository, AccountRepository>();
         services.AddScoped<IJournalEntryRepository, JournalEntryRepository>();
+        services.AddScoped<IAccountingPeriodRepository, AccountingPeriodRepository>();
         services.AddScoped<IReceiptRepository, ReceiptRepository>();
         services.AddScoped<ICustomerTermsRepository, CustomerTermsRepository>();
         services.AddScoped<IFinanceReadStore, FinanceReadStore>();

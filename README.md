@@ -504,7 +504,7 @@ returns both.
 so a route added later without a thought about who may call it is refused rather than open. Three
 routes say otherwise — sign in, refresh, sign out — because they are where a token comes from.
 
-**Every one of the 171 routes behind a permission names which one.** Not a group-wide check per module:
+**Every one of the 174 routes behind a permission names which one.** Not a group-wide check per module:
 `GET /api/inventory/stock/replenishment` needs `inventory.stock.read` and
 `POST /api/inventory/stock/adjust` needs `inventory.stock.adjust`, and they sit four lines apart
 in the same file. The catalogue lives in the shared kernel rather than in Access, and it has to —
@@ -1064,6 +1064,37 @@ makes every report built on it wrong in a direction nobody checks.
 have opinions about the sub-accounts within it. The structure is here and the codes are data;
 guessing them would produce a chart that looks official and reconciles to nobody's expectations.
 
+**A month can be closed, and then nothing else lands in it.** This is the guard that makes
+everything above worth trusting. Without it an entry dated the thirty-first of March can be posted
+in July — after the VAT for March has been declared, after the accounts have been shown to
+somebody, after the figure stopped being provisional. The ledger would still balance, and every
+report of March would quietly have changed.
+
+**Months, not quarters or years.** Portuguese VAT is declared monthly or quarterly, and a quarter
+is three months: a month is the smallest unit any of it is reported in, so it is the unit that can
+be closed. Anything larger is closed by closing the months inside it.
+
+**A month still running cannot be closed.** Its last three days would have nowhere to go, and
+somebody would post them into the next month to get the work done — which is worse than not
+closing at all, because the figure would be wrong in a way nobody can see.
+
+**Closing is in order and leaves no holes.** A March closed while February is still open is a
+February somebody can post into after March has been reported, and the year-to-date on that March
+report would change afterwards. Reopening runs the same rule backwards: a month underneath an
+already-closed one comes back only after that one has, in order.
+
+**Reopening needs a sentence, and keeps it.** Closing is routine; reopening is somebody deciding a
+reported figure was wrong, and it is the one an auditor looks for — so it is its own event, and
+the reason survives the second close rather than being cleared by it.
+
+**A month with no period row takes entries.** Absence is the absence of a closing, not a refusal.
+Requiring a row would mean nothing could be posted until somebody had opened every month by hand,
+and the first thing anybody would do is open twelve at once — which makes the row mean nothing.
+
+**Closing and posting are different permissions.** `finance.period.manage` is not
+`finance.ledger.post`, because the person writing the day's entries should not be able to reopen a
+month to get their own entry to go through.
+
 ### Invoicing
 
 The part of Portuguese invoicing that is law rather than design, end to end: schema, endpoints,
@@ -1266,8 +1297,9 @@ concurrency in all three modules that hand out numbers.
    and matched to the money that pays it, and entries reach a ledger that refuses to hold an
    unbalanced one. What is missing is the bridge between them — nothing yet turns a document into
    a posting on its own, because that needs a mapping from facts to account codes that an
-   accountant owns. After that: a period that can be closed, and a VAT return read off the
-   postings rather than off the documents.
+   accountant owns. The accounting calendar is in place — a month can be closed and the ledger
+   refuses anything dated inside a closed one — so what remains after the mapping is a VAT return
+   read off the postings rather than off the documents.
 
 **Known issues:**
 
@@ -1300,8 +1332,8 @@ concurrency in all three modules that hand out numbers.
   supplier's lead time plus a safety margin, and the movement ledger already holds the consumption
   half — what is missing is a lead time anywhere in the system, on the supplier or on the
   part/supplier pair.
-- Cost of sale is on the ledger but nowhere else. Nothing posts it to a general ledger, because
-  there is no general ledger.
+- Cost of sale is on the stock ledger but nowhere else. The general ledger exists now; what does
+  not is anything that maps that fact to an account code and writes the entry.
 - The margin floor is checked when a line is added and when it is re-priced, and never again. A
   line raised above the floor and then discounted through the quantity route, or one whose floor
   was raised after the order was taken, is not re-tested. Confirming an order is where a
@@ -1325,13 +1357,22 @@ concurrency in all three modules that hand out numbers.
   ledger true and the bookkeeping manual. The mapping from a fact — cost of sale, a shrinkage, a
   price variance, a VAT amount — to the account codes it lands on is configuration an accountant
   owns, and it is the next piece.
-- A period cannot be closed. Nothing stops an entry being posted into a month already reported,
-  which is the guard that makes everything above worth trusting.
+- Closing a month is a button somebody presses. Nothing closes January on the tenth of February
+  on its own, so a month stays open until a person says otherwise — which is the safe default and
+  also the one that quietly never happens.
+- The period guard stops entries, and entries are the only thing that reaches the ledger by hand.
+  A closed month does not yet stop an invoice being issued or a receipt being recorded into it,
+  because neither of those posts anything yet. When the bridge exists, it will have to ask the
+  same question, and `LedgerPeriodGuard` is where that question is asked.
+- Closing a month does not roll anything forward: there are no opening balances and no year-end
+  close of the income accounts into retained earnings. A trial balance is read over a stretch of
+  dates, which is correct and is not the same as a closed year.
 - A draft is stamped at the step the period had reached when the goods arrived, and documents
   already settled are never re-rated. That is the shortfall the accrual reports rather than
   something it removes: the company still has to ask the supplier for it.
-- A shortfall written off in transit produces no shrinkage posting, because there is no general
-  ledger to post it to. The `StockTransferClosedShort` event carries the lost value ready for one.
+- A shortfall written off in transit produces no shrinkage posting. The `StockTransferClosedShort`
+  event carries the lost value ready for one, and the general ledger to post it to now exists —
+  the mapping from that fact to an account code is what is still missing.
 - Storage bins are recorded but never used: `StockMovement.InBin` has no caller, so no movement
   says where in the warehouse anything went.
 - A count sheet records who counted and who posted, but nothing stops them being the same person.

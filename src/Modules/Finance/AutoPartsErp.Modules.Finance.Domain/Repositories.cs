@@ -181,3 +181,34 @@ public interface IJournalEntryRepository : IRepository<JournalEntry, JournalEntr
         DateOnly to,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>Write-side access to the accounting calendar.</summary>
+public interface IAccountingPeriodRepository : IRepository<AccountingPeriod, AccountingPeriodId>
+{
+    /// <summary>The period covering a day, or null when none has been opened for it.</summary>
+    Task<AccountingPeriod?> GetForAsync(DateOnly on, CancellationToken cancellationToken = default);
+
+    /// <summary>The period for a year and month, or null.</summary>
+    Task<AccountingPeriod?> GetForAsync(
+        int year,
+        int month,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when every month before this one is closed, or there is none before it.
+    /// <para>
+    /// The question the aggregate cannot answer for itself: "every earlier period" is a statement
+    /// about other rows.
+    /// </para>
+    /// </summary>
+    Task<bool> EveryEarlierIsClosedAsync(
+        int year,
+        int month,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>True when any month after this one is already closed.</summary>
+    Task<bool> AnyLaterIsClosedAsync(
+        int year,
+        int month,
+        CancellationToken cancellationToken = default);
+}

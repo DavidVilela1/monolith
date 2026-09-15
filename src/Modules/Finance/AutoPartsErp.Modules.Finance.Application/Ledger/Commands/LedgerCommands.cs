@@ -269,6 +269,7 @@ public sealed class PostJournalEntryCommandHandler
 {
     private readonly IJournalEntryRepository _entries;
     private readonly IAccountRepository _accounts;
+    private readonly IAccountingPeriodRepository _periods;
     private readonly IFinanceUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
 
@@ -276,11 +277,13 @@ public sealed class PostJournalEntryCommandHandler
     public PostJournalEntryCommandHandler(
         IJournalEntryRepository entries,
         IAccountRepository accounts,
+        IAccountingPeriodRepository periods,
         IFinanceUnitOfWork unitOfWork,
         IDateTimeProvider clock)
     {
         _entries = entries;
         _accounts = accounts;
+        _periods = periods;
         _unitOfWork = unitOfWork;
         _clock = clock;
     }
@@ -291,6 +294,14 @@ public sealed class PostJournalEntryCommandHandler
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+
+        Result period = await LedgerPeriodGuard.EnsureOpenAsync(
+            _periods, request.EntryDate, cancellationToken).ConfigureAwait(false);
+
+        if (period.IsFailure)
+        {
+            return Result.Failure<Guid>(period.Error);
+        }
 
         // Every account the entry names, in one round trip. Asking one at a time would be four
         // queries to answer one question, and the answer decides whether anything happens at all.
@@ -365,16 +376,19 @@ public sealed class ReverseJournalEntryCommandHandler
     : ICommandHandler<ReverseJournalEntryCommand, Guid>
 {
     private readonly IJournalEntryRepository _entries;
+    private readonly IAccountingPeriodRepository _periods;
     private readonly IFinanceUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
 
     /// <summary>Initializes the handler.</summary>
     public ReverseJournalEntryCommandHandler(
         IJournalEntryRepository entries,
+        IAccountingPeriodRepository periods,
         IFinanceUnitOfWork unitOfWork,
         IDateTimeProvider clock)
     {
         _entries = entries;
+        _periods = periods;
         _unitOfWork = unitOfWork;
         _clock = clock;
     }
@@ -385,6 +399,17 @@ public sealed class ReverseJournalEntryCommandHandler
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+
+        // The reversal is dated by whoever asks for it, and a reversal is a posting like any
+        // other: it lands in the month it is dated, and that month has to still be open. A
+        // correction to a closed March belongs in the month it was noticed.
+        Result period = await LedgerPeriodGuard.EnsureOpenAsync(
+            _periods, request.EntryDate, cancellationToken).ConfigureAwait(false);
+
+        if (period.IsFailure)
+        {
+            return Result.Failure<Guid>(period.Error);
+        }
 
         JournalEntry? original = await _entries
             .GetByIdAsync(new JournalEntryId(request.JournalEntryId), cancellationToken)
@@ -419,5 +444,42 @@ public sealed class ReverseJournalEntryCommandHandler
         await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         return reversal.Value.Id.Value;
+    }
+}
+
+/// <summary>
+/// The one question every posting has to ask before it writes anything: is the month it is dated
+/// in still open?
+/// <para>
+/// Its own class rather than a method on each handler, because there will be more postings than
+/// these two — the bridge that turns a sale or a receipt into an entry has to ask exactly the same
+/// question, and the answer has to be the same sentence every time.
+/// </para>
+/// </summary>
+internal static class LedgerPeriodGuard
+{
+    /// <summary>Refuses when the month covering a date has been closed.</summary>
+    /// <param name="periods">The accounting calendar.</param>
+    /// <param name="entryDate">The day the entry belongs to.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    internal static async Task<Result> EnsureOpenAsync(
+        IAccountingPeriodRepository periods,
+        DateOnly entryDate,
+        CancellationToken cancellationToken)
+    {
+        AccountingPeriod? period = await periods
+            .GetForAsync(entryDate, cancellationToken)
+            .ConfigureAwait(false);
+
+        // A month with no row has never been closed, so it takes entries. Refusing instead would
+        // mean nothing could be posted until somebody had opened every month by hand, and the
+        // first thing anybody would do is open twelve at once — which makes the row mean nothing.
+        // The row exists to record a closing; absence is simply the absence of one.
+        if (period is null || period.IsOpen)
+        {
+            return Result.Success();
+        }
+
+        return FinanceErrors.Period.Closed(period.Year, period.Month);
     }
 }

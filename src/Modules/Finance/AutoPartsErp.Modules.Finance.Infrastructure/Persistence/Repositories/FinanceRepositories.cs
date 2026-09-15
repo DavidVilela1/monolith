@@ -537,3 +537,89 @@ public sealed class JournalEntryRepository : IJournalEntryRepository
         _context.JournalEntries.Remove(aggregate);
     }
 }
+
+/// <summary>Write-side access to the accounting calendar.</summary>
+public sealed class AccountingPeriodRepository : IAccountingPeriodRepository
+{
+    private readonly FinanceDbContext _context;
+
+    /// <summary>Initializes the repository.</summary>
+    public AccountingPeriodRepository(FinanceDbContext context)
+    {
+        _context = context;
+    }
+
+    /// <inheritdoc />
+    public Task<AccountingPeriod?> GetByIdAsync(
+        AccountingPeriodId id,
+        CancellationToken cancellationToken = default) =>
+        _context.AccountingPeriods.FirstOrDefaultAsync(period => period.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> ExistsAsync(
+        AccountingPeriodId id,
+        CancellationToken cancellationToken = default) =>
+        _context.AccountingPeriods.AnyAsync(period => period.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<AccountingPeriod?> GetForAsync(
+        DateOnly on,
+        CancellationToken cancellationToken = default) =>
+        GetForAsync(on.Year, on.Month, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<AccountingPeriod?> GetForAsync(
+        int year,
+        int month,
+        CancellationToken cancellationToken = default) =>
+        _context.AccountingPeriods.FirstOrDefaultAsync(
+            period => period.Year == year && period.Month == month, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<bool> EveryEarlierIsClosedAsync(
+        int year,
+        int month,
+        CancellationToken cancellationToken = default)
+    {
+        int key = AccountingPeriod.Key(year, month);
+
+        // Written out rather than through Ordinal, which is computed and has no column. The
+        // arithmetic is the same one the aggregate does, and it is here because the database has
+        // to be able to filter on it.
+        bool anyEarlierOpen = await _context.AccountingPeriods
+            .Where(period => (period.Year * 12) + period.Month < key)
+            .Where(period => period.Status == PeriodStatus.Open)
+            .AnyAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return !anyEarlierOpen;
+    }
+
+    /// <inheritdoc />
+    public Task<bool> AnyLaterIsClosedAsync(
+        int year,
+        int month,
+        CancellationToken cancellationToken = default)
+    {
+        int key = AccountingPeriod.Key(year, month);
+
+        return _context.AccountingPeriods
+            .Where(period => (period.Year * 12) + period.Month > key)
+            .Where(period => period.Status == PeriodStatus.Closed)
+            .AnyAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public void Add(AccountingPeriod aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.AccountingPeriods.Add(aggregate);
+    }
+
+    /// <inheritdoc />
+    public void Remove(AccountingPeriod aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.AccountingPeriods.Remove(aggregate);
+    }
+}

@@ -535,4 +535,81 @@ public static class FinanceErrors
                 "A reversal cannot be dated before the entry it reverses. It would change a " +
                 "period that closed before the mistake was made.");
     }
+
+    /// <summary>Failures relating to an <see cref="Ledger.AccountingPeriod"/>.</summary>
+    public static class Period
+    {
+        /// <summary>The period does not exist.</summary>
+        public static Error NotFound(string identifier) =>
+            Error.NotFound(
+                "finance.period.not_found", $"No accounting period matches '{identifier}'.");
+
+        /// <summary>That year is not one this system will keep books for.</summary>
+        public static readonly Error YearOutOfRange =
+            Error.Validation("finance.period.year_out_of_range", "A year has to be between 2000 and 2999.");
+
+        /// <summary>A month is 1 to 12.</summary>
+        public static readonly Error MonthOutOfRange =
+            Error.Validation("finance.period.month_out_of_range", "A month has to be between 1 and 12.");
+
+        /// <summary>That period already exists.</summary>
+        public static readonly Error AlreadyExists =
+            Error.Conflict(
+                "finance.period.already_exists",
+                "That month already has a period. Two rows for one month would each have their " +
+                "own answer to whether it is closed.");
+
+        /// <summary>It is already closed.</summary>
+        public static readonly Error AlreadyClosed =
+            Error.DomainRule("finance.period.already_closed", "That period is already closed.");
+
+        /// <summary>It is already open.</summary>
+        public static readonly Error AlreadyOpen =
+            Error.DomainRule("finance.period.already_open", "That period is already open.");
+
+        /// <summary>The month has not ended.</summary>
+        public static readonly Error NotOverYet =
+            Error.DomainRule(
+                "finance.period.not_over",
+                "That month is still running. Closing it now would leave the entries belonging to " +
+                "its last days with nowhere to go, and somebody would post them into the next " +
+                "month to get the work done.");
+
+        /// <summary>An earlier month is still open.</summary>
+        public static readonly Error EarlierPeriodOpen =
+            Error.DomainRule(
+                "finance.period.earlier_open",
+                "An earlier month is still open. Closing out of order leaves a month somebody can " +
+                "post into after the ones after it have been reported, and the year-to-date " +
+                "figures on those reports would change afterwards.");
+
+        /// <summary>A later month is already closed.</summary>
+        public static readonly Error LaterPeriodClosed =
+            Error.DomainRule(
+                "finance.period.later_closed",
+                "A later month is already closed, and its year-to-date figures were computed over " +
+                "this one. Reopen the later months first, in order.");
+
+        /// <summary>Reopening needs an explanation.</summary>
+        public static readonly Error ReopenReasonRequired =
+            Error.Validation(
+                "finance.period.reopen_reason_required",
+                "Say why the period is being reopened. Closing is routine; reopening is somebody " +
+                "deciding a reported figure was wrong, and the sentence is what explains it later.");
+
+        /// <summary>A reason is too long.</summary>
+        public static readonly Error ReasonTooLong =
+            Error.Validation(
+                "finance.period.reason_too_long", "A reason cannot be longer than 500 characters.");
+
+        /// <summary>The month an entry falls in has been closed.</summary>
+        public static Error Closed(int year, int month) =>
+            Error.DomainRule(
+                "finance.period.closed",
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{year}-{month:D2} is closed. Post the entry into an open month, or reopen " +
+                    $"that one and say why — an entry landing in a month already reported would " +
+                    $"quietly change what it said."));
+    }
 }
