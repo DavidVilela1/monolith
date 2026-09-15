@@ -806,3 +806,85 @@ public sealed class AccountingPeriodConfiguration : IEntityTypeConfiguration<Acc
             .HasDatabaseName("ux_accounting_periods_tenant_month");
     }
 }
+
+/// <summary>Maps <see cref="PostingRule"/> onto <c>finance.posting_rules</c>.</summary>
+public sealed class PostingRuleConfiguration : IEntityTypeConfiguration<PostingRule>
+{
+    /// <inheritdoc />
+    public void Configure(EntityTypeBuilder<PostingRule> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.ToTable("posting_rules");
+
+        builder.HasKey(rule => rule.Id);
+
+        builder.Property(rule => rule.Id)
+            .HasConversion(id => id.Value, value => new PostingRuleId(value))
+            .ValueGeneratedNever();
+
+        builder.Property(rule => rule.Version)
+            .IsRowVersion()
+            .HasColumnName("xmin")
+            .HasColumnType("xid");
+
+        builder.Property(rule => rule.TenantId).IsRequired();
+
+        // The fact key, as PostingFacts writes it. Text rather than an enum column, because the
+        // catalogue grows every time a module learns to raise something and a stored enum would
+        // need a migration to learn the same word.
+        builder.Property(rule => rule.FactType).HasMaxLength(80).IsRequired();
+
+        builder.Property(rule => rule.Description)
+            .HasMaxLength(PostingRule.MaxDescriptionLength)
+            .IsRequired();
+
+        builder.Property(rule => rule.Source)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .IsRequired();
+
+        builder.Property(rule => rule.IsActive).IsRequired();
+
+        builder.Property(rule => rule.CreatedAtUtc).IsRequired();
+        builder.Property(rule => rule.CreatedBy).HasMaxLength(120).IsRequired();
+        builder.Property(rule => rule.ModifiedBy).HasMaxLength(120);
+
+        builder.OwnsMany(rule => rule.Lines, line =>
+        {
+            line.ToTable("posting_rule_lines");
+            line.WithOwner().HasForeignKey("posting_rule_id");
+
+            line.HasKey(item => item.Id);
+
+            line.Property(item => item.Id)
+                .HasConversion(id => id.Value, value => new PostingRuleLineId(value))
+                .HasColumnName("id")
+                .ValueGeneratedNever();
+
+            line.Property(item => item.TenantId).IsRequired();
+
+            line.Property(item => item.AmountKey).HasMaxLength(40).IsRequired();
+
+            line.Property(item => item.Side)
+                .HasConversion<string>()
+                .HasMaxLength(10)
+                .IsRequired();
+
+            line.Property(item => item.AccountCode)
+                .HasMaxLength(Account.MaxCodeLength)
+                .IsRequired();
+
+            line.Property(item => item.Narrative).HasMaxLength(PostingRule.MaxNarrativeLength);
+        });
+
+        builder.Navigation(rule => rule.Lines)
+            .UsePropertyAccessMode(PropertyAccessMode.Field);
+
+        // One rule per fact. Two would each post their own version of it and the ledger would
+        // carry the same sale twice.
+        builder.HasIndex(rule => new { rule.TenantId, rule.FactType })
+            .IsUnique()
+            .HasDatabaseName("ux_posting_rules_tenant_fact");
+    }
+}

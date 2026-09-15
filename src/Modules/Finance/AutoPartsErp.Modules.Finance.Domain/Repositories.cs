@@ -212,3 +212,24 @@ public interface IAccountingPeriodRepository : IRepository<AccountingPeriod, Acc
         int month,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>Write-side access to the mapping from facts to account codes.</summary>
+public interface IPostingRuleRepository : IRepository<PostingRule, PostingRuleId>
+{
+    /// <summary>
+    /// The rule mapping a fact, or null when nothing maps it.
+    /// <para>
+    /// Returns the rule whether or not it is active, so a caller can tell "nobody has mapped this"
+    /// from "somebody mapped it and turned it off". Those are different sentences on a screen.
+    /// </para>
+    /// </summary>
+    Task<PostingRule?> GetForFactAsync(
+        string factType,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>True when a fact already has a rule.</summary>
+    Task<bool> IsMappedAsync(string factType, CancellationToken cancellationToken = default);
+
+    /// <summary>Every rule, for showing somebody what is wired and what is not.</summary>
+    Task<IReadOnlyList<PostingRule>> GetAllAsync(CancellationToken cancellationToken = default);
+}

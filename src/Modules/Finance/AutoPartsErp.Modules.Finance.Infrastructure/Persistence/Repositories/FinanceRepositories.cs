@@ -623,3 +623,66 @@ public sealed class AccountingPeriodRepository : IAccountingPeriodRepository
         _context.AccountingPeriods.Remove(aggregate);
     }
 }
+
+/// <summary>Reads and writes the mapping from facts to account codes.</summary>
+public sealed class PostingRuleRepository : IPostingRuleRepository
+{
+    private readonly FinanceDbContext _context;
+
+    /// <summary>Initializes the repository.</summary>
+    public PostingRuleRepository(FinanceDbContext context)
+    {
+        _context = context;
+    }
+
+    /// <inheritdoc />
+    public Task<PostingRule?> GetByIdAsync(
+        PostingRuleId id,
+        CancellationToken cancellationToken = default) =>
+        _context.PostingRules
+            .Include(rule => rule.Lines)
+            .FirstOrDefaultAsync(rule => rule.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> ExistsAsync(
+        PostingRuleId id,
+        CancellationToken cancellationToken = default) =>
+        _context.PostingRules.AnyAsync(rule => rule.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<PostingRule?> GetForFactAsync(
+        string factType,
+        CancellationToken cancellationToken = default) =>
+        _context.PostingRules
+            .Include(rule => rule.Lines)
+            .FirstOrDefaultAsync(rule => rule.FactType == factType, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> IsMappedAsync(
+        string factType,
+        CancellationToken cancellationToken = default) =>
+        _context.PostingRules.AnyAsync(rule => rule.FactType == factType, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<PostingRule>> GetAllAsync(
+        CancellationToken cancellationToken = default) =>
+        await _context.PostingRules
+            .Include(rule => rule.Lines)
+            .OrderBy(rule => rule.FactType)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public void Add(PostingRule aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.PostingRules.Add(aggregate);
+    }
+
+    /// <inheritdoc />
+    public void Remove(PostingRule aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.PostingRules.Remove(aggregate);
+    }
+}

@@ -504,7 +504,7 @@ returns both.
 so a route added later without a thought about who may call it is refused rather than open. Three
 routes say otherwise — sign in, refresh, sign out — because they are where a token comes from.
 
-**Every one of the 174 routes behind a permission names which one.** Not a group-wide check per module:
+**Every one of the 178 routes behind a permission names which one.** Not a group-wide check per module:
 `GET /api/inventory/stock/replenishment` needs `inventory.stock.read` and
 `POST /api/inventory/stock/adjust` needs `inventory.stock.adjust`, and they sit four lines apart
 in the same file. The catalogue lives in the shared kernel rather than in Access, and it has to —
@@ -1095,6 +1095,32 @@ and the first thing anybody would do is open twelve at once — which makes the 
 `finance.ledger.post`, because the person writing the day's entries should not be able to reopen a
 month to get their own entry to go through.
 
+**Where a fact lands is configuration, not code.** Everything upstream already produces the facts —
+a sale was invoiced, stock left at a cost, a supplier charged more than the receipt was booked at —
+and each of them has been landing nowhere, because the mapping from a fact to an account code is
+the accountant's decision. A `PostingRule` is how that decision gets into the system: it names a
+fact, and says which of the amounts that fact carries lands on which account, on which side.
+
+**The facts are a written catalogue, not free text.** `PostingFacts` lists every fact this system
+raises and the amounts each one carries, so a rule naming `vat` against a fact that supplies `tax`
+is refused when somebody writes it. Without the catalogue that typo is a document that silently
+fails to post, found when somebody reconciles February.
+
+**One rule per fact.** Two would each post their own version of it and the ledger would carry the
+same sale twice. The second is refused when it is written.
+
+**A rule is deactivated, never deleted.** It is the explanation of every entry it ever produced:
+"why did March's stock go up by 4.412,18?" is answered by the rule that was active in March.
+
+**A negative amount flips its side.** A price variance or an adjustment can honestly go either way,
+and the ledger insists a line is positive with the side carrying the direction — so a rule is
+written for one direction and the arithmetic takes care of the other. A zero amount posts nothing,
+because a line reading "0,00 to VAT payable" is noise on every exempt document the company issues.
+
+**A rule cannot be checked for balance when it is written.** Whether net plus VAT equals gross is a
+fact about the amounts, not about the mapping. The entry checks it at posting, so a badly written
+rule fails on the first fact it meets — visibly, rather than quietly.
+
 ### Invoicing
 
 The part of Portuguese invoicing that is law rather than design, end to end: schema, endpoints,
@@ -1297,9 +1323,11 @@ concurrency in all three modules that hand out numbers.
    and matched to the money that pays it, and entries reach a ledger that refuses to hold an
    unbalanced one. What is missing is the bridge between them — nothing yet turns a document into
    a posting on its own, because that needs a mapping from facts to account codes that an
-   accountant owns. The accounting calendar is in place — a month can be closed and the ledger
-   refuses anything dated inside a closed one — so what remains after the mapping is a VAT return
-   read off the postings rather than off the documents.
+   accountant owns, and `PostingRule` is now the table that configuration lives in — a fact, its
+   amounts, and the codes each lands on, checked against a written catalogue of what this system
+   actually raises. The accounting calendar is in place too. What remains is the wiring: event
+   handlers that read each integration event, look up the rule, and post the entry — and then a
+   VAT return read off the postings rather than off the documents.
 
 **Known issues:**
 
@@ -1353,10 +1381,15 @@ concurrency in all three modules that hand out numbers.
   sold went out at the old cost, and its share of the difference belongs in cost of sale. The
   ledger to post it to now exists; what does not is anything that maps that fact to an account
   code and writes the entry.
-- Nothing posts to the ledger automatically. Every entry is written by hand, which makes the
-  ledger true and the bookkeeping manual. The mapping from a fact — cost of sale, a shrinkage, a
-  price variance, a VAT amount — to the account codes it lands on is configuration an accountant
-  owns, and it is the next piece.
+- Nothing posts to the ledger automatically yet. The mapping exists and can be configured; what
+  does not exist is the handler on each integration event that looks the rule up and writes the
+  entry. Until those are wired, a rule is a correct answer nobody asks.
+- No rule ships configured, and none can be guessed. Until an accountant fills the table in, every
+  fact maps to nothing — which is the honest state, and also one where the ledger stays empty
+  without saying so anywhere.
+- A rule that does not balance is caught by the entry, on the first fact it meets, and not when
+  somebody writes it. There is no symbolic check that could catch it earlier: whether net plus VAT
+  equals gross is a fact about the amounts, not about the mapping.
 - Closing a month is a button somebody presses. Nothing closes January on the tenth of February
   on its own, so a month stays open until a person says otherwise — which is the safe default and
   also the one that quietly never happens.

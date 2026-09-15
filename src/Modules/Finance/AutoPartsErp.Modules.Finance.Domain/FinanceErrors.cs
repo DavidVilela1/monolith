@@ -1,4 +1,5 @@
 using System.Globalization;
+using AutoPartsErp.Modules.Finance.Domain.Ledger;
 using AutoPartsErp.SharedKernel.Results;
 
 namespace AutoPartsErp.Modules.Finance.Domain;
@@ -611,5 +612,108 @@ public static class FinanceErrors
                     $"{year}-{month:D2} is closed. Post the entry into an open month, or reopen " +
                     $"that one and say why — an entry landing in a month already reported would " +
                     $"quietly change what it said."));
+    }
+
+    /// <summary>Things that go wrong mapping a fact to account codes.</summary>
+    public static class Posting
+    {
+        /// <summary>No rule is mapped for that fact.</summary>
+        public static Error NotFound(string factType) =>
+            Error.NotFound(
+                "finance.posting.not_found",
+                $"Nothing is mapped for '{factType}'. Until it is, that fact reaches no account.");
+
+        /// <summary>This system does not raise a fact by that name.</summary>
+        public static Error UnknownFact(string factType) =>
+            Error.Validation(
+                "finance.posting.unknown_fact",
+                $"'{factType}' is not a fact this system raises. Mapping one it never produces " +
+                "would look configured and post nothing.");
+
+        /// <summary>That fact does not carry an amount under that name.</summary>
+        public static Error UnknownAmount(string factType, string amountKey) =>
+            Error.Validation(
+                "finance.posting.unknown_amount",
+                $"'{factType}' carries no amount called '{amountKey}'. It carries: " +
+                $"{string.Join(", ", PostingFacts.AmountKeysFor(factType))}.");
+
+        /// <summary>A fact arrived without an amount its rule names.</summary>
+        public static Error AmountMissing(string factType, string amountKey) =>
+            Error.DomainRule(
+                "finance.posting.amount_missing",
+                $"The rule for '{factType}' posts '{amountKey}' and the fact arrived without it. " +
+                "Nothing is posted, because a half-posted entry is worse than none.");
+
+        /// <summary>That fact already has a rule.</summary>
+        public static readonly Error AlreadyMapped =
+            Error.Conflict(
+                "finance.posting.already_mapped",
+                "That fact already has a rule. Two rules for one fact would each post their own " +
+                "version of it, and the ledger would carry it twice.");
+
+        /// <summary>The rule is out of use.</summary>
+        public static Error RuleInactive(string factType) =>
+            Error.DomainRule(
+                "finance.posting.rule_inactive",
+                $"The rule for '{factType}' is out of use, so the fact reaches no account.");
+
+        /// <summary>The rule maps nothing.</summary>
+        public static Error RuleHasNoLines(string factType) =>
+            Error.DomainRule(
+                "finance.posting.rule_has_no_lines",
+                $"The rule for '{factType}' has no lines. It names a fact and sends it nowhere.");
+
+        /// <summary>Everything the rule would have posted was zero.</summary>
+        public static Error NothingToPost(string factType) =>
+            Error.DomainRule(
+                "finance.posting.nothing_to_post",
+                $"Every amount '{factType}' carried was zero, so there is no entry to write.");
+
+        /// <summary>A rule posts one currency.</summary>
+        public static readonly Error MixedCurrencies =
+            Error.Validation(
+                "finance.posting.mixed_currencies",
+                "That fact carries amounts in more than one currency. An entry that balanced " +
+                "across two would not balance at all.");
+
+        /// <summary>Say what the entries are for.</summary>
+        public static readonly Error DescriptionRequired =
+            Error.Validation(
+                "finance.posting.description_required",
+                "Say what the entries this rule writes are for. A trial balance of forty lines " +
+                "all reading 'Adjustment' is one nobody can audit.");
+
+        /// <summary>A description is too long.</summary>
+        public static readonly Error DescriptionTooLong =
+            Error.Validation(
+                "finance.posting.description_too_long",
+                "A description cannot be longer than 200 characters.");
+
+        /// <summary>A narrative is too long.</summary>
+        public static readonly Error NarrativeTooLong =
+            Error.Validation(
+                "finance.posting.narrative_too_long",
+                "A narrative cannot be longer than 200 characters.");
+
+        /// <summary>A line lands somewhere.</summary>
+        public static readonly Error AccountCodeRequired =
+            Error.Validation(
+                "finance.posting.account_code_required", "Say which account the line lands on.");
+
+        /// <summary>The same amount, side and account twice.</summary>
+        public static readonly Error DuplicateLine =
+            Error.Validation(
+                "finance.posting.duplicate_line",
+                "That amount already lands on that account on that side. A second identical line " +
+                "is a duplication, not a split, and the entry would not balance.");
+
+        /// <summary>A rule this long is a program, not a mapping.</summary>
+        public static readonly Error TooManyLines =
+            Error.Validation(
+                "finance.posting.too_many_lines", "A rule cannot have more than 20 lines.");
+
+        /// <summary>No such line on this rule.</summary>
+        public static readonly Error LineNotFound =
+            Error.NotFound("finance.posting.line_not_found", "That rule has no such line.");
     }
 }
