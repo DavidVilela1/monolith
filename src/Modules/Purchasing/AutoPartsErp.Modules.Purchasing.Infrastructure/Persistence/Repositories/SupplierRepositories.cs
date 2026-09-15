@@ -1,3 +1,4 @@
+using System.Globalization;
 using AutoPartsErp.Modules.Purchasing.Domain;
 using AutoPartsErp.Modules.Purchasing.Domain.Agreements;
 using AutoPartsErp.Modules.Purchasing.Domain.Invoices;
@@ -250,6 +251,18 @@ public sealed class RappelAccrualRepository : IRappelAccrualRepository
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<RappelAccrual>> GetDueForClosingAsync(
+        DateOnly today,
+        int take,
+        CancellationToken cancellationToken = default) =>
+        await _context.RappelAccruals
+            .Where(accrual => !accrual.IsClosed && accrual.PeriodTo < today)
+            .OrderBy(accrual => accrual.PeriodTo)
+            .Take(take)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
     public void Add(RappelAccrual aggregate)
     {
         ArgumentNullException.ThrowIfNull(aggregate);
@@ -261,5 +274,77 @@ public sealed class RappelAccrualRepository : IRappelAccrualRepository
     {
         ArgumentNullException.ThrowIfNull(aggregate);
         _context.RappelAccruals.Remove(aggregate);
+    }
+}
+
+/// <summary>Reads and writes what suppliers owe the company for rebates.</summary>
+public sealed class RappelClaimRepository : IRappelClaimRepository
+{
+    private const string NumberPrefix = "RC";
+
+    private const string NumberKey = "rappel-claim";
+
+    private readonly PurchasingDbContext _context;
+
+    /// <summary>Initializes the repository.</summary>
+    public RappelClaimRepository(PurchasingDbContext context)
+    {
+        _context = context;
+    }
+
+    /// <inheritdoc />
+    public Task<RappelClaim?> GetByIdAsync(
+        RappelClaimId id,
+        CancellationToken cancellationToken = default) =>
+        _context.RappelClaims.FirstOrDefaultAsync(claim => claim.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> ExistsAsync(RappelClaimId id, CancellationToken cancellationToken = default) =>
+        _context.RappelClaims.AnyAsync(claim => claim.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<RappelClaim?> GetForPeriodAsync(
+        RappelAccrualId accrualId,
+        CancellationToken cancellationToken = default) =>
+        _context.RappelClaims.FirstOrDefaultAsync(
+            claim => claim.AccrualId == accrualId, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<RappelClaim>> GetOpenAsync(
+        CancellationToken cancellationToken = default) =>
+        await _context.RappelClaims
+            .Where(claim =>
+                claim.Status == RappelClaimStatus.Raised
+                || claim.Status == RappelClaimStatus.Sent)
+            .OrderBy(claim => claim.PeriodTo)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task<string> NextClaimNumberAsync(
+        int year,
+        CancellationToken cancellationToken = default)
+    {
+        // From the database counter, in one statement, like every other run of numbers here. Two
+        // claims sharing a number is a supplier meeting where nobody can tell which is which.
+        int next = await _context
+            .TakeNextNumberAsync(NumberKey, year, cancellationToken)
+            .ConfigureAwait(false);
+
+        return string.Create(CultureInfo.InvariantCulture, $"{NumberPrefix}-{year}-{next:D5}");
+    }
+
+    /// <inheritdoc />
+    public void Add(RappelClaim aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.RappelClaims.Add(aggregate);
+    }
+
+    /// <inheritdoc />
+    public void Remove(RappelClaim aggregate)
+    {
+        ArgumentNullException.ThrowIfNull(aggregate);
+        _context.RappelClaims.Remove(aggregate);
     }
 }

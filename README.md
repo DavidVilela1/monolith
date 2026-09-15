@@ -504,7 +504,7 @@ returns both.
 so a route added later without a thought about who may call it is refused rather than open. Three
 routes say otherwise — sign in, refresh, sign out — because they are where a token comes from.
 
-**Every one of the 182 routes behind a permission names which one.** Not a group-wide check per module:
+**Every one of the 187 routes behind a permission names which one.** Not a group-wide check per module:
 `GET /api/inventory/stock/replenishment` needs `inventory.stock.read` and
 `POST /api/inventory/stock/adjust` needs `inventory.stock.adjust`, and they sit four lines apart
 in the same file. The catalogue lives in the shared kernel rather than in Access, and it has to —
@@ -855,6 +855,33 @@ purchases out again, and without that the year would permanently claim a rate it
 Taking more off documents than the year turned out to earn is reported rather than clamped away:
 the outstanding figure stays at nothing, because the company is not owed money, and a separate flag
 says it owes some back.
+
+**A period closes itself, because a period nobody closes is a rebate nobody collects.** Closing is
+what turns a shortfall into a claim somebody chases, so leaving it to a button means a year that
+looks, from every screen, like a supplier who owed nothing. A daily sweep closes every period whose
+last day has passed. It has nothing to do on almost every tick — a rebate year ends once — and that
+is the point: the cost of being right is one indexed query returning nothing.
+
+**What a closed period is still owed becomes a claim.** The accrual works out the number; the claim
+is what turns it into money the company actually gets. It has our number on it so two people can
+talk about the same one, a state so nobody chases it twice, and a supplier attached. Both rebate
+bases end up here, because they are one gap seen from two distances: on the invoice, the shortfall
+is what crossing a step in October did to every document settled since January — and a supplier's
+issued invoice cannot be re-rated, not by this system and not by theirs, so it can only be asked
+for. By credit note, it is the whole year, which was never going to arrive unasked.
+
+**A claim is not an invoice.** The company issues no document to its supplier over this; what
+arrives is their credit note. It is an internal record of a request, with no legal standing at all.
+
+**Part of a claim can be credited.** A supplier who agrees with four fifths sends four fifths, and
+the rest stays outstanding until somebody gets it or writes it off. All-or-nothing would produce a
+screen reading as though the company got everything it asked for. More than was claimed is refused
+rather than absorbed: quietly taking it is how a company finds out eighteen months later, when the
+supplier asks for it back.
+
+**Writing off is a real outcome and records its reason.** A disputed step, a period nobody noticed
+until the relationship ended, a figure too small to argue over — all of them end there, and a claim
+quietly deleted instead would take the sentence with it.
 
 **Calendar periods, not anniversaries of the agreement.** A rebate is reconciled against the
 supplier's own accounts and theirs run on the calendar. An annual scale resetting every April
@@ -1407,9 +1434,9 @@ concurrency in all three modules that hand out numbers.
   dispatched twice at two costs has no single unit cost, and the customer bringing three of ten
   back does not say which van they came on — so the figure is the average of what left, and there
   is no more precise one to be had short of serial numbers.
-- A rebate period is opened by the first settled document that falls into it, and closed by
-  hand. Nothing closes last year's periods on its own, so a buyer who never presses the button
-  leaves them open and the claim sitting on a screen nobody reads.
+- A rebate period is opened by the first settled document that falls into it, which means a
+  supplier nobody bought from that year has no period and no claim. That is correct, and it also
+  means the absence of a claim never proves the absence of a rebate.
 - A price variance only reaches the part of the delivery still on the shelf. What was already
   sold went out at the old cost, and its share of the difference belongs in cost of sale. The
   ledger to post it to now exists; what does not is anything that maps that fact to an account
@@ -1446,9 +1473,14 @@ concurrency in all three modules that hand out numbers.
 - Closing a month does not roll anything forward: there are no opening balances and no year-end
   close of the income accounts into retained earnings. A trial balance is read over a stretch of
   dates, which is correct and is not the same as a closed year.
-- A draft is stamped at the step the period had reached when the goods arrived, and documents
-  already settled are never re-rated. That is the shortfall the accrual reports rather than
-  something it removes: the company still has to ask the supplier for it.
+- A draft is still stamped at the step the period had reached when the goods arrived, and
+  documents already settled are never re-rated — they cannot be, by anybody. What is new is that
+  the shortfall becomes a claim with a number and a state instead of a figure on a screen. Nobody
+  is reminded to send it, though: an open claim waits for a buyer to look at the list.
+- A claim is raised only when its period closes, so a shortfall that appears in October is asked
+  for in January. Raising one mid-period would mean chasing a figure that can still move — the
+  scale can go back down through a step — but it does mean the money sits with the supplier
+  meanwhile.
 - A shortfall written off in transit produces no shrinkage posting. The `StockTransferClosedShort`
   event carries the lost value ready for one, and the general ledger to post it to now exists —
   the mapping from that fact to an account code is what is still missing.

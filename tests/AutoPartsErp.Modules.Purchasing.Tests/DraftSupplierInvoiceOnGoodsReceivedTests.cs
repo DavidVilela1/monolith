@@ -409,6 +409,11 @@ public sealed class DraftSupplierInvoiceOnGoodsReceivedTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<RappelAccrual>>(Accrual is null ? [] : [Accrual]);
 
+        public Task<IReadOnlyList<RappelAccrual>> GetDueForClosingAsync(
+            DateOnly today, int take, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<RappelAccrual>>(
+                Accrual is not null && Accrual.PeriodTo < today ? [Accrual] : []);
+
         public void Add(RappelAccrual aggregate) => Accrual = aggregate;
 
         public void Remove(RappelAccrual aggregate) => Accrual = null;

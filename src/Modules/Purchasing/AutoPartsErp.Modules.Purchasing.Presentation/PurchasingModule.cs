@@ -77,6 +77,12 @@ public sealed class PurchasingModule : IModule
         services.AddScoped<ISupplierPriceRepository, SupplierPriceRepository>();
         services.AddScoped<ISupplierInvoiceRepository, SupplierInvoiceRepository>();
         services.AddScoped<IRappelAccrualRepository, RappelAccrualRepository>();
+        services.AddScoped<IRappelClaimRepository, RappelClaimRepository>();
+
+        // Closing a rebate period is what turns its shortfall into a claim somebody chases, so a
+        // period nobody closes is a rebate the company does not collect. Nothing here is urgent —
+        // a rebate year ends once — so it runs daily.
+        services.AddHostedService<Infrastructure.Persistence.Jobs.RappelPeriodSweeper>();
         services.AddScoped<IPurchasingReadStore, PurchasingReadStore>();
 
         services.AddModuleHandlers(
@@ -95,5 +101,6 @@ public sealed class PurchasingModule : IModule
         new PurchaseOrderEndpoints().Map(group);
         new ReplenishmentEndpoints().Map(group);
         new SupplierAgreementEndpoints().Map(group);
+        new RappelClaimEndpoints().Map(group);
     }
 }

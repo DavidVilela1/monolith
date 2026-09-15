@@ -1,3 +1,4 @@
+using System.Globalization;
 using AutoPartsErp.SharedKernel.Results;
 
 namespace AutoPartsErp.Modules.Purchasing.Domain;
@@ -491,5 +492,87 @@ public static class PurchasingErrors
             Error.Validation(
                 "purchasing.rappel_accrual.credit_not_positive",
                 "A rebate credit note has to be above zero.");
+    }
+
+    /// <summary>Things that go wrong asking a supplier for a rebate they owe.</summary>
+    public static class Claim
+    {
+        /// <summary>No such claim.</summary>
+        public static Error NotFound(string identifier) =>
+            Error.NotFound(
+                "purchasing.rappel_claim.not_found", $"No rebate claim matches '{identifier}'.");
+
+        /// <summary>A claim needs our number for it.</summary>
+        public static readonly Error NumberRequired =
+            Error.Validation(
+                "purchasing.rappel_claim.number_required",
+                "A claim needs a number, so two people can talk about the same one.");
+
+        /// <summary>A number is too long.</summary>
+        public static readonly Error NumberTooLong =
+            Error.Validation(
+                "purchasing.rappel_claim.number_too_long",
+                "A claim number cannot be longer than 30 characters.");
+
+        /// <summary>A claim comes from a period.</summary>
+        public static readonly Error PeriodRequired =
+            Error.Validation(
+                "purchasing.rappel_claim.period_required",
+                "A claim has to come from a rebate period. What it is owed for is the whole of it.");
+
+        /// <summary>There is nothing owed.</summary>
+        public static readonly Error NothingToClaim =
+            Error.DomainRule(
+                "purchasing.rappel_claim.nothing_to_claim",
+                "That period is owed nothing, so there is nothing to ask for. A claim for zero " +
+                "is a line that wastes somebody's attention every time they look at the screen.");
+
+        /// <summary>The period already has a claim.</summary>
+        public static readonly Error AlreadyRaised =
+            Error.Conflict(
+                "purchasing.rappel_claim.already_raised",
+                "That period already has a claim. A second one would have the company asking for " +
+                "the same money twice, which is how a supplier stops taking the first one " +
+                "seriously.");
+
+        /// <summary>The supplier has already been asked.</summary>
+        public static readonly Error AlreadySent =
+            Error.DomainRule(
+                "purchasing.rappel_claim.already_sent",
+                "The supplier has already been asked for that one.");
+
+        /// <summary>It is already fully credited.</summary>
+        public static readonly Error AlreadyCredited =
+            Error.DomainRule(
+                "purchasing.rappel_claim.already_credited",
+                "That claim has been credited in full. There is nothing left on it.");
+
+        /// <summary>It is finished, one way or the other.</summary>
+        public static readonly Error Closed =
+            Error.DomainRule(
+                "purchasing.rappel_claim.closed",
+                "That claim is finished. It was either credited or written off, and both are " +
+                "answers.");
+
+        /// <summary>The supplier credited more than was asked for.</summary>
+        public static Error MoreThanClaimed(decimal outstanding, string currencyCode) =>
+            Error.DomainRule(
+                "purchasing.rappel_claim.more_than_claimed",
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"That is more than the claim has outstanding ({outstanding:0.00} {currencyCode}). Either the claim, the period or their arithmetic is wrong, and taking the money quietly is how a company finds out eighteen months later when the supplier asks for it back."));
+
+        /// <summary>Giving up on money needs an explanation.</summary>
+        public static readonly Error WriteOffReasonRequired =
+            Error.Validation(
+                "purchasing.rappel_claim.write_off_reason_required",
+                "Say why the company will not get it. Writing off money it was owed is a " +
+                "decision, and the sentence behind it is what a buyer's successor needs.");
+
+        /// <summary>A note is too long.</summary>
+        public static readonly Error NoteTooLong =
+            Error.Validation(
+                "purchasing.rappel_claim.note_too_long",
+                "A note cannot be longer than 500 characters.");
     }
 }

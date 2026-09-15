@@ -109,3 +109,89 @@ public sealed record RappelPeriodClosedDomainEvent(
     decimal EarnedAmount,
     decimal OutstandingAmount,
     string CurrencyCode) : DomainEvent;
+
+/// <summary>
+/// A closed period turned out to be owed something, and somebody has to ask for it.
+/// <para>
+/// The moment the arithmetic becomes a job. Up to here the shortfall was a number on a screen;
+/// from here it is a thing with a number and a state that somebody chases.
+/// </para>
+/// </summary>
+/// <param name="ClaimId">The claim.</param>
+/// <param name="AccrualId">The period it came from.</param>
+/// <param name="SupplierId">The supplier.</param>
+/// <param name="SupplierCode">Their short code.</param>
+/// <param name="Number">Our number for the claim.</param>
+/// <param name="PeriodFrom">The first day of the period.</param>
+/// <param name="PeriodTo">The last day of the period.</param>
+/// <param name="ClaimedAmount">What is being asked for.</param>
+/// <param name="CurrencyCode">The currency.</param>
+public sealed record RappelClaimRaisedDomainEvent(
+    RappelClaimId ClaimId,
+    RappelAccrualId AccrualId,
+    SupplierRef SupplierId,
+    string SupplierCode,
+    string Number,
+    DateOnly PeriodFrom,
+    DateOnly PeriodTo,
+    decimal ClaimedAmount,
+    string CurrencyCode) : DomainEvent;
+
+/// <summary>The supplier was asked.</summary>
+/// <param name="ClaimId">The claim.</param>
+/// <param name="SupplierId">The supplier.</param>
+/// <param name="SupplierCode">Their short code.</param>
+/// <param name="Number">Our number for the claim.</param>
+/// <param name="SentOn">The day they were asked.</param>
+/// <param name="ClaimedAmount">What was asked for.</param>
+/// <param name="CurrencyCode">The currency.</param>
+public sealed record RappelClaimSentDomainEvent(
+    RappelClaimId ClaimId,
+    SupplierRef SupplierId,
+    string SupplierCode,
+    string Number,
+    DateOnly SentOn,
+    decimal ClaimedAmount,
+    string CurrencyCode) : DomainEvent;
+
+/// <summary>The supplier credited something against a claim.</summary>
+/// <param name="ClaimId">The claim.</param>
+/// <param name="AccrualId">The period it came from.</param>
+/// <param name="SupplierId">The supplier.</param>
+/// <param name="Number">Our number for the claim.</param>
+/// <param name="CreditNoteNumber">Their number for the credit note, when they gave one.</param>
+/// <param name="Amount">What they credited.</param>
+/// <param name="OutstandingAmount">What is still to come.</param>
+/// <param name="CurrencyCode">The currency.</param>
+public sealed record RappelClaimCreditedDomainEvent(
+    RappelClaimId ClaimId,
+    RappelAccrualId AccrualId,
+    SupplierRef SupplierId,
+    string Number,
+    string? CreditNoteNumber,
+    decimal Amount,
+    decimal OutstandingAmount,
+    string CurrencyCode) : DomainEvent;
+
+/// <summary>
+/// Somebody gave up on what was left of a claim.
+/// <para>
+/// Its own event rather than a status change folded into something else. Writing off money the
+/// company was owed is a decision, and the sentence behind it is what a buyer's successor needs.
+/// </para>
+/// </summary>
+/// <param name="ClaimId">The claim.</param>
+/// <param name="SupplierId">The supplier.</param>
+/// <param name="SupplierCode">Their short code.</param>
+/// <param name="Number">Our number for the claim.</param>
+/// <param name="Amount">What was given up.</param>
+/// <param name="Reason">Why.</param>
+/// <param name="CurrencyCode">The currency.</param>
+public sealed record RappelClaimWrittenOffDomainEvent(
+    RappelClaimId ClaimId,
+    SupplierRef SupplierId,
+    string SupplierCode,
+    string Number,
+    decimal Amount,
+    string Reason,
+    string CurrencyCode) : DomainEvent;

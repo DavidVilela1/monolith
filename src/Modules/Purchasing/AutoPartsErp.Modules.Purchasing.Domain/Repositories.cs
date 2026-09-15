@@ -160,6 +160,43 @@ public interface IRappelAccrualRepository : IRepository<RappelAccrual, RappelAcc
     /// </summary>
     Task<IReadOnlyList<RappelAccrual>> GetOutstandingAsync(
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Open periods that have ended, oldest first: the ones a sweep should close.
+    /// <para>
+    /// Bounded, so a backlog cannot stall the job that calls it.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<RappelAccrual>> GetDueForClosingAsync(
+        DateOnly today,
+        int take,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>Write-side access to what suppliers owe the company for rebates.</summary>
+public interface IRappelClaimRepository : IRepository<RappelClaim, RappelClaimId>
+{
+    /// <summary>
+    /// The claim raised from a period, or null when none has been.
+    /// <para>
+    /// What makes raising idempotent: a second claim for one period would have the company asking
+    /// for the same money twice, which is how a supplier stops taking the first one seriously.
+    /// </para>
+    /// </summary>
+    Task<RappelClaim?> GetForPeriodAsync(
+        RappelAccrualId accrualId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every claim still waiting on a supplier, oldest period first.
+    /// <para>
+    /// The buyer's list before a supplier meeting, and the reason any of this exists.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<RappelClaim>> GetOpenAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Takes the next claim number for the year.</summary>
+    Task<string> NextClaimNumberAsync(int year, CancellationToken cancellationToken = default);
 }
 
 /// <summary>The Purchasing module's unit of work.</summary>

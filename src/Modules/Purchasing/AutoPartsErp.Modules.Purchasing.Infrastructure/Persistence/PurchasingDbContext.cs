@@ -53,6 +53,9 @@ public sealed class PurchasingDbContext : ModuleDbContext, IPurchasingUnitOfWork
     /// <summary>What each supplier's rebate has earned so far, one row per period.</summary>
     public DbSet<RappelAccrual> RappelAccruals => Set<RappelAccrual>();
 
+    /// <summary>What suppliers owe the company for rebates.</summary>
+    public DbSet<RappelClaim> RappelClaims => Set<RappelClaim>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -78,6 +81,9 @@ public sealed class PurchasingDbContext : ModuleDbContext, IPurchasingUnitOfWork
 
         modelBuilder.Entity<RappelAccrual>()
             .HasQueryFilter(accrual => accrual.TenantId == CurrentTenantId);
+
+        modelBuilder.Entity<RappelClaim>()
+            .HasQueryFilter(claim => claim.TenantId == CurrentTenantId);
 
         base.OnModelCreating(modelBuilder);
     }
