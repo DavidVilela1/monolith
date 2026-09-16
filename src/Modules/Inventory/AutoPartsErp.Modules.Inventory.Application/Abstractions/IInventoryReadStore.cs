@@ -46,4 +46,23 @@ public interface IInventoryReadStore
     Task<IReadOnlyList<WarehouseDto>> ListWarehousesAsync(
         bool activeOnly,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// What is on its way in from suppliers, soonest first.
+    /// <para>
+    /// The figure a warehouse plans around, and until now the only trace of it was the
+    /// <c>OnOrder</c> total on a balance — a number with no order, no line and no date behind it.
+    /// </para>
+    /// </summary>
+    /// <param name="warehouseId">One warehouse only, when given.</param>
+    /// <param name="partId">One part only, when given.</param>
+    /// <param name="dueBy">Only what is due on or before this day, when given.</param>
+    /// <param name="page">Which page.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<PagedResult<IncomingStockDto>> ListIncomingAsync(
+        Guid? warehouseId,
+        Guid? partId,
+        DateOnly? dueBy,
+        PageRequest page,
+        CancellationToken cancellationToken = default);
 }

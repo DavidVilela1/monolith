@@ -125,6 +125,23 @@ public interface IStockCountRepository : IRepository<StockCount, StockCountId>
     /// </summary>
     Task<string> NextCountNumberAsync(int year, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Count sheets, newest first.
+    /// <para>
+    /// Without it a sheet is only findable by an identifier somebody wrote down when they created
+    /// it. A stocktake is two people and three days; losing the sheet is losing the stocktake.
+    /// </para>
+    /// </summary>
+    /// <param name="warehouseId">One warehouse only, when given.</param>
+    /// <param name="status">One status only, when given.</param>
+    /// <param name="take">At most this many.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<IReadOnlyList<StockCount>> ListAsync(
+        WarehouseId? warehouseId,
+        StockCountStatus? status,
+        int take,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Loads a sheet with its lines, or null when there is no such sheet.</summary>
     Task<StockCount?> GetWithLinesAsync(StockCountId id, CancellationToken cancellationToken = default);
 }

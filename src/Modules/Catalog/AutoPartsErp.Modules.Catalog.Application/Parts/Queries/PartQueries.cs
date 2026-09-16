@@ -73,7 +73,10 @@ public sealed class GetPartBySkuQueryHandler : IQueryHandler<GetPartBySkuQuery, 
 /// <summary>
 /// The counter search: one box, any number, any spelling.
 /// </summary>
-/// <param name="Term">Free text, matched against SKU, part number and every cross-reference.</param>
+/// <param name="Term">
+/// Free text, matched as a prefix of the SKU and of every number — the manufacturer's and every
+/// cross-reference — and anywhere inside the name.
+/// </param>
 /// <param name="BrandId">Optional brand filter.</param>
 /// <param name="CategoryId">Optional category filter.</param>
 /// <param name="Status">Optional status filter.</param>

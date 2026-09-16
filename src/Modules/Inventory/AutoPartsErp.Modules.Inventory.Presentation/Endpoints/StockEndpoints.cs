@@ -1,5 +1,6 @@
 using AutoPartsErp.Modules.Abstractions.Http;
 using AutoPartsErp.Modules.Abstractions.Modules;
+using AutoPartsErp.Modules.Inventory.Application.Abstractions;
 using AutoPartsErp.Modules.Inventory.Application.Contracts;
 using AutoPartsErp.Modules.Inventory.Application.Stock.Commands;
 using AutoPartsErp.Modules.Inventory.Application.Stock.Queries;
@@ -48,6 +49,14 @@ public sealed class StockEndpoints : IEndpointGroup
             .RequirePermission(Permissions.Inventory.Read)
             .WithSummary("Claims currently held against a balance.")
             .Produces<IReadOnlyList<ReservationDto>>();
+
+        stock.MapGet("/incoming", ListIncomingAsync)
+            .WithName("ListIncomingStock")
+            .RequirePermission(Permissions.Inventory.Read)
+            .WithSummary(
+                "What is on its way in from suppliers, soonest first, with the order and the line "
+                + "behind each. Lines the supplier gave no date for sort last.")
+            .Produces<PagedResult<IncomingStockDto>>();
 
         stock.MapGet("/replenishment", GetReplenishmentAsync)
             .WithName("GetReplenishmentList")
@@ -111,6 +120,27 @@ public sealed class StockEndpoints : IEndpointGroup
             .WithSummary("Set the reorder point and quantity, or clear both.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem();
+    }
+
+    private static async Task<IResult> ListIncomingAsync(
+        IInventoryReadStore readStore,
+        Guid? warehouseId,
+        Guid? partId,
+        DateOnly? dueBy,
+        int? page,
+        int? pageSize,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(readStore);
+
+        PagedResult<IncomingStockDto> incoming = await readStore.ListIncomingAsync(
+            warehouseId,
+            partId,
+            dueBy,
+            PageRequest.Of(page ?? 1, pageSize ?? PageRequest.DefaultPageSize),
+            cancellationToken);
+
+        return Results.Ok(incoming);
     }
 
     private static async Task<IResult> GetPartStockAsync(

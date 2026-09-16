@@ -135,3 +135,164 @@ public sealed record ReplenishmentSuggestionDto(
     DateTimeOffset LastSeenAtUtc,
     Guid? PurchaseOrderId,
     string? DismissedReason);
+
+/// <summary>
+/// A supplier's invoice as the conferência list shows it.
+/// </summary>
+/// <param name="Id">The invoice.</param>
+/// <param name="SupplierId">The supplier.</param>
+/// <param name="SupplierCode">Their code.</param>
+/// <param name="SupplierDocumentNumber">Their number for it, once it is known.</param>
+/// <param name="DocumentDate">The date on their document, once it is known.</param>
+/// <param name="ReceivedOn">The day the goods it covers arrived.</param>
+/// <param name="Status">Drafted, Matched, Disputed or Cancelled.</param>
+/// <param name="NetTotal">What this system worked out, net of the rebate.</param>
+/// <param name="GrossTotal">The same with VAT.</param>
+/// <param name="StatedGrossTotal">What the supplier said it was, once somebody has typed it.</param>
+/// <param name="Difference">
+/// Their figure less ours, or null while nobody has typed theirs. The column the whole screen
+/// exists for: everything at zero is a day nobody has to do anything about.
+/// </param>
+/// <param name="CurrencyCode">The currency.</param>
+/// <param name="LineCount">How many lines it has.</param>
+/// <param name="Reason">Why it is disputed, or why it was cancelled.</param>
+public sealed record SupplierInvoiceSummary(
+    Guid Id,
+    Guid SupplierId,
+    string SupplierCode,
+    string? SupplierDocumentNumber,
+    DateOnly? DocumentDate,
+    DateOnly ReceivedOn,
+    string Status,
+    decimal NetTotal,
+    decimal GrossTotal,
+    decimal? StatedGrossTotal,
+    decimal? Difference,
+    string CurrencyCode,
+    int LineCount,
+    string? Reason);
+
+/// <summary>One line of a supplier's invoice.</summary>
+/// <param name="Id">The line. What the price-correction route needs and nothing else returned.</param>
+/// <param name="PurchaseOrderId">The order the goods came against.</param>
+/// <param name="PurchaseOrderLineId">The line of it.</param>
+/// <param name="PartId">The part.</param>
+/// <param name="Sku">Its SKU, snapshotted.</param>
+/// <param name="Description">Its description, snapshotted.</param>
+/// <param name="Quantity">How much was charged for.</param>
+/// <param name="UnitCode">The unit that quantity is in.</param>
+/// <param name="UnitPrice">What it was booked at.</param>
+/// <param name="LineTotal">The two multiplied.</param>
+/// <param name="VatRatePercent">The rate on this line.</param>
+/// <param name="HasAgreedPrice">
+/// True when the price came from a supplier price the company had agreed, false when it fell back
+/// to the purchase order's. The second is the one worth a person's eye.
+/// </param>
+public sealed record SupplierInvoiceLineDto(
+    Guid Id,
+    Guid PurchaseOrderId,
+    Guid PurchaseOrderLineId,
+    Guid PartId,
+    string Sku,
+    string Description,
+    decimal Quantity,
+    string UnitCode,
+    decimal UnitPrice,
+    decimal LineTotal,
+    decimal VatRatePercent,
+    bool HasAgreedPrice);
+
+/// <summary>A supplier's invoice with everything on it.</summary>
+/// <param name="Id">The invoice.</param>
+/// <param name="SupplierId">The supplier.</param>
+/// <param name="SupplierCode">Their code.</param>
+/// <param name="SupplierDocumentNumber">Their number for it.</param>
+/// <param name="DocumentDate">The date on their document.</param>
+/// <param name="ReceivedOn">The day the goods arrived.</param>
+/// <param name="Status">Where it stands.</param>
+/// <param name="LinesTotal">The lines added up, before the rebate.</param>
+/// <param name="RappelRatePercent">The rate the period had reached when the goods arrived.</param>
+/// <param name="RappelAmount">What that rate took off.</param>
+/// <param name="NetTotal">The lines less the rebate.</param>
+/// <param name="VatTotal">The tax, worked out per rate with the rebate spread across the bands.</param>
+/// <param name="GrossTotal">Net plus tax.</param>
+/// <param name="StatedGrossTotal">What the supplier said.</param>
+/// <param name="Difference">Theirs less ours, or null while theirs is unknown.</param>
+/// <param name="CurrencyCode">The currency.</param>
+/// <param name="Reason">Why it is disputed, or why it was cancelled.</param>
+/// <param name="IsOpen">True while it can still take lines and be reconciled.</param>
+/// <param name="Lines">The lines.</param>
+public sealed record SupplierInvoiceDetail(
+    Guid Id,
+    Guid SupplierId,
+    string SupplierCode,
+    string? SupplierDocumentNumber,
+    DateOnly? DocumentDate,
+    DateOnly ReceivedOn,
+    string Status,
+    decimal LinesTotal,
+    decimal RappelRatePercent,
+    decimal RappelAmount,
+    decimal NetTotal,
+    decimal VatTotal,
+    decimal GrossTotal,
+    decimal? StatedGrossTotal,
+    decimal? Difference,
+    string CurrencyCode,
+    string? Reason,
+    bool IsOpen,
+    IReadOnlyList<SupplierInvoiceLineDto> Lines);
+
+/// <summary>One step of a rebate scale.</summary>
+/// <param name="From">What the period has to have bought to reach it.</param>
+/// <param name="Percent">What it pays from then on, on everything.</param>
+public sealed record RappelStepDto(decimal From, decimal Percent);
+
+/// <summary>What was agreed with a supplier.</summary>
+/// <param name="Id">The agreement.</param>
+/// <param name="SupplierId">The supplier.</param>
+/// <param name="SupplierCode">Their code.</param>
+/// <param name="EffectiveFrom">The first day it applies.</param>
+/// <param name="EffectiveTo">The last, when it has ended.</param>
+/// <param name="IsLive">True when today falls inside it.</param>
+/// <param name="RappelBasis">None, OnInvoice or PeriodCreditNote.</param>
+/// <param name="RappelPeriod">None, Monthly, Quarterly or Annual.</param>
+/// <param name="Steps">The scale, lowest threshold first.</param>
+/// <param name="CurrencyCode">The currency the thresholds are in.</param>
+/// <param name="Note">Whatever somebody wrote about it.</param>
+public sealed record SupplierAgreementDto(
+    Guid Id,
+    Guid SupplierId,
+    string SupplierCode,
+    DateOnly EffectiveFrom,
+    DateOnly? EffectiveTo,
+    bool IsLive,
+    string RappelBasis,
+    string RappelPeriod,
+    IReadOnlyList<RappelStepDto> Steps,
+    string CurrencyCode,
+    string? Note);
+
+/// <summary>What a supplier charges for a part, from a day.</summary>
+/// <param name="Id">The price.</param>
+/// <param name="SupplierId">The supplier.</param>
+/// <param name="PartId">The part.</param>
+/// <param name="SupplierPartNumber">Their number for it, when they use one.</param>
+/// <param name="UnitPrice">What they charge.</param>
+/// <param name="CurrencyCode">The currency.</param>
+/// <param name="EffectiveFrom">The first day it applies.</param>
+/// <param name="IsCurrent">
+/// True when this is the price in force today for that supplier and part. A rise is a new row, so
+/// a list without this reads as several prices for one thing.
+/// </param>
+/// <param name="Note">Whatever somebody wrote about it.</param>
+public sealed record SupplierPriceDto(
+    Guid Id,
+    Guid SupplierId,
+    Guid PartId,
+    string? SupplierPartNumber,
+    decimal UnitPrice,
+    string CurrencyCode,
+    DateOnly EffectiveFrom,
+    bool IsCurrent,
+    string? Note);

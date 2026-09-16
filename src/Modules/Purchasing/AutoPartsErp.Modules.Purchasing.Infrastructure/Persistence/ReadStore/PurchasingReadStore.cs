@@ -1,6 +1,8 @@
 using AutoPartsErp.Modules.Purchasing.Application.Abstractions;
 using AutoPartsErp.Modules.Purchasing.Application.Contracts;
 using AutoPartsErp.Modules.Purchasing.Domain;
+using AutoPartsErp.Modules.Purchasing.Domain.Agreements;
+using AutoPartsErp.Modules.Purchasing.Domain.Invoices;
 using AutoPartsErp.Modules.Purchasing.Domain.Orders;
 using AutoPartsErp.Modules.Purchasing.Domain.Replenishment;
 using AutoPartsErp.SharedKernel.Abstractions;
@@ -253,4 +255,271 @@ public sealed class PurchasingReadStore : IPurchasingReadStore
             line.LineTotal.Amount,
             line.IsFullyReceived))],
     };
+
+    /// <inheritdoc />
+    public async Task<PagedResult<SupplierInvoiceSummary>> SearchSupplierInvoicesAsync(
+        Guid? supplierId,
+        string? status,
+        bool openOnly,
+        PageRequest page,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        IQueryable<SupplierInvoice> query = _context.SupplierInvoices.AsNoTracking();
+
+        if (supplierId is { } supplier)
+        {
+            query = query.Where(invoice => invoice.SupplierId == new SupplierRef(supplier));
+        }
+
+        // An unrecognized status returns nothing rather than everything. Silently dropping a
+        // filter somebody typed is how a person reads the wrong list and believes it.
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            if (!Enum.TryParse(status, ignoreCase: true, out SupplierInvoiceStatus parsed)
+                || parsed == SupplierInvoiceStatus.Unknown)
+            {
+                return PagedResult<SupplierInvoiceSummary>.Empty(page.Page, page.PageSize);
+            }
+
+            query = query.Where(invoice => invoice.Status == parsed);
+        }
+        else if (openOnly)
+        {
+            query = query.Where(invoice =>
+                invoice.Status == SupplierInvoiceStatus.Drafted
+                || invoice.Status == SupplierInvoiceStatus.Disputed);
+        }
+
+        int total = await query.CountAsync(cancellationToken).ConfigureAwait(false);
+
+        // The totals are computed properties over the lines — the VAT one spreads the rebate
+        // across the rate bands — so the rows are materialized and projected in memory. The page
+        // is fifty invoices, and the alternative is duplicating that arithmetic in SQL where it
+        // would quietly disagree with the aggregate one day.
+        List<SupplierInvoice> rows = await query
+            .Include(invoice => invoice.Lines)
+            .OrderByDescending(invoice => invoice.ReceivedOn)
+            .ThenBy(invoice => invoice.SupplierCode)
+            .Skip(page.Skip)
+            .Take(page.PageSize)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        IReadOnlyList<SupplierInvoiceSummary> items =
+        [
+            .. rows.Select(invoice => new SupplierInvoiceSummary(
+                invoice.Id.Value,
+                invoice.SupplierId.Value,
+                invoice.SupplierCode,
+                invoice.SupplierDocumentNumber,
+                invoice.DocumentDate,
+                invoice.ReceivedOn,
+                invoice.Status.ToString(),
+                invoice.NetTotal.Amount,
+                invoice.GrossTotal.Amount,
+                invoice.StatedGrossTotal?.Amount,
+                invoice.StatedGrossTotal is null
+                    ? null
+                    : invoice.StatedGrossTotal.Amount - invoice.GrossTotal.Amount,
+                invoice.CurrencyCode,
+                invoice.Lines.Count,
+                invoice.Reason)),
+        ];
+
+        return PagedResult<SupplierInvoiceSummary>.Create(
+            items, page.Page, page.PageSize, total);
+    }
+
+    /// <inheritdoc />
+    public async Task<SupplierInvoiceDetail?> GetSupplierInvoiceAsync(
+        Guid supplierInvoiceId,
+        CancellationToken cancellationToken = default)
+    {
+        var id = new SupplierInvoiceId(supplierInvoiceId);
+
+        SupplierInvoice? invoice = await _context.SupplierInvoices
+            .AsNoTracking()
+            .Include(row => row.Lines)
+            .FirstOrDefaultAsync(row => row.Id == id, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (invoice is null)
+        {
+            return null;
+        }
+
+        IReadOnlyList<SupplierInvoiceLineDto> lines =
+        [
+            .. invoice.Lines.Select(line => new SupplierInvoiceLineDto(
+                line.Id.Value,
+                line.PurchaseOrderId.Value,
+                line.PurchaseOrderLineId.Value,
+                line.PartId.Value,
+                line.Sku,
+                line.Description,
+                line.Quantity.Value,
+                line.Quantity.Unit.Code,
+                line.UnitPrice.Amount,
+                line.LineTotal.Amount,
+                line.VatRatePercent,
+
+                // Null means the price fell back to the purchase order's, because nobody had
+                // agreed one for that day. That is the line worth a person's eye.
+                line.PriceSource is not null)),
+        ];
+
+        return new SupplierInvoiceDetail(
+            invoice.Id.Value,
+            invoice.SupplierId.Value,
+            invoice.SupplierCode,
+            invoice.SupplierDocumentNumber,
+            invoice.DocumentDate,
+            invoice.ReceivedOn,
+            invoice.Status.ToString(),
+            invoice.LinesTotal.Amount,
+            invoice.RappelRatePercent,
+            invoice.RappelAmount.Amount,
+            invoice.NetTotal.Amount,
+            invoice.VatTotal.Amount,
+            invoice.GrossTotal.Amount,
+            invoice.StatedGrossTotal?.Amount,
+            invoice.StatedGrossTotal is null
+                ? null
+                : invoice.StatedGrossTotal.Amount - invoice.GrossTotal.Amount,
+            invoice.CurrencyCode,
+            invoice.Reason,
+            invoice.IsOpen,
+            lines);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<SupplierAgreementDto>> ListAgreementsAsync(
+        Guid? supplierId,
+        bool liveOnly,
+        CancellationToken cancellationToken = default)
+    {
+        DateOnly today = _clock.TodayUtc;
+
+        IQueryable<SupplierAgreement> query = _context.SupplierAgreements
+            .AsNoTracking()
+            .Include(agreement => agreement.RappelSteps);
+
+        if (supplierId is { } supplier)
+        {
+            query = query.Where(agreement => agreement.SupplierId == new SupplierRef(supplier));
+        }
+
+        if (liveOnly)
+        {
+            query = query.Where(agreement =>
+                agreement.EffectiveFrom <= today
+                && (agreement.EffectiveTo == null || agreement.EffectiveTo >= today));
+        }
+
+        List<SupplierAgreement> rows = await query
+            .OrderBy(agreement => agreement.SupplierCode)
+            .ThenByDescending(agreement => agreement.EffectiveFrom)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return
+        [
+            .. rows.Select(agreement => new SupplierAgreementDto(
+                agreement.Id.Value,
+                agreement.SupplierId.Value,
+                agreement.SupplierCode,
+                agreement.EffectiveFrom,
+                agreement.EffectiveTo,
+                agreement.IsEffectiveOn(today),
+                agreement.RappelBasis.ToString(),
+                agreement.RappelPeriod.ToString(),
+                [
+                    .. agreement.RappelSteps
+                        .OrderBy(step => step.From.Amount)
+                        .Select(step => new RappelStepDto(step.From.Amount, step.Percent)),
+                ],
+                agreement.CurrencyCode,
+                agreement.Note)),
+        ];
+    }
+
+    /// <inheritdoc />
+    public async Task<PagedResult<SupplierPriceDto>> SearchSupplierPricesAsync(
+        Guid? supplierId,
+        Guid? partId,
+        bool currentOnly,
+        PageRequest page,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        DateOnly today = _clock.TodayUtc;
+
+        IQueryable<SupplierPrice> query = _context.SupplierPrices.AsNoTracking();
+
+        if (supplierId is { } supplier)
+        {
+            query = query.Where(price => price.SupplierId == new SupplierRef(supplier));
+        }
+
+        if (partId is { } part)
+        {
+            query = query.Where(price => price.PartId == new PartRef(part));
+        }
+
+        if (currentOnly)
+        {
+            query = query.Where(price => price.EffectiveFrom <= today);
+        }
+
+        int total = await query.CountAsync(cancellationToken).ConfigureAwait(false);
+
+        var rows = await query
+            .OrderBy(price => price.SupplierId)
+            .ThenBy(price => price.PartId)
+            .ThenByDescending(price => price.EffectiveFrom)
+            .Skip(page.Skip)
+            .Take(page.PageSize)
+            .Select(price => new
+            {
+                price.Id,
+                price.SupplierId,
+                price.PartId,
+                price.SupplierPartNumber,
+                Amount = price.UnitPrice.Amount,
+                CurrencyCode = price.UnitPrice.Currency.Code,
+                price.EffectiveFrom,
+                price.Note,
+
+                // In force today means: nothing later has started yet for this supplier and part.
+                // A rise is a new row, so a list without this reads as several prices for one
+                // thing and a buyer cannot tell which one the system will actually use.
+                IsCurrent = price.EffectiveFrom <= today
+                    && !_context.SupplierPrices.Any(later =>
+                        later.SupplierId == price.SupplierId
+                        && later.PartId == price.PartId
+                        && later.EffectiveFrom <= today
+                        && later.EffectiveFrom > price.EffectiveFrom),
+            })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        IReadOnlyList<SupplierPriceDto> items =
+        [
+            .. rows.Select(row => new SupplierPriceDto(
+                row.Id.Value,
+                row.SupplierId.Value,
+                row.PartId.Value,
+                row.SupplierPartNumber,
+                row.Amount,
+                row.CurrencyCode,
+                row.EffectiveFrom,
+                row.IsCurrent,
+                row.Note)),
+        ];
+
+        return PagedResult<SupplierPriceDto>.Create(items, page.Page, page.PageSize, total);
+    }
 }

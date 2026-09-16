@@ -52,8 +52,10 @@ public interface ICatalogReadStore
 public sealed record PartSearchCriteria
 {
     /// <summary>
-    /// Free text typed at the counter. Matched against the SKU, the manufacturer part number
-    /// and every cross-reference, all in normalized form, plus the description.
+    /// Free text typed at the counter. Matched three ways: as a prefix of the SKU, as typed,
+    /// because a SKU keeps its punctuation; as a prefix of the manufacturer part number and of
+    /// every cross-reference, normalized, so any spelling of a number off the old part finds it;
+    /// and anywhere inside the name.
     /// </summary>
     public string? Term { get; init; }
 

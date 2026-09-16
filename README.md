@@ -504,7 +504,7 @@ returns both.
 so a route added later without a thought about who may call it is refused rather than open. Three
 routes say otherwise — sign in, refresh, sign out — because they are where a token comes from.
 
-**Every one of the 190 routes behind a permission names which one.** Not a group-wide check per module:
+**Every one of the 196 routes behind a permission names which one.** Not a group-wide check per module:
 `GET /api/inventory/stock/replenishment` needs `inventory.stock.read` and
 `POST /api/inventory/stock/adjust` needs `inventory.stock.adjust`, and they sit four lines apart
 in the same file. The catalogue lives in the shared kernel rather than in Access, and it has to —
@@ -1423,6 +1423,15 @@ reversal on a return, what a count found, a supplier's price variance, and stock
 transit. Every fact in the catalogue but one. Each of them waits on a list that says why, rather
 than vanishing, until an accountant has said where it lands.
 
+**Before the first screen**, an audit of the read side found four places where a screen was
+impossible and one where it would have been wrong, and all five are closed. A supplier's invoice
+had five ways to change it and no way to read it — the conferência screen, which is the whole point
+of the automatic entry, could not be built and there was no way even to discover an invoice's
+identifier. Agreements and supplier prices could be written and never read back, so a rebate scale
+went in and disappeared. Stock on its way in from suppliers existed only as a total with no order,
+line or date behind it. Count sheets could not be listed, so losing a sheet's identifier was losing
+the stocktake. And the part search did not match the SKU, while its own documentation said it did.
+
 **Next, in rough dependency order:**
 
 1. **Communicating documents to the AT.** The webservice that reports each document within days
@@ -1500,6 +1509,10 @@ than vanishing, until an accountant has said where it lands.
   accountant the chart does.
 - Nothing reconciles the ledger against a bank statement. Receipts and payments post the day the
   money moves, which is the right day for the books and not always the day it cleared.
+- Most of the read side is covered by the integration suite and not by unit tests. Read stores
+  are database queries and there is nothing in them to test without a database; what is
+  unit-tested is the logic that sits above them, like the clamping and the status filter on the
+  count-sheet list.
 - The three ledger reports are covered by the integration suite and not by unit tests. They are
   database queries and there is nothing in them to test without a database — what is unit-tested is
   the one rule they share with the domain, that an account grows on the side its kind says.

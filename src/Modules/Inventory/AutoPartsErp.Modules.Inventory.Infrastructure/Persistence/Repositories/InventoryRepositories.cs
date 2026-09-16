@@ -339,6 +339,36 @@ public sealed class StockCountRepository : IStockCountRepository
     }
 
     /// <inheritdoc />
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<StockCount>> ListAsync(
+        WarehouseId? warehouseId,
+        StockCountStatus? status,
+        int take,
+        CancellationToken cancellationToken = default)
+    {
+        IQueryable<StockCount> query = _context.StockCounts
+            .AsNoTracking()
+            .Include(count => count.Lines);
+
+        if (warehouseId is { } warehouse)
+        {
+            query = query.Where(count => count.WarehouseId == warehouse);
+        }
+
+        if (status is { } wanted)
+        {
+            query = query.Where(count => count.Status == wanted);
+        }
+
+        return await query
+            .OrderByDescending(count => count.CountedOn)
+            .ThenByDescending(count => count.Number)
+            .Take(take)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
     public void Add(StockCount aggregate)
     {
         ArgumentNullException.ThrowIfNull(aggregate);

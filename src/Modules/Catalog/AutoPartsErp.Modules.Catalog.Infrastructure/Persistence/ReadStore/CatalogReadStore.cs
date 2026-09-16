@@ -1,6 +1,6 @@
-using AutoPartsErp.Modules.Catalog.Domain;
 using AutoPartsErp.Modules.Catalog.Application.Abstractions;
 using AutoPartsErp.Modules.Catalog.Application.Contracts;
+using AutoPartsErp.Modules.Catalog.Domain;
 using AutoPartsErp.Modules.Catalog.Domain.Brands;
 using AutoPartsErp.Modules.Catalog.Domain.Categories;
 using AutoPartsErp.Modules.Catalog.Domain.Parts;
@@ -26,6 +26,9 @@ namespace AutoPartsErp.Modules.Catalog.Infrastructure.Persistence.ReadStore;
 /// </summary>
 public sealed class CatalogReadStore : ICatalogReadStore
 {
+    /// <summary>The character that turns a LIKE wildcard back into a literal.</summary>
+    private const string LikeEscape = "\\";
+
     private readonly CatalogDbContext _context;
 
     /// <summary>Initializes the read store.</summary>
@@ -82,14 +85,40 @@ public sealed class CatalogReadStore : ICatalogReadStore
 
             // How a counter clerk actually searches: a number off the old part in any
             // spelling, or a couple of words from the description.
+            //
+            // LIKE 'X%' rather than string.StartsWith: the prefix match happens in PostgreSQL,
+            // so its collation decides the semantics, not the .NET locale of whichever machine
+            // happens to be running the API. It is also the form the analyzers stop arguing
+            // about, and StartsWith(value, StringComparison) - the fix they suggest - is not
+            // translatable to SQL at all and would blow up at runtime.
+            //
+            // No escaping is needed: PartNumber.Normalize has already stripped everything that
+            // is not a letter or digit, so the term cannot contain % or _.
+            // The SKU is matched on its own, against the term as typed rather than the
+            // normalized one. A SKU is the code this company chose and keeps its punctuation —
+            // "FR-1188" is stored with the hyphen — so normalizing the term would turn the house
+            // code into something that matches nothing. It is stored trimmed and upper-cased, so
+            // upper-casing the term is what makes the match case-insensitive.
+            string sku = Escape(term.Trim().ToUpperInvariant()) + "%";
+
             if (normalized.Length > 0)
             {
                 string prefix = normalized + "%";
 
                 query = query.Where(part =>
-                    EF.Functions.Like(part.ManufacturerPartNumber.Normalized, prefix)
+                    EF.Functions.Like(part.Sku.Value, sku, LikeEscape)
+                    || EF.Functions.Like(part.ManufacturerPartNumber.Normalized, prefix)
                     || part.CrossReferences.Any(reference =>
                         EF.Functions.Like(reference.NormalizedNumber, prefix))
+                    || EF.Functions.ILike(part.Name, $"%{term}%"));
+            }
+            else
+            {
+                // Nothing left after normalizing means the term was punctuation and letters that
+                // are not a number — a name, or a SKU that is all hyphens. Both are still worth
+                // trying.
+                query = query.Where(part =>
+                    EF.Functions.Like(part.Sku.Value, sku, LikeEscape)
                     || EF.Functions.ILike(part.Name, $"%{term}%"));
             }
         }
@@ -363,4 +392,19 @@ public sealed class CatalogReadStore : ICatalogReadStore
 
         public string? CategoryName { get; init; }
     }
+
+    /// <summary>
+    /// Makes a user's text safe to put in front of a LIKE wildcard.
+    /// <para>
+    /// The other predicates run on normalized numbers, which have had everything but letters and
+    /// digits stripped out and cannot contain a wildcard. The SKU is matched as typed, so somebody
+    /// searching for a code with a per-cent sign in it would otherwise be writing a pattern
+    /// instead of a search.
+    /// </para>
+    /// </summary>
+    /// <param name="term">The term as typed.</param>
+    private static string Escape(string term) => term
+        .Replace(LikeEscape, LikeEscape + LikeEscape, StringComparison.Ordinal)
+        .Replace("%", LikeEscape + "%", StringComparison.Ordinal)
+        .Replace("_", LikeEscape + "_", StringComparison.Ordinal);
 }

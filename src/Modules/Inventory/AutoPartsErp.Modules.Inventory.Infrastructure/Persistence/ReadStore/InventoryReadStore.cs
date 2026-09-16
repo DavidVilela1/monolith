@@ -3,6 +3,7 @@ using AutoPartsErp.Modules.Inventory.Application.Contracts;
 using AutoPartsErp.Modules.Inventory.Domain;
 using AutoPartsErp.Modules.Inventory.Domain.Stock;
 using AutoPartsErp.Modules.Inventory.Domain.Warehouses;
+using AutoPartsErp.SharedKernel.Abstractions;
 using AutoPartsErp.SharedKernel.Paging;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,11 +19,13 @@ namespace AutoPartsErp.Modules.Inventory.Infrastructure.Persistence.ReadStore;
 public sealed class InventoryReadStore : IInventoryReadStore
 {
     private readonly InventoryDbContext _context;
+    private readonly IDateTimeProvider _clock;
 
     /// <summary>Initializes the read store.</summary>
-    public InventoryReadStore(InventoryDbContext context)
+    public InventoryReadStore(InventoryDbContext context, IDateTimeProvider clock)
     {
         _context = context;
+        _clock = clock;
     }
 
     /// <inheritdoc />
@@ -345,5 +348,93 @@ public sealed class InventoryReadStore : IInventoryReadStore
                 LastCountedAtUtc = row.LastCountedAtUtc,
             };
         })];
+    }
+
+    /// <inheritdoc />
+    public async Task<PagedResult<IncomingStockDto>> ListIncomingAsync(
+        Guid? warehouseId,
+        Guid? partId,
+        DateOnly? dueBy,
+        PageRequest page,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        DateOnly today = _clock.TodayUtc;
+
+        // Outstanding only. A line that has fully arrived is history the movement ledger already
+        // holds, and a planning screen that listed it would bury this week under last year.
+        var query =
+            from item in _context.StockItems.AsNoTracking()
+            from incoming in item.Incoming
+            where incoming.Status == IncomingStockStatus.Expected
+            select new
+            {
+                item.Part,
+                item.WarehouseId,
+                incoming.PurchaseOrderId,
+                incoming.PurchaseOrderLineId,
+                incoming.OrderNumber,
+                Ordered = incoming.Quantity.Value,
+                Received = incoming.ReceivedQuantity.Value,
+                Unit = item.Unit.Code,
+                incoming.ExpectedOn,
+                incoming.Status,
+            };
+
+        if (warehouseId is { } warehouse)
+        {
+            query = query.Where(row => row.WarehouseId == new WarehouseId(warehouse));
+        }
+
+        if (partId is { } part)
+        {
+            query = query.Where(row => row.Part == new PartRef(part));
+        }
+
+        if (dueBy is { } due)
+        {
+            query = query.Where(row => row.ExpectedOn != null && row.ExpectedOn <= due);
+        }
+
+        int total = await query.CountAsync(cancellationToken).ConfigureAwait(false);
+
+        // A line with no expected date sorts last rather than first: the supplier never said, so
+        // it is not news, and it would otherwise sit at the top of every planning screen forever.
+        var rows = await query
+            .OrderBy(row => row.ExpectedOn == null)
+            .ThenBy(row => row.ExpectedOn)
+            .ThenBy(row => row.OrderNumber)
+            .Skip(page.Skip)
+            .Take(page.PageSize)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        Dictionary<WarehouseId, string> codes = await _context.Warehouses
+            .AsNoTracking()
+            .ToDictionaryAsync(house => house.Id, house => house.Code, cancellationToken)
+            .ConfigureAwait(false);
+
+        IReadOnlyList<IncomingStockDto> items =
+        [
+            .. rows.Select(row => new IncomingStockDto(
+                row.Part.Value,
+                row.WarehouseId.Value,
+                codes.GetValueOrDefault(row.WarehouseId, string.Empty),
+                row.PurchaseOrderId.Value,
+                row.PurchaseOrderLineId.Value,
+                row.OrderNumber,
+                row.Ordered,
+                row.Received,
+                row.Ordered - row.Received,
+                row.Unit,
+                row.ExpectedOn,
+                row.Status.ToString(),
+                row.ExpectedOn is { } expected
+                    && expected < today
+                    && row.Ordered > row.Received)),
+        ];
+
+        return PagedResult<IncomingStockDto>.Create(items, page.Page, page.PageSize, total);
     }
 }

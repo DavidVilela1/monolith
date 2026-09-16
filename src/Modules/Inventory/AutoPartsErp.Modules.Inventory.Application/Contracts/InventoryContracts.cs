@@ -154,3 +154,34 @@ public sealed record WarehouseDto(
     bool AllowsNegativeStock,
     bool RequiresBinTracking,
     int StockedPartCount);
+
+/// <summary>
+/// Stock on its way in from a supplier, as a warehouse plans around it.
+/// </summary>
+/// <param name="PartId">The part.</param>
+/// <param name="WarehouseId">Where it is going.</param>
+/// <param name="WarehouseCode">That warehouse's code.</param>
+/// <param name="PurchaseOrderId">The order it is on.</param>
+/// <param name="PurchaseOrderLineId">The line of it.</param>
+/// <param name="OrderNumber">The order's number, as the buyer would say it.</param>
+/// <param name="Quantity">How much was ordered.</param>
+/// <param name="ReceivedQuantity">How much has arrived.</param>
+/// <param name="Outstanding">How much is still to come.</param>
+/// <param name="Unit">The unit all three are in.</param>
+/// <param name="ExpectedOn">The day it is due, when the supplier said.</param>
+/// <param name="Status">Where the line stands.</param>
+/// <param name="IsOverdue">True when the day it was due has passed and something is still owed.</param>
+public sealed record IncomingStockDto(
+    Guid PartId,
+    Guid WarehouseId,
+    string WarehouseCode,
+    Guid PurchaseOrderId,
+    Guid PurchaseOrderLineId,
+    string OrderNumber,
+    decimal Quantity,
+    decimal ReceivedQuantity,
+    decimal Outstanding,
+    string Unit,
+    DateOnly? ExpectedOn,
+    string Status,
+    bool IsOverdue);

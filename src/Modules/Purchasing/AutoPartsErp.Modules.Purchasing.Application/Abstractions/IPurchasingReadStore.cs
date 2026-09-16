@@ -29,6 +29,61 @@ public interface IPurchasingReadStore
         SuggestionSearchCriteria criteria,
         PageRequest page,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Suppliers' invoices, newest arrival first: the conferência list.
+    /// </summary>
+    /// <param name="supplierId">One supplier only, when given.</param>
+    /// <param name="status">One status only — Drafted, Matched, Disputed, Cancelled.</param>
+    /// <param name="openOnly">
+    /// True for only what still needs somebody: drafted or disputed. The default view of the
+    /// screen, because a year of matched invoices is not what anybody opens it for.
+    /// </param>
+    /// <param name="page">Which page.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<PagedResult<SupplierInvoiceSummary>> SearchSupplierInvoicesAsync(
+        Guid? supplierId,
+        string? status,
+        bool openOnly,
+        PageRequest page,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>One supplier's invoice with its lines.</summary>
+    /// <param name="supplierInvoiceId">The invoice.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<SupplierInvoiceDetail?> GetSupplierInvoiceAsync(
+        Guid supplierInvoiceId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// What was agreed with suppliers, including the rebate scale.
+    /// </summary>
+    /// <param name="supplierId">One supplier only, when given.</param>
+    /// <param name="liveOnly">True for only the agreements in force today.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<IReadOnlyList<SupplierAgreementDto>> ListAgreementsAsync(
+        Guid? supplierId,
+        bool liveOnly,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// What suppliers charge, newest first.
+    /// <para>
+    /// A rise is a new row rather than an edit, so one supplier and part can have several — which
+    /// is why each row says whether it is the one in force today.
+    /// </para>
+    /// </summary>
+    /// <param name="supplierId">One supplier only, when given.</param>
+    /// <param name="partId">One part only, when given.</param>
+    /// <param name="currentOnly">True for only what is in force today.</param>
+    /// <param name="page">Which page.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<PagedResult<SupplierPriceDto>> SearchSupplierPricesAsync(
+        Guid? supplierId,
+        Guid? partId,
+        bool currentOnly,
+        PageRequest page,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>What to look for when searching purchase orders.</summary>

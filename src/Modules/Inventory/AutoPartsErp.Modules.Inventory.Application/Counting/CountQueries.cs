@@ -138,3 +138,104 @@ public sealed record StockCountSheetLine(
     decimal? Variance,
     string? CountedBy,
     DateTimeOffset? CountedAtUtc);
+
+/// <summary>
+/// The count sheets, so one can be found again after it was created.
+/// </summary>
+/// <param name="WarehouseId">One warehouse only, when given.</param>
+/// <param name="Status">Open, Submitted, Posted or Cancelled; all of them when omitted.</param>
+/// <param name="Take">At most this many, newest first.</param>
+public sealed record ListStockCountsQuery(
+    Guid? WarehouseId = null,
+    string? Status = null,
+    int Take = 50) : IQuery<IReadOnlyList<StockCountSummary>>;
+
+/// <summary>A count sheet as the list shows it.</summary>
+/// <param name="StockCountId">The sheet.</param>
+/// <param name="Number">Our number for it.</param>
+/// <param name="WarehouseId">The warehouse counted.</param>
+/// <param name="CountedOn">The day it is for.</param>
+/// <param name="Status">Where it stands.</param>
+/// <param name="TotalLines">How many lines it has.</param>
+/// <param name="CountedLines">How many have a figure on them.</param>
+/// <param name="UncountedLines">How many are still blank — what is left to do.</param>
+/// <param name="SubmittedBy">Who submitted it.</param>
+/// <param name="SubmittedAtUtc">When.</param>
+/// <param name="PostedBy">Who posted it.</param>
+/// <param name="PostedAtUtc">When.</param>
+public sealed record StockCountSummary(
+    Guid StockCountId,
+    string Number,
+    Guid WarehouseId,
+    DateOnly CountedOn,
+    string Status,
+    int TotalLines,
+    int CountedLines,
+    int UncountedLines,
+    string? SubmittedBy,
+    DateTimeOffset? SubmittedAtUtc,
+    string? PostedBy,
+    DateTimeOffset? PostedAtUtc);
+
+/// <summary>Lists the count sheets.</summary>
+public sealed class ListStockCountsQueryHandler
+    : IQueryHandler<ListStockCountsQuery, IReadOnlyList<StockCountSummary>>
+{
+    private readonly IStockCountRepository _counts;
+
+    /// <summary>Initializes the handler.</summary>
+    public ListStockCountsQueryHandler(IStockCountRepository counts)
+    {
+        _counts = counts;
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<IReadOnlyList<StockCountSummary>>> HandleAsync(
+        ListStockCountsQuery request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        StockCountStatus? status = null;
+
+        // An unrecognized status returns nothing rather than everything, the way every other
+        // filter in this system does. Quietly ignoring one is how a person reads the wrong list.
+        if (!string.IsNullOrWhiteSpace(request.Status))
+        {
+            if (!Enum.TryParse(request.Status, ignoreCase: true, out StockCountStatus parsed)
+                || parsed == StockCountStatus.Unknown)
+            {
+                return Result.Success<IReadOnlyList<StockCountSummary>>([]);
+            }
+
+            status = parsed;
+        }
+
+        IReadOnlyList<StockCount> counts = await _counts
+            .ListAsync(
+                request.WarehouseId is { } warehouse ? new WarehouseId(warehouse) : null,
+                status,
+                Math.Clamp(request.Take, 1, 200),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        IReadOnlyList<StockCountSummary> items =
+        [
+            .. counts.Select(count => new StockCountSummary(
+                count.Id.Value,
+                count.Number,
+                count.WarehouseId.Value,
+                count.CountedOn,
+                count.Status.ToString(),
+                count.Lines.Count,
+                count.Lines.Count(line => line.CountedQuantity is not null),
+                count.Lines.Count(line => line.CountedQuantity is null),
+                count.SubmittedBy,
+                count.SubmittedAtUtc,
+                count.PostedBy,
+                count.PostedAtUtc)),
+        ];
+
+        return Result.Success(items);
+    }
+}

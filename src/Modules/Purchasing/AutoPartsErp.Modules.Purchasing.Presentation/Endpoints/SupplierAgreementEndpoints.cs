@@ -1,9 +1,12 @@
 using AutoPartsErp.Modules.Abstractions.Http;
 using AutoPartsErp.Modules.Abstractions.Modules;
+using AutoPartsErp.Modules.Purchasing.Application.Abstractions;
 using AutoPartsErp.Modules.Purchasing.Application.Agreements.Commands;
+using AutoPartsErp.Modules.Purchasing.Application.Contracts;
 using AutoPartsErp.Modules.Purchasing.Application.Invoices.Commands;
 using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
+using AutoPartsErp.SharedKernel.Paging;
 using AutoPartsErp.SharedKernel.Results;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -144,6 +147,108 @@ public sealed class SupplierAgreementEndpoints : IEndpointGroup
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
+        group.MapGet("/supplier-invoices", SearchInvoicesAsync)
+            .WithName("SearchSupplierInvoices")
+            .RequirePermission(Permissions.Purchasing.ReadInvoices)
+            .WithSummary(
+                "Suppliers' invoices, newest arrival first. Defaults to what still needs somebody "
+                + "— drafted or disputed — because a year of matched ones is not what anybody "
+                + "opens this for.")
+            .Produces<PagedResult<SupplierInvoiceSummary>>();
+
+        group.MapGet("/supplier-invoices/{supplierInvoiceId:guid}", GetInvoiceAsync)
+            .WithName("GetSupplierInvoice")
+            .RequirePermission(Permissions.Purchasing.ReadInvoices)
+            .WithSummary(
+                "One supplier's invoice with its lines, what this system worked out, what they "
+                + "said, and the difference.")
+            .Produces<SupplierInvoiceDetail>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapGet("/agreements", ListAgreementsAsync)
+            .WithName("ListSupplierAgreements")
+            .RequirePermission(Permissions.Purchasing.Read)
+            .WithSummary("What was agreed with suppliers, rebate scale included.")
+            .Produces<IReadOnlyList<SupplierAgreementDto>>();
+
+        group.MapGet("/supplier-prices", SearchPricesAsync)
+            .WithName("SearchSupplierPrices")
+            .RequirePermission(Permissions.Purchasing.Read)
+            .WithSummary(
+                "What suppliers charge. A rise is a new row rather than an edit, so each says "
+                + "whether it is the one in force today.")
+            .Produces<PagedResult<SupplierPriceDto>>();
+    }
+
+    private static async Task<IResult> SearchInvoicesAsync(
+        IPurchasingReadStore readStore,
+        Guid? supplierId,
+        string? status,
+        bool? openOnly,
+        int? page,
+        int? pageSize,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(readStore);
+
+        PagedResult<SupplierInvoiceSummary> invoices =
+            await readStore.SearchSupplierInvoicesAsync(
+                supplierId,
+                status,
+                openOnly ?? true,
+                PageRequest.Of(page ?? 1, pageSize ?? PageRequest.DefaultPageSize),
+                cancellationToken);
+
+        return Results.Ok(invoices);
+    }
+
+    private static async Task<IResult> GetInvoiceAsync(
+        IPurchasingReadStore readStore,
+        Guid supplierInvoiceId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(readStore);
+
+        SupplierInvoiceDetail? invoice =
+            await readStore.GetSupplierInvoiceAsync(supplierInvoiceId, cancellationToken);
+
+        return invoice is null ? Results.NotFound() : Results.Ok(invoice);
+    }
+
+    private static async Task<IResult> ListAgreementsAsync(
+        IPurchasingReadStore readStore,
+        Guid? supplierId,
+        bool? liveOnly,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(readStore);
+
+        IReadOnlyList<SupplierAgreementDto> agreements =
+            await readStore.ListAgreementsAsync(supplierId, liveOnly ?? false, cancellationToken);
+
+        return Results.Ok(agreements);
+    }
+
+    private static async Task<IResult> SearchPricesAsync(
+        IPurchasingReadStore readStore,
+        Guid? supplierId,
+        Guid? partId,
+        bool? currentOnly,
+        int? page,
+        int? pageSize,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(readStore);
+
+        PagedResult<SupplierPriceDto> prices = await readStore.SearchSupplierPricesAsync(
+            supplierId,
+            partId,
+            currentOnly ?? false,
+            PageRequest.Of(page ?? 1, pageSize ?? PageRequest.DefaultPageSize),
+            cancellationToken);
+
+        return Results.Ok(prices);
     }
 
     private static async Task<IResult> OpenAgreementAsync(

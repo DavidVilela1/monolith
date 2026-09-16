@@ -37,6 +37,14 @@ public sealed class StockCountEndpoints : IEndpointGroup
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        counts.MapGet("/", ListAsync)
+            .WithName("ListStockCounts")
+            .RequirePermission(Permissions.Inventory.Read)
+            .WithSummary(
+                "The count sheets, newest first, with how many lines are still blank. Without it a "
+                + "sheet is only findable by an identifier somebody wrote down when they made it.")
+            .Produces<IReadOnlyList<StockCountSummary>>();
+
         counts.MapGet("/{stockCountId:guid}", GetAsync)
             .WithName("GetStockCount")
             .RequirePermission(Permissions.Inventory.Read)
@@ -80,6 +88,19 @@ public sealed class StockCountEndpoints : IEndpointGroup
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+    }
+
+    private static async Task<IResult> ListAsync(
+        IDispatcher dispatcher,
+        Guid? warehouseId,
+        string? status,
+        int? take,
+        CancellationToken cancellationToken)
+    {
+        Result<IReadOnlyList<StockCountSummary>> result = await dispatcher.SendAsync(
+            new ListStockCountsQuery(warehouseId, status, take ?? 50), cancellationToken);
+
+        return result.ToOk();
     }
 
     private static async Task<IResult> OpenAsync(
