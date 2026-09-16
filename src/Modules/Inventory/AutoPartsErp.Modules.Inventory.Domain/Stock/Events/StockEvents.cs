@@ -19,12 +19,26 @@ public sealed record StockRecordOpenedDomainEvent(
 /// <param name="WarehouseId">The warehouse.</param>
 /// <param name="Quantity">How much came in.</param>
 /// <param name="Reference">The document number behind it.</param>
+/// <param name="ReferenceType">What kind of document it was, which is what tells a return from a
+/// delivery. A consumer that cannot tell them apart would reverse a cost of sale on every
+/// purchase.</param>
+/// <param name="MovementId">
+/// The movement in this module's own ledger. The identity of the fact: one document can move the
+/// same part twice — an order dispatched in two vans — and anything keyed on the document number
+/// alone would take the second for a repeat of the first and lose it.
+/// </param>
+/// <param name="Value">What joined the shelf, when the shelf carries a value.</param>
+/// <param name="CurrencyCode">The currency that value is in.</param>
 public sealed record StockReceivedDomainEvent(
     StockItemId StockItemId,
     PartRef Part,
     WarehouseId WarehouseId,
     decimal Quantity,
-    string Reference) : DomainEvent;
+    string Reference,
+    string ReferenceType,
+    MovementId MovementId,
+    decimal? Value,
+    string CurrencyCode) : DomainEvent;
 
 /// <summary>Raised when stock is issued.</summary>
 /// <param name="StockItemId">The balance affected.</param>
@@ -32,12 +46,29 @@ public sealed record StockReceivedDomainEvent(
 /// <param name="WarehouseId">The warehouse.</param>
 /// <param name="Quantity">How much went out, as a positive number.</param>
 /// <param name="Reference">The document number behind it.</param>
+/// <param name="ReferenceType">
+/// What kind of document it was. Carried because "stock left" is not one fact: against a sales
+/// order it is a cost of sale, and against a stock transfer it is a move between two shelves the
+/// company still owns. A consumer that could not tell them apart would book a cost of sale every
+/// time a van went to the other branch.
+/// </param>
+/// <param name="MovementId">
+/// The movement in this module's own ledger. The identity of the fact: one document can move the
+/// same part twice — an order dispatched in two vans — and anything keyed on the document number
+/// alone would take the second for a repeat of the first and lose it.
+/// </param>
+/// <param name="CostValue">What left the shelf, when the shelf carries a value.</param>
+/// <param name="CurrencyCode">The currency that value is in.</param>
 public sealed record StockIssuedDomainEvent(
     StockItemId StockItemId,
     PartRef Part,
     WarehouseId WarehouseId,
     decimal Quantity,
-    string Reference) : DomainEvent;
+    string Reference,
+    string ReferenceType,
+    MovementId MovementId,
+    decimal? CostValue,
+    string CurrencyCode) : DomainEvent;
 
 /// <summary>Raised when a count corrects the balance.</summary>
 /// <param name="StockItemId">The balance affected.</param>
@@ -45,12 +76,47 @@ public sealed record StockIssuedDomainEvent(
 /// <param name="WarehouseId">The warehouse.</param>
 /// <param name="Delta">The signed difference applied.</param>
 /// <param name="Reference">The count or adjustment document.</param>
+/// <param name="MovementId">The movement in this module's own ledger: the identity of the fact.</param>
+/// <param name="Value">
+/// The signed difference in value, matching the direction of <paramref name="Delta"/>: negative
+/// when a count found less than the shelf said. Null when the shelf carries no value.
+/// </param>
+/// <param name="CurrencyCode">The currency that value is in.</param>
 public sealed record StockAdjustedDomainEvent(
     StockItemId StockItemId,
     PartRef Part,
     WarehouseId WarehouseId,
     decimal Delta,
-    string Reference) : DomainEvent;
+    string Reference,
+    MovementId MovementId,
+    decimal? Value,
+    string CurrencyCode) : DomainEvent;
+
+/// <summary>
+/// Raised when the value of stock changes without any of it moving.
+/// <para>
+/// The only fact in this module with no quantity on it. A supplier invoiced a delivery at a price
+/// the receipt was not booked at, and what is on the shelf is suddenly worth more or less than it
+/// was a moment ago — with nothing having arrived or left.
+/// </para>
+/// </summary>
+/// <param name="StockItemId">The balance affected.</param>
+/// <param name="Part">The part.</param>
+/// <param name="WarehouseId">The warehouse.</param>
+/// <param name="Difference">
+/// Signed: positive when the supplier charged more than the receipt was booked at.
+/// </param>
+/// <param name="CurrencyCode">The currency.</param>
+/// <param name="Reference">The document behind it.</param>
+/// <param name="MovementId">The movement in this module's own ledger: the identity of the fact.</param>
+public sealed record StockRevaluedDomainEvent(
+    StockItemId StockItemId,
+    PartRef Part,
+    WarehouseId WarehouseId,
+    decimal Difference,
+    string CurrencyCode,
+    string Reference,
+    MovementId MovementId) : DomainEvent;
 
 /// <summary>Raised when stock is held back for a document.</summary>
 /// <param name="StockItemId">The balance affected.</param>

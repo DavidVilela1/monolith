@@ -241,7 +241,16 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
             movement.AtValue(value);
         }
 
-        Raise(new StockReceivedDomainEvent(Id, Part, WarehouseId, parsed.Value.Value, reference.Number));
+        Raise(new StockReceivedDomainEvent(
+            Id,
+            Part,
+            WarehouseId,
+            parsed.Value.Value,
+            reference.Number,
+            reference.Type.ToString(),
+            movement.Id,
+            value?.Amount,
+            StockValue.Currency.Code));
 
         return movement;
     }
@@ -306,7 +315,16 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
             movement.AtValue(value);
         }
 
-        Raise(new StockReceivedDomainEvent(Id, Part, WarehouseId, parsed.Value.Value, reference.Number));
+        Raise(new StockReceivedDomainEvent(
+            Id,
+            Part,
+            WarehouseId,
+            parsed.Value.Value,
+            reference.Number,
+            reference.Type.ToString(),
+            movement.Id,
+            value?.Amount,
+            StockValue.Currency.Code));
 
         return movement;
     }
@@ -381,6 +399,15 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
 
         movement.AtValue(difference);
 
+        Raise(new StockRevaluedDomainEvent(
+            Id,
+            Part,
+            WarehouseId,
+            difference.Amount,
+            difference.Currency.Code,
+            reference.Number,
+            movement.Id));
+
         return movement;
     }
 
@@ -448,7 +475,16 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
             movement.AtValue(value);
         }
 
-        Raise(new StockReceivedDomainEvent(Id, Part, WarehouseId, parsed.Value.Value, reference.Number));
+        Raise(new StockReceivedDomainEvent(
+            Id,
+            Part,
+            WarehouseId,
+            parsed.Value.Value,
+            reference.Number,
+            reference.Type.ToString(),
+            movement.Id,
+            value?.Amount,
+            StockValue.Currency.Code));
 
         return movement;
     }
@@ -499,7 +535,16 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
             movement.AtValue(value);
         }
 
-        Raise(new StockIssuedDomainEvent(Id, Part, WarehouseId, parsed.Value.Value, reference.Number));
+        Raise(new StockIssuedDomainEvent(
+            Id,
+            Part,
+            WarehouseId,
+            parsed.Value.Value,
+            reference.Number,
+            reference.Type.ToString(),
+            movement.Id,
+            value?.Amount,
+            StockValue.Currency.Code));
 
         CheckReorderPoint();
 
@@ -608,7 +653,16 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
             movement.AtValue(value);
         }
 
-        Raise(new StockIssuedDomainEvent(Id, Part, WarehouseId, parsed.Value.Value, reference.Number));
+        Raise(new StockIssuedDomainEvent(
+            Id,
+            Part,
+            WarehouseId,
+            parsed.Value.Value,
+            reference.Number,
+            reference.Type.ToString(),
+            movement.Id,
+            value?.Amount,
+            StockValue.Currency.Code));
 
         CheckReorderPoint();
 
@@ -676,7 +730,17 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
             movement.AtValue(value);
         }
 
-        Raise(new StockAdjustedDomainEvent(Id, Part, WarehouseId, delta.Value, reference.Number));
+        // The value is signed the way the delta is: a count that found less took value off the
+        // shelf, and a consumer reading the magnitude alone would post a shrinkage as a windfall.
+        Raise(new StockAdjustedDomainEvent(
+            Id,
+            Part,
+            WarehouseId,
+            delta.Value,
+            reference.Number,
+            movement.Id,
+            value is null ? null : delta.Value < 0m ? -value.Amount : value.Amount,
+            StockValue.Currency.Code));
 
         CheckReorderPoint();
 
@@ -784,7 +848,16 @@ public sealed class StockItem : AggregateRoot<StockItemId>, IAuditable, ITenantS
             movement.AtValue(value);
         }
 
-        Raise(new StockIssuedDomainEvent(Id, Part, WarehouseId, quantity.Value, reservation.Reference.Number));
+        Raise(new StockIssuedDomainEvent(
+            Id,
+            Part,
+            WarehouseId,
+            quantity.Value,
+            reservation.Reference.Number,
+            reservation.Reference.Type.ToString(),
+            movement.Id,
+            value?.Amount,
+            StockValue.Currency.Code));
 
         CheckReorderPoint();
 

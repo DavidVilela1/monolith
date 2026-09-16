@@ -1178,6 +1178,21 @@ with gaps in its numbering is one an auditor asks about.
 worth these figures". What it turns into, whether the month is still open, and what to do when
 neither works out are decided in one place.
 
+**Not every issue of stock is a cost of sale.** Stock leaves for a sale and it also leaves for a
+transfer to the other branch, and a transfer is two shelves the company still owns rather than an
+expense. Posting one would book a cost of sale every time a van went across town, and the year's
+margin would read like a business that sells to itself. The kind of document is what tells them
+apart, which is why the event carries it.
+
+**A return posts the same fact with a negative value**, rather than a fact of its own — which is
+what the rule's side-flipping exists for. A company that posted the cost of every sale and never
+reversed one shows a margin that falls a little with every return and never recovers. The value is
+what the goods cost when they *left*, which is what makes the two cancel to zero.
+
+**A movement is the identity of a stock fact, not the document.** A delivery note covers six parts,
+and one order dispatched in two vans moves the same part twice. Keyed on the document number, the
+second fact would look like the first arriving again and the record of facts would swallow it.
+
 ### Invoicing
 
 The part of Portuguese invoicing that is law rather than design, end to end: schema, endpoints,
@@ -1370,6 +1385,12 @@ contracts. Invoicing end to end, including partial invoicing over the Sales brid
 transfers. An integration suite against real PostgreSQL. Document numbering that survives
 concurrency in all three modules that hand out numbers.
 
+**What the ledger now receives on its own:** a sales document issued and voided, a supplier's
+invoice settled, the cost of every sale and its reversal on a return, what a count found, a
+supplier's price variance, and stock written off in transit. Eight of the ten facts in the
+catalogue. Every one of them waits on a list that says why, rather than vanishing, until an
+accountant has said where it lands.
+
 **Next, in rough dependency order:**
 
 1. **Communicating documents to the AT.** The webservice that reports each document within days
@@ -1441,12 +1462,10 @@ concurrency in all three modules that hand out numbers.
   sold went out at the old cost, and its share of the difference belongs in cost of sale. The
   ledger to post it to now exists; what does not is anything that maps that fact to an account
   code and writes the entry.
-- Three facts are wired, not ten. A sales document issued, a sales document voided and a
-  supplier's invoice settled post on their own. Cost of sale, price variance and shrinkage do not,
-  and cannot yet: Inventory computes all three and publishes no event carrying the figure —
-  `StockIssued` has a quantity and no value, and `SupplierInvoicePriced` has unit prices and not
-  the variance. Adding the value to those events is a change in another module and is the next
-  piece. Receipts and supplier payments are domain events inside Finance and are not wired either.
+- Receipts and supplier payments still do not post. They are domain events inside Finance rather
+  than integration events, and wiring them is the next piece.
+- A rebate credited against a claim does not post either, so a credit note from a supplier corrects
+  the rebate period and reaches no account.
 - No rule ships configured, and none can be guessed. Until an accountant fills the table in, every
   fact lands on the waiting list — which is the honest state, and unlike an empty ledger it says so
   on a screen.

@@ -1,5 +1,6 @@
 using AutoPartsErp.IntegrationEvents.Inventory;
 using AutoPartsErp.Modules.Inventory.Domain.Stock.Events;
+using AutoPartsErp.Modules.Inventory.Domain.Transfers.Events;
 using AutoPartsErp.SharedKernel.Abstractions;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Primitives;
@@ -88,6 +89,10 @@ public sealed class PublishStockReceived : IDomainEventHandler<StockReceivedDoma
                 domainEvent.WarehouseId.Value,
                 domainEvent.Quantity,
                 domainEvent.Reference,
+                domainEvent.ReferenceType,
+                domainEvent.MovementId.Value,
+                domainEvent.Value,
+                domainEvent.CurrencyCode,
                 _tenantContext.TenantId),
             cancellationToken);
     }
@@ -119,6 +124,125 @@ public sealed class PublishStockIssued : IDomainEventHandler<StockIssuedDomainEv
                 domainEvent.WarehouseId.Value,
                 domainEvent.Quantity,
                 domainEvent.Reference,
+                domainEvent.ReferenceType,
+                domainEvent.MovementId.Value,
+                domainEvent.CostValue,
+                domainEvent.CurrencyCode,
+                _tenantContext.TenantId),
+            cancellationToken);
+    }
+}
+
+/// <summary>Republishes a count's correction so Finance can post what it was worth.</summary>
+public sealed class PublishStockAdjusted : IDomainEventHandler<StockAdjustedDomainEvent>
+{
+    private readonly IEventBus _eventBus;
+    private readonly ITenantContext _tenantContext;
+
+    /// <summary>Initializes the handler.</summary>
+    public PublishStockAdjusted(IEventBus eventBus, ITenantContext tenantContext)
+    {
+        _eventBus = eventBus;
+        _tenantContext = tenantContext;
+    }
+
+    /// <inheritdoc />
+    public Task HandleAsync(
+        StockAdjustedDomainEvent domainEvent,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(domainEvent);
+
+        return _eventBus.PublishAsync(
+            new StockAdjustedIntegrationEvent(
+                domainEvent.Part.Value,
+                domainEvent.WarehouseId.Value,
+                domainEvent.Delta,
+                domainEvent.Value,
+                domainEvent.CurrencyCode,
+                domainEvent.Reference,
+                domainEvent.MovementId.Value,
+                _tenantContext.TenantId),
+            cancellationToken);
+    }
+}
+
+/// <summary>
+/// Republishes a revaluation so Finance can post the difference.
+/// <para>
+/// The fact that had nowhere to go for longest: the shelf was corrected and the part already sold
+/// kept the old cost, with the difference sitting in a stock movement nobody consumed.
+/// </para>
+/// </summary>
+public sealed class PublishStockRevalued : IDomainEventHandler<StockRevaluedDomainEvent>
+{
+    private readonly IEventBus _eventBus;
+    private readonly ITenantContext _tenantContext;
+
+    /// <summary>Initializes the handler.</summary>
+    public PublishStockRevalued(IEventBus eventBus, ITenantContext tenantContext)
+    {
+        _eventBus = eventBus;
+        _tenantContext = tenantContext;
+    }
+
+    /// <inheritdoc />
+    public Task HandleAsync(
+        StockRevaluedDomainEvent domainEvent,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(domainEvent);
+
+        return _eventBus.PublishAsync(
+            new StockRevaluedIntegrationEvent(
+                domainEvent.Part.Value,
+                domainEvent.WarehouseId.Value,
+                domainEvent.Difference,
+                domainEvent.CurrencyCode,
+                domainEvent.Reference,
+                domainEvent.MovementId.Value,
+                _tenantContext.TenantId),
+            cancellationToken);
+    }
+}
+
+/// <summary>
+/// Republishes a transfer that arrived short so Finance can post the shrinkage.
+/// <para>
+/// Goods that left one warehouse and never reached the other are gone: the company owned them at
+/// breakfast and does not own them at lunch, and until now that carried its value in an event
+/// nobody consumed.
+/// </para>
+/// </summary>
+public sealed class PublishStockTransferClosedShort
+    : IDomainEventHandler<StockTransferClosedShortDomainEvent>
+{
+    private readonly IEventBus _eventBus;
+    private readonly ITenantContext _tenantContext;
+
+    /// <summary>Initializes the handler.</summary>
+    public PublishStockTransferClosedShort(IEventBus eventBus, ITenantContext tenantContext)
+    {
+        _eventBus = eventBus;
+        _tenantContext = tenantContext;
+    }
+
+    /// <inheritdoc />
+    public Task HandleAsync(
+        StockTransferClosedShortDomainEvent domainEvent,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(domainEvent);
+
+        return _eventBus.PublishAsync(
+            new StockTransferClosedShortIntegrationEvent(
+                domainEvent.StockTransferId.Value,
+                domainEvent.Number,
+                domainEvent.FromWarehouseId.Value,
+                domainEvent.ToWarehouseId.Value,
+                domainEvent.Reason,
+                domainEvent.LostValue,
+                domainEvent.CurrencyCode,
                 _tenantContext.TenantId),
             cancellationToken);
     }
