@@ -63,4 +63,54 @@ public interface IFinanceReadStore
         Guid customerId,
         DateOnly asAt,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// A trial balance: every account that moved, with its debits, its credits and the difference.
+    /// </summary>
+    /// <param name="from">
+    /// The first day to count. Null for everything up to <paramref name="to"/>, which is the real
+    /// trial balance; a date makes it the movement in a window, which is what a month-end review
+    /// wants.
+    /// </param>
+    /// <param name="to">The last day to count.</param>
+    /// <param name="includeUnmoved">
+    /// True to list accounts that took no postings in the window, at zero. Off by default: a chart
+    /// of four hundred accounts on a report where nine moved is a report nobody reads.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<TrialBalance> GetTrialBalanceAsync(
+        DateOnly? from,
+        DateOnly to,
+        bool includeUnmoved = false,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Everything that landed on one account in a stretch of days, with a running balance.
+    /// </summary>
+    /// <param name="code">The account code.</param>
+    /// <param name="from">The first day shown.</param>
+    /// <param name="to">The last day shown.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<AccountStatement?> GetAccountStatementAsync(
+        string code,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The journal: posted entries in a stretch of days, newest first.
+    /// </summary>
+    /// <param name="from">The first day shown.</param>
+    /// <param name="to">The last day shown.</param>
+    /// <param name="source">One journal only, when given.</param>
+    /// <param name="page">Which page.</param>
+    /// <param name="pageSize">How many per page.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<PagedResult<JournalEntryRow>> SearchJournalAsync(
+        DateOnly from,
+        DateOnly to,
+        string? source,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default);
 }

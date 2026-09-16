@@ -1,6 +1,10 @@
 using AutoPartsErp.Modules.Abstractions.Http;
 using AutoPartsErp.Modules.Abstractions.Modules;
+using AutoPartsErp.Modules.Finance.Application.Abstractions;
+using AutoPartsErp.Modules.Finance.Application.Contracts;
 using AutoPartsErp.Modules.Finance.Application.Ledger.Commands;
+using AutoPartsErp.SharedKernel.Abstractions;
+using AutoPartsErp.SharedKernel.Paging;
 using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Results;
@@ -66,6 +70,31 @@ public sealed class LedgerEndpoints : IEndpointGroup
             .Produces<Guid>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
+        group.MapGet("/trial-balance", GetTrialBalanceAsync)
+            .WithName("GetTrialBalance")
+            .RequirePermission(Permissions.Finance.ReadLedger)
+            .WithSummary(
+                "Every account that moved, with its debits, its credits and the difference signed "
+                + "the way the account grows. Without a from date it is the real trial balance; "
+                + "with one it is the movement in that window.")
+            .Produces<TrialBalance>();
+
+        group.MapGet("/accounts/{code}/statement", GetAccountStatementAsync)
+            .WithName("GetAccountStatement")
+            .RequirePermission(Permissions.Finance.ReadLedger)
+            .WithSummary(
+                "Everything that landed on one account, with what it opened at and a running "
+                + "balance. The question is almost never what a line was, but when the account "
+                + "got to that figure.")
+            .Produces<AccountStatement>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapGet("/journal", SearchJournalAsync)
+            .WithName("SearchJournal")
+            .RequirePermission(Permissions.Finance.ReadLedger)
+            .WithSummary("Posted entries in a stretch of days, newest first.")
+            .Produces<PagedResult<JournalEntryRow>>();
 
         group.MapPost("/periods", OpenPeriodAsync)
             .WithName("OpenAccountingPeriod")
@@ -150,6 +179,80 @@ public sealed class LedgerEndpoints : IEndpointGroup
 
         return result.ToCreated(id => $"/api/finance/journal-entries/{id}");
     }
+
+    private static async Task<IResult> GetTrialBalanceAsync(
+        IFinanceReadStore readStore,
+        DateOnly? to,
+        DateOnly? from,
+        bool includeUnmoved,
+        IDateTimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(readStore);
+        ArgumentNullException.ThrowIfNull(clock);
+
+        TrialBalance balance = await readStore.GetTrialBalanceAsync(
+            from, to ?? clock.TodayUtc, includeUnmoved, cancellationToken);
+
+        return Results.Ok(balance);
+    }
+
+    private static async Task<IResult> GetAccountStatementAsync(
+        IFinanceReadStore readStore,
+        string code,
+        DateOnly? from,
+        DateOnly? to,
+        IDateTimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(readStore);
+        ArgumentNullException.ThrowIfNull(clock);
+
+        DateOnly last = to ?? clock.TodayUtc;
+
+        AccountStatement? statement = await readStore.GetAccountStatementAsync(
+            code, from ?? FirstOfTheYear(last), last, cancellationToken);
+
+        return statement is null
+            ? Results.NotFound()
+            : Results.Ok(statement);
+    }
+
+    private static async Task<IResult> SearchJournalAsync(
+        IFinanceReadStore readStore,
+        DateOnly? from,
+        DateOnly? to,
+        string? source,
+        int? page,
+        int? pageSize,
+        IDateTimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(readStore);
+        ArgumentNullException.ThrowIfNull(clock);
+
+        DateOnly last = to ?? clock.TodayUtc;
+
+        PagedResult<JournalEntryRow> entries = await readStore.SearchJournalAsync(
+            from ?? FirstOfTheYear(last),
+            last,
+            source,
+            page ?? 1,
+            pageSize ?? 50,
+            cancellationToken);
+
+        return Results.Ok(entries);
+    }
+
+    /// <summary>
+    /// The default window for a report somebody opened without saying when.
+    /// <para>
+    /// The year to date rather than the last thirty days: a ledger is read in financial years, and
+    /// a report that silently showed one month would be one somebody reconciles against and
+    /// believes.
+    /// </para>
+    /// </summary>
+    private static DateOnly FirstOfTheYear(DateOnly on) => new(on.Year, 1, 1);
 
     private static async Task<IResult> OpenPeriodAsync(
         IDispatcher dispatcher,

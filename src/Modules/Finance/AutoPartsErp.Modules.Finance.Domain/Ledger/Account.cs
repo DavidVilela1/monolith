@@ -129,7 +129,19 @@ public sealed class Account : AggregateRoot<AccountId>, IAuditable, ITenantScope
     /// in a direction nobody checks.
     /// </para>
     /// </summary>
-    public EntrySide NormalSide => Type switch
+    public EntrySide NormalSide => NormalSideFor(Type);
+
+    /// <summary>
+    /// The side a kind of account grows on, without an account to ask.
+    /// <para>
+    /// Public because the read side needs it and never loads an account: a trial balance projects
+    /// columns, and the one thing it has to know about an account is which way its balance points.
+    /// Written here rather than there, so there is one answer to the question rather than two that
+    /// can drift.
+    /// </para>
+    /// </summary>
+    /// <param name="type">What the account measures.</param>
+    public static EntrySide NormalSideFor(AccountType type) => type switch
     {
         AccountType.Asset or AccountType.Expense => EntrySide.Debit,
         AccountType.Liability or AccountType.Equity or AccountType.Income => EntrySide.Credit,

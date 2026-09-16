@@ -1,9 +1,11 @@
 using AutoPartsErp.Modules.Finance.Application.Abstractions;
 using AutoPartsErp.Modules.Finance.Application.Contracts;
 using AutoPartsErp.Modules.Finance.Domain;
+using AutoPartsErp.Modules.Finance.Domain.Ledger;
 using AutoPartsErp.Modules.Finance.Domain.Receipts;
 using AutoPartsErp.Modules.Finance.Domain.Receivables;
 using AutoPartsErp.SharedKernel.Paging;
+using AutoPartsErp.SharedKernel.ValueObjects;
 using Microsoft.EntityFrameworkCore;
 
 namespace AutoPartsErp.Modules.Finance.Infrastructure.Persistence.ReadStore;
@@ -339,4 +341,255 @@ public sealed class FinanceReadStore : IFinanceReadStore
                     allocation.Amount.Amount,
                     allocation.AllocatedOn))
                 .ToList()));
+
+    /// <inheritdoc />
+    public async Task<TrialBalance> GetTrialBalanceAsync(
+        DateOnly? from,
+        DateOnly to,
+        bool includeUnmoved = false,
+        CancellationToken cancellationToken = default)
+    {
+        IQueryable<JournalEntry> posted = _context.JournalEntries
+            .AsNoTracking()
+            .Where(entry => entry.Status == JournalEntryStatus.Posted)
+            .Where(entry => entry.EntryDate <= to);
+
+        if (from is DateOnly start)
+        {
+            posted = posted.Where(entry => entry.EntryDate >= start);
+        }
+
+        // Summed in the database rather than by loading the lines: a year of a busy branch is
+        // hundreds of thousands of rows and the answer is one per account. Written as a sum over
+        // a CASE rather than as two filtered aggregates, because that is the shape every provider
+        // translates the same way.
+        var movements = await posted
+            .SelectMany(entry => entry.Lines)
+            .GroupBy(line => line.AccountId)
+            .Select(group => new
+            {
+                AccountId = group.Key,
+                Debits = group.Sum(line =>
+                    line.Side == EntrySide.Debit ? line.Amount.Amount : 0m),
+                Credits = group.Sum(line =>
+                    line.Side == EntrySide.Credit ? line.Amount.Amount : 0m),
+            })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        Dictionary<AccountId, (decimal Debits, decimal Credits)> byAccount = movements
+            .ToDictionary(row => row.AccountId, row => (row.Debits, row.Credits));
+
+        var accounts = await _context.Accounts
+            .AsNoTracking()
+            .Where(account => account.AllowsPosting)
+            .OrderBy(account => account.Code)
+            .Select(account => new
+            {
+                account.Id,
+                account.Code,
+                account.Name,
+                account.Type,
+            })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var rows = new List<TrialBalanceRow>(accounts.Count);
+        decimal totalDebits = 0m;
+        decimal totalCredits = 0m;
+
+        foreach (var account in accounts)
+        {
+            (decimal debits, decimal credits) =
+                byAccount.GetValueOrDefault(account.Id, (0m, 0m));
+
+            if (!includeUnmoved && debits == 0m && credits == 0m)
+            {
+                continue;
+            }
+
+            totalDebits += debits;
+            totalCredits += credits;
+
+            // Signed the way the account grows, so somebody can read the column down instead of
+            // doing the subtraction in their head twelve times.
+            decimal balance = Account.NormalSideFor(account.Type) == EntrySide.Debit
+                ? debits - credits
+                : credits - debits;
+
+            rows.Add(new TrialBalanceRow(
+                account.Id.Value,
+                account.Code,
+                account.Name,
+                account.Type.ToString(),
+                debits,
+                credits,
+                balance,
+                Currency.Default.Code));
+        }
+
+        return new TrialBalance(
+            from,
+            to,
+            rows,
+            totalDebits,
+            totalCredits,
+            totalDebits == totalCredits,
+            Currency.Default.Code);
+    }
+
+    /// <inheritdoc />
+    public async Task<AccountStatement?> GetAccountStatementAsync(
+        string code,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken = default)
+    {
+        string normalized = code?.Trim().ToUpperInvariant() ?? string.Empty;
+
+        var account = await _context.Accounts
+            .AsNoTracking()
+            .Where(row => row.Code == normalized)
+            .Select(row => new { row.Id, row.Code, row.Name, row.Type })
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (account is null)
+        {
+            return null;
+        }
+
+        int sign = Account.NormalSideFor(account.Type) == EntrySide.Debit ? 1 : -1;
+
+        // The opening balance is summed from every earlier posting rather than carried forward.
+        // Nothing here carries balances forward yet, and a figure summed from the postings is one
+        // that cannot disagree with them.
+        // Nullable, because SUM over no rows is NULL and an account with nothing before the
+        // window is the ordinary case on the first statement anybody prints.
+        decimal? before = await _context.JournalEntries
+            .AsNoTracking()
+            .Where(entry => entry.Status == JournalEntryStatus.Posted)
+            .Where(entry => entry.EntryDate < from)
+            .SelectMany(entry => entry.Lines)
+            .Where(line => line.AccountId == account.Id)
+            .SumAsync(
+                line => (decimal?)(line.Side == EntrySide.Debit
+                    ? line.Amount.Amount
+                    : -line.Amount.Amount),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        decimal opening = sign * (before ?? 0m);
+
+        var rows = await _context.JournalEntries
+            .AsNoTracking()
+            .Where(entry => entry.Status == JournalEntryStatus.Posted)
+            .Where(entry => entry.EntryDate >= from && entry.EntryDate <= to)
+            .SelectMany(
+                entry => entry.Lines,
+                (entry, line) => new
+                {
+                    entry.Id,
+                    entry.Number,
+                    entry.EntryDate,
+                    entry.Source,
+                    entry.Description,
+                    entry.Reference,
+                    line.AccountId,
+                    line.Narrative,
+                    line.Side,
+                    Amount = line.Amount.Amount,
+                })
+            .Where(row => row.AccountId == account.Id)
+            .OrderBy(row => row.EntryDate)
+            .ThenBy(row => row.Number)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var lines = new List<AccountStatementLine>(rows.Count);
+        decimal running = opening;
+
+        foreach (var row in rows)
+        {
+            bool isDebit = row.Side == EntrySide.Debit;
+            running += sign * (isDebit ? row.Amount : -row.Amount);
+
+            lines.Add(new AccountStatementLine(
+                row.Id.Value,
+                row.Number,
+                row.EntryDate,
+                row.Source.ToString(),
+                row.Description,
+                row.Narrative,
+                row.Reference,
+                isDebit ? row.Amount : 0m,
+                isDebit ? 0m : row.Amount,
+                running));
+        }
+
+        return new AccountStatement(
+            account.Id.Value,
+            account.Code,
+            account.Name,
+            account.Type.ToString(),
+            from,
+            to,
+            opening,
+            running,
+            lines,
+            Currency.Default.Code);
+    }
+
+    /// <inheritdoc />
+    public async Task<PagedResult<JournalEntryRow>> SearchJournalAsync(
+        DateOnly from,
+        DateOnly to,
+        string? source,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        IQueryable<JournalEntry> query = _context.JournalEntries
+            .AsNoTracking()
+            .Where(entry => entry.Status == JournalEntryStatus.Posted)
+            .Where(entry => entry.EntryDate >= from && entry.EntryDate <= to);
+
+        // An unrecognized journal name returns nothing rather than everything. Silently ignoring
+        // a filter somebody typed is how a person reads the wrong report and believes it.
+        if (!string.IsNullOrWhiteSpace(source))
+        {
+            if (!Enum.TryParse(source, ignoreCase: true, out JournalSource parsed)
+                || parsed == JournalSource.Unknown)
+            {
+                return PagedResult<JournalEntryRow>.Empty(page, pageSize);
+            }
+
+            query = query.Where(entry => entry.Source == parsed);
+        }
+
+        int total = await query.CountAsync(cancellationToken).ConfigureAwait(false);
+
+        List<JournalEntryRow> items = await query
+            .OrderByDescending(entry => entry.EntryDate)
+            .ThenByDescending(entry => entry.Number)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(entry => new JournalEntryRow(
+                entry.Id.Value,
+                entry.Number,
+                entry.EntryDate,
+                entry.Source.ToString(),
+                entry.Description,
+                entry.Reference,
+                entry.Lines.Sum(line =>
+                    line.Side == EntrySide.Debit ? line.Amount.Amount : 0m),
+                entry.Lines.Count,
+                entry.CurrencyCode,
+                entry.PostedAtUtc))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return PagedResult<JournalEntryRow>.Create(items, page, pageSize, total);
+    }
+
 }

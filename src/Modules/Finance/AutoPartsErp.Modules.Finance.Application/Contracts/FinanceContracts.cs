@@ -139,3 +139,129 @@ public sealed record ReceiptSearchCriteria(
     DateOnly? From = null,
     DateOnly? To = null,
     bool OnlyUnallocated = false);
+
+/// <summary>
+/// One account on a trial balance.
+/// </summary>
+/// <param name="AccountId">The account.</param>
+/// <param name="Code">The code the accountant refers to it by.</param>
+/// <param name="Name">What it is called.</param>
+/// <param name="Type">Asset, Liability, Equity, Income or Expense.</param>
+/// <param name="Debits">Everything that landed on the debit side, in the window.</param>
+/// <param name="Credits">Everything that landed on the credit side, in the window.</param>
+/// <param name="Balance">
+/// The difference, signed the way the account grows: positive when an asset has been debited more
+/// than credited, and positive when a liability has been credited more than debited. The column
+/// somebody reads down, rather than doing the subtraction in their head twelve times.
+/// </param>
+/// <param name="CurrencyCode">The currency.</param>
+public sealed record TrialBalanceRow(
+    Guid AccountId,
+    string Code,
+    string Name,
+    string Type,
+    decimal Debits,
+    decimal Credits,
+    decimal Balance,
+    string CurrencyCode);
+
+/// <summary>
+/// A trial balance: every account that moved, and whether the whole thing still balances.
+/// </summary>
+/// <param name="From">The first day counted, or null when it is everything up to <paramref name="To"/>.</param>
+/// <param name="To">The last day counted.</param>
+/// <param name="Rows">The accounts, in code order.</param>
+/// <param name="TotalDebits">Every debit on it.</param>
+/// <param name="TotalCredits">Every credit on it.</param>
+/// <param name="IsBalanced">
+/// Whether the two agree. It always should — nothing unbalanced can be posted — so a false here
+/// means something reached the database without going through the ledger, and that is worth
+/// printing at the top of the report rather than leaving somebody to notice.
+/// </param>
+/// <param name="CurrencyCode">The currency.</param>
+public sealed record TrialBalance(
+    DateOnly? From,
+    DateOnly To,
+    IReadOnlyList<TrialBalanceRow> Rows,
+    decimal TotalDebits,
+    decimal TotalCredits,
+    bool IsBalanced,
+    string CurrencyCode);
+
+/// <summary>One line on an account's statement.</summary>
+/// <param name="JournalEntryId">The entry it belongs to.</param>
+/// <param name="EntryNumber">Our number for that entry.</param>
+/// <param name="EntryDate">The day it belongs to.</param>
+/// <param name="Source">Which journal it came from.</param>
+/// <param name="Description">What the entry was for.</param>
+/// <param name="Narrative">What this line in particular was for.</param>
+/// <param name="Reference">The document behind it.</param>
+/// <param name="Debit">The amount, when it landed on the debit side.</param>
+/// <param name="Credit">The amount, when it landed on the credit side.</param>
+/// <param name="RunningBalance">
+/// The account's balance after this line, signed the way the account grows. What makes a statement
+/// readable: the question is almost never "what was this line?" but "when did it get to that?".
+/// </param>
+public sealed record AccountStatementLine(
+    Guid JournalEntryId,
+    string EntryNumber,
+    DateOnly EntryDate,
+    string Source,
+    string Description,
+    string? Narrative,
+    string? Reference,
+    decimal Debit,
+    decimal Credit,
+    decimal RunningBalance);
+
+/// <summary>
+/// Everything that landed on one account in a stretch of days, with what it started at.
+/// </summary>
+/// <param name="AccountId">The account.</param>
+/// <param name="Code">Its code.</param>
+/// <param name="Name">Its name.</param>
+/// <param name="Type">What it measures.</param>
+/// <param name="From">The first day shown.</param>
+/// <param name="To">The last day shown.</param>
+/// <param name="OpeningBalance">
+/// What it stood at the day before <paramref name="From"/>. Computed from every earlier posting
+/// rather than stored, because nothing here carries opening balances forward yet — and a figure
+/// summed from the postings is one that cannot disagree with them.
+/// </param>
+/// <param name="ClosingBalance">What it stood at on <paramref name="To"/>.</param>
+/// <param name="Lines">The lines, oldest first.</param>
+/// <param name="CurrencyCode">The currency.</param>
+public sealed record AccountStatement(
+    Guid AccountId,
+    string Code,
+    string Name,
+    string Type,
+    DateOnly From,
+    DateOnly To,
+    decimal OpeningBalance,
+    decimal ClosingBalance,
+    IReadOnlyList<AccountStatementLine> Lines,
+    string CurrencyCode);
+
+/// <summary>One entry in the journal listing.</summary>
+/// <param name="JournalEntryId">The entry.</param>
+/// <param name="Number">Our number for it.</param>
+/// <param name="EntryDate">The day it belongs to.</param>
+/// <param name="Source">Where it came from.</param>
+/// <param name="Description">What it is for.</param>
+/// <param name="Reference">The document behind it.</param>
+/// <param name="Total">The total of one side; the two are equal.</param>
+/// <param name="LineCount">How many lines it has.</param>
+/// <param name="CurrencyCode">The currency.</param>
+/// <param name="PostedAtUtc">When it was posted.</param>
+public sealed record JournalEntryRow(
+    Guid JournalEntryId,
+    string Number,
+    DateOnly EntryDate,
+    string Source,
+    string Description,
+    string? Reference,
+    decimal Total,
+    int LineCount,
+    string CurrencyCode,
+    DateTimeOffset? PostedAtUtc);

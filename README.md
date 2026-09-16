@@ -504,7 +504,7 @@ returns both.
 so a route added later without a thought about who may call it is refused rather than open. Three
 routes say otherwise — sign in, refresh, sign out — because they are where a token comes from.
 
-**Every one of the 187 routes behind a permission names which one.** Not a group-wide check per module:
+**Every one of the 190 routes behind a permission names which one.** Not a group-wide check per module:
 `GET /api/inventory/stock/replenishment` needs `inventory.stock.read` and
 `POST /api/inventory/stock/adjust` needs `inventory.stock.adjust`, and they sit four lines apart
 in the same file. The catalogue lives in the shared kernel rather than in Access, and it has to —
@@ -1198,6 +1198,27 @@ arrives; which invoices it settles is the sales ledger's business and can take d
 ledger that waited for the allocation would disagree with the bank for as long as somebody had not
 finished matching — which is the state this module exists to make visible, not to reproduce.
 
+**A ledger nobody can read is a ledger nobody trusts.** Everything above puts entries in; three
+reports take them out. A trial balance — every account that moved, its debits, its credits, and the
+difference **signed the way the account grows**, so a person reads a column down instead of doing
+the subtraction in their head twelve times. An account statement, with an opening balance and a
+running one, because the question is almost never "what was this line?" but "when did it get to
+that?". And the journal itself, newest first.
+
+**The trial balance says whether it balances, at the top.** It always should: nothing unbalanced
+can be posted. So a false there means something reached the database without going through the
+ledger, and that is worth printing rather than leaving somebody to notice.
+
+**An opening balance is summed from the postings, not carried forward.** Nothing here carries
+balances forward yet, and a figure summed from what it is made of cannot disagree with it.
+
+**The side an account grows on is written once.** The read side projects columns and never loads an
+account, so it used to need its own copy of the rule — and a second copy is one that can drift, in
+a direction nobody checks. `Account.NormalSideFor` is the one answer.
+
+**A journal filter nobody recognizes returns nothing, not everything.** Silently dropping a filter
+somebody typed is how a person reads the wrong report and believes it.
+
 **A handler inside this module records without committing.** Domain events are dispatched inside
 the save that raised them rather than after it, so a handler that saved would re-enter the save it
 is running in. `RecordFactAsync` is the save-free path, and it is what makes a receipt and the
@@ -1479,6 +1500,14 @@ than vanishing, until an accountant has said where it lands.
   accountant the chart does.
 - Nothing reconciles the ledger against a bank statement. Receipts and payments post the day the
   money moves, which is the right day for the books and not always the day it cleared.
+- The three ledger reports are covered by the integration suite and not by unit tests. They are
+  database queries and there is nothing in them to test without a database — what is unit-tested is
+  the one rule they share with the domain, that an account grows on the side its kind says.
+- A trial balance is one currency. Every amount in the ledger is in the module's default and
+  nothing converts, so an entry in another one would be added to the total as though it were euros.
+  The entry refuses to mix currencies within itself, which is what keeps this theoretical.
+- There is no profit and loss and no balance sheet. Both are a trial balance folded up the chart's
+  tree, and the tree is the accountant's — the structure is here and the codes are not.
 - No rule ships configured, and none can be guessed. Until an accountant fills the table in, every
   fact lands on the waiting list — which is the honest state, and unlike an empty ledger it says so
   on a screen.
