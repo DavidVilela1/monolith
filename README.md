@@ -1193,6 +1193,17 @@ what the goods cost when they *left*, which is what makes the two cancel to zero
 and one order dispatched in two vans moves the same part twice. Keyed on the document number, the
 second fact would look like the first arriving again and the record of facts would swallow it.
 
+**Money posts when it moves, not when it is matched.** A receipt reaches the ledger the day it
+arrives; which invoices it settles is the sales ledger's business and can take days to work out. A
+ledger that waited for the allocation would disagree with the bank for as long as somebody had not
+finished matching — which is the state this module exists to make visible, not to reproduce.
+
+**A handler inside this module records without committing.** Domain events are dispatched inside
+the save that raised them rather than after it, so a handler that saved would re-enter the save it
+is running in. `RecordFactAsync` is the save-free path, and it is what makes a receipt and the
+entry for it one transaction: both land or neither does. The handlers on another module's events
+own their own scope and do commit.
+
 ### Invoicing
 
 The part of Portuguese invoicing that is law rather than design, end to end: schema, endpoints,
@@ -1386,10 +1397,10 @@ transfers. An integration suite against real PostgreSQL. Document numbering that
 concurrency in all three modules that hand out numbers.
 
 **What the ledger now receives on its own:** a sales document issued and voided, a supplier's
-invoice settled, the cost of every sale and its reversal on a return, what a count found, a
-supplier's price variance, and stock written off in transit. Eight of the ten facts in the
-catalogue. Every one of them waits on a list that says why, rather than vanishing, until an
-accountant has said where it lands.
+invoice settled, money in from a customer and out to a supplier, the cost of every sale and its
+reversal on a return, what a count found, a supplier's price variance, and stock written off in
+transit. Every fact in the catalogue but one. Each of them waits on a list that says why, rather
+than vanishing, until an accountant has said where it lands.
 
 **Next, in rough dependency order:**
 
@@ -1462,10 +1473,12 @@ accountant has said where it lands.
   sold went out at the old cost, and its share of the difference belongs in cost of sale. The
   ledger to post it to now exists; what does not is anything that maps that fact to an account
   code and writes the entry.
-- Receipts and supplier payments still do not post. They are domain events inside Finance rather
-  than integration events, and wiring them is the next piece.
-- A rebate credited against a claim does not post either, so a credit note from a supplier corrects
-  the rebate period and reaches no account.
+- A rebate credited against a claim is the one fact in the catalogue that still reaches no account,
+  and deliberately: a supplier's rebate credit note carries VAT, the claim is a net figure, and how
+  the two split is a tax question this system should not answer by guessing. It needs the same
+  accountant the chart does.
+- Nothing reconciles the ledger against a bank statement. Receipts and payments post the day the
+  money moves, which is the right day for the books and not always the day it cleared.
 - No rule ships configured, and none can be guessed. Until an accountant fills the table in, every
   fact lands on the waiting list — which is the honest state, and unlike an empty ledger it says so
   on a screen.

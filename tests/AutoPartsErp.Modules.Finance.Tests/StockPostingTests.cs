@@ -1,10 +1,6 @@
 using AutoPartsErp.IntegrationEvents.Inventory;
 using AutoPartsErp.Modules.Finance.Application.EventHandlers;
-using AutoPartsErp.Modules.Finance.Application.Ledger;
-using AutoPartsErp.Modules.Finance.Domain;
 using AutoPartsErp.Modules.Finance.Domain.Ledger;
-using AutoPartsErp.SharedKernel.Results;
-using AutoPartsErp.SharedKernel.ValueObjects;
 
 namespace AutoPartsErp.Modules.Finance.Tests;
 
@@ -27,12 +23,12 @@ public sealed class StockPostingTests
     [InlineData("CounterSale")]
     public async Task Stock_issued_against_a_customer_document_posts_a_cost_of_sale(string type)
     {
-        var poster = new FakePoster();
+        var poster = new RecordingPoster();
 
         await new PostCostOfSaleOnStockIssued(poster)
             .HandleAsync(Issued(type, 100.00m));
 
-        Fact posted = poster.Facts.Single();
+        HandedFact posted = poster.Facts.Single();
         posted.FactType.Should().Be(PostingFacts.CostOfSale);
         posted.OccurredOn.Should().Be(new DateOnly(2026, 3, 18));
         posted.Amounts[PostingFacts.Value].Amount.Should().Be(100.00m);
@@ -48,7 +44,7 @@ public sealed class StockPostingTests
     [InlineData("Unknown")]
     public async Task Stock_leaving_for_anything_else_posts_nothing(string type)
     {
-        var poster = new FakePoster();
+        var poster = new RecordingPoster();
 
         await new PostCostOfSaleOnStockIssued(poster)
             .HandleAsync(Issued(type, 100.00m));
@@ -60,7 +56,7 @@ public sealed class StockPostingTests
     [Fact]
     public async Task An_issue_worth_nothing_posts_nothing()
     {
-        var poster = new FakePoster();
+        var poster = new RecordingPoster();
         var handler = new PostCostOfSaleOnStockIssued(poster);
 
         await handler.HandleAsync(Issued("SalesOrder", null));
@@ -77,7 +73,7 @@ public sealed class StockPostingTests
     [Fact]
     public async Task A_customer_return_reverses_the_cost_of_sale()
     {
-        var poster = new FakePoster();
+        var poster = new RecordingPoster();
 
         await new ReverseCostOfSaleOnCustomerReturn(poster).HandleAsync(
             new StockReceivedIntegrationEvent(
@@ -85,7 +81,7 @@ public sealed class StockPostingTests
                 Guid.NewGuid(), 25.00m, "EUR", Guid.NewGuid())
             { OccurredAtUtc = InMarch });
 
-        Fact posted = poster.Facts.Single();
+        HandedFact posted = poster.Facts.Single();
         posted.FactType.Should().Be(PostingFacts.CostOfSale);
         posted.Amounts[PostingFacts.Value].Amount.Should().Be(-25.00m);
     }
@@ -94,7 +90,7 @@ public sealed class StockPostingTests
     [Fact]
     public async Task A_supplier_delivery_does_not_reverse_a_cost_of_sale()
     {
-        var poster = new FakePoster();
+        var poster = new RecordingPoster();
 
         await new ReverseCostOfSaleOnCustomerReturn(poster).HandleAsync(
             new StockReceivedIntegrationEvent(
@@ -111,7 +107,7 @@ public sealed class StockPostingTests
     [InlineData(2, 50.00)]
     public async Task A_count_posts_what_it_found(decimal delta, decimal value)
     {
-        var poster = new FakePoster();
+        var poster = new RecordingPoster();
 
         await new PostAdjustmentOnStockAdjusted(poster).HandleAsync(
             new StockAdjustedIntegrationEvent(
@@ -119,7 +115,7 @@ public sealed class StockPostingTests
                 Guid.NewGuid(), Guid.NewGuid())
             { OccurredAtUtc = InMarch });
 
-        Fact posted = poster.Facts.Single();
+        HandedFact posted = poster.Facts.Single();
         posted.FactType.Should().Be(PostingFacts.StockAdjustment);
         posted.Amounts[PostingFacts.Value].Amount.Should().Be(value);
     }
@@ -130,7 +126,7 @@ public sealed class StockPostingTests
     [InlineData(-45.20)]
     public async Task A_price_variance_posts_the_difference(decimal difference)
     {
-        var poster = new FakePoster();
+        var poster = new RecordingPoster();
 
         await new PostVarianceOnStockRevalued(poster).HandleAsync(
             new StockRevaluedIntegrationEvent(
@@ -138,7 +134,7 @@ public sealed class StockPostingTests
                 Guid.NewGuid(), Guid.NewGuid())
             { OccurredAtUtc = InMarch });
 
-        Fact posted = poster.Facts.Single();
+        HandedFact posted = poster.Facts.Single();
         posted.FactType.Should().Be(PostingFacts.PriceVariance);
         posted.Amounts[PostingFacts.Value].Amount.Should().Be(difference);
     }
@@ -150,7 +146,7 @@ public sealed class StockPostingTests
     [Fact]
     public async Task A_transfer_that_arrived_short_posts_the_shrinkage()
     {
-        var poster = new FakePoster();
+        var poster = new RecordingPoster();
 
         await new PostShrinkageOnTransferClosedShort(poster).HandleAsync(
             new StockTransferClosedShortIntegrationEvent(
@@ -158,7 +154,7 @@ public sealed class StockPostingTests
                 "Two boxes never arrived.", 138.80m, "EUR", Guid.NewGuid())
             { OccurredAtUtc = InMarch });
 
-        Fact posted = poster.Facts.Single();
+        HandedFact posted = poster.Facts.Single();
         posted.FactType.Should().Be(PostingFacts.StockShrinkage);
         posted.Reference.Should().Be("TR-2026-00021");
         posted.Amounts[PostingFacts.Value].Amount.Should().Be(138.80m);
@@ -173,7 +169,7 @@ public sealed class StockPostingTests
     [Fact]
     public async Task Two_issues_on_one_document_are_two_facts()
     {
-        var poster = new FakePoster();
+        var poster = new RecordingPoster();
         var handler = new PostCostOfSaleOnStockIssued(poster);
 
         await handler.HandleAsync(Issued("SalesOrder", 75.00m));
@@ -198,33 +194,4 @@ public sealed class StockPostingTests
             "EUR",
             Guid.NewGuid())
         { OccurredAtUtc = InMarch };
-
-    private sealed record Fact(
-        string FactType,
-        string Reference,
-        DateOnly OccurredOn,
-        string Description,
-        IReadOnlyDictionary<string, Money> Amounts);
-
-    private sealed class FakePoster : ILedgerPoster
-    {
-        public List<Fact> Facts { get; } = [];
-
-        public Task<Result<JournalEntryId?>> PostFactAsync(
-            string factType,
-            string reference,
-            DateOnly occurredOn,
-            string description,
-            IReadOnlyDictionary<string, Money> amounts,
-            CancellationToken cancellationToken = default)
-        {
-            Facts.Add(new Fact(factType, reference, occurredOn, description, amounts));
-
-            return Task.FromResult(Result.Success<JournalEntryId?>(null));
-        }
-
-        public Task<Result> TryPostAsync(
-            FactPosting posting, CancellationToken cancellationToken = default) =>
-            Task.FromResult(Result.Success());
-    }
 }

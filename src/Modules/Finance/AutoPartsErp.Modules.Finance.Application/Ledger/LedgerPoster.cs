@@ -40,6 +40,30 @@ public interface ILedgerPoster
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The same thing without committing, for a caller that owns the transaction.
+    /// <para>
+    /// What a domain event handler inside this module has to use. Domain events are dispatched
+    /// before the save rather than after it, so a handler that saved would re-enter the save it
+    /// is running inside — and the point of dispatching early is that everything the handlers do
+    /// commits with the thing that caused them. A receipt and the entry for it land together or
+    /// neither does.
+    /// </para>
+    /// </summary>
+    /// <param name="factType">The fact, as <see cref="PostingFacts"/> names it.</param>
+    /// <param name="reference">The document behind it.</param>
+    /// <param name="occurredOn">The day it belongs to.</param>
+    /// <param name="description">What it is.</param>
+    /// <param name="amounts">What it carries, by key.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<Result<JournalEntryId?>> RecordFactAsync(
+        string factType,
+        string reference,
+        DateOnly occurredOn,
+        string description,
+        IReadOnlyDictionary<string, Money> amounts,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Tries again to post a fact that is already on the waiting list.
     /// <para>
     /// What a person presses once the rule they were missing exists. Does not save; the caller
@@ -90,6 +114,29 @@ public sealed class LedgerPoster : ILedgerPoster
         IReadOnlyDictionary<string, Money> amounts,
         CancellationToken cancellationToken = default)
     {
+        Result<JournalEntryId?> recorded = await RecordFactAsync(
+                factType, reference, occurredOn, description, amounts, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (recorded.IsFailure)
+        {
+            return recorded;
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        return recorded;
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<JournalEntryId?>> RecordFactAsync(
+        string factType,
+        string reference,
+        DateOnly occurredOn,
+        string description,
+        IReadOnlyDictionary<string, Money> amounts,
+        CancellationToken cancellationToken = default)
+    {
         // The outbox delivers at least once, and a row already here for this fact and this
         // document means the message has been seen before. Posting a sale twice is an error
         // nobody finds until the year-end.
@@ -117,8 +164,6 @@ public sealed class LedgerPoster : ILedgerPoster
         }
 
         await TryPostAsync(posting, cancellationToken).ConfigureAwait(false);
-
-        await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         return posting.JournalEntryId;
     }
