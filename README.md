@@ -1432,6 +1432,28 @@ went in and disappeared. Stock on its way in from suppliers existed only as a to
 line or date behind it. Count sheets could not be listed, so losing a sheet's identifier was losing
 the stocktake. And the part search did not match the SKU, while its own documentation said it did.
 
+**The browser surface has started.** `AutoPartsErp.Web` is a Razor class library the API host
+registers the way it registers a module, and it calls those modules in this same process rather
+than its own API over HTTP — a request to yourself pays serialization and a network hop for data
+already in memory, and needs a bearer token stored somewhere a script can read. The API stays
+where it is, for integrations and whatever comes after.
+
+**One host, two audiences.** A policy scheme picks by path: anything under `/api` is a bearer
+token, everything else is the session cookie. A browser that is refused gets a sign-in page; an
+API caller gets a 401 with nothing to click on. The choice is made once rather than on every
+controller and every endpoint.
+
+**The permissions are the same permissions.** `[RequirePermission(...)]` on a controller names the
+same policy `RequirePermission(...)` names on a route, built on demand by the same provider. Two
+surfaces onto one system have to answer "may this person do this?" the same way, and the way to be
+sure is for there to be one answer rather than two that agree today. The navigation offers only
+what the person holds: being refused after deciding to do something reads as a broken system
+rather than as a rule.
+
+**Portuguese, and only Portuguese.** The request culture is pinned to pt-PT with the browser's own
+preference ignored. A screen that rendered 1,234.56 because somebody brought a laptop set to en-US
+is one where a figure eventually gets transcribed wrong onto an order.
+
 **Next, in rough dependency order:**
 
 1. **Communicating documents to the AT.** The webservice that reports each document within days
@@ -1507,6 +1529,14 @@ the stocktake. And the part search did not match the SKU, while its own document
   and deliberately: a supplier's rebate credit note carries VAT, the claim is a net figure, and how
   the two split is a tax question this system should not answer by guessing. It needs the same
   accountant the chart does.
+- Bootstrap comes from a CDN. A counter terminal in a warehouse with a flaky line would render
+  the ERP unstyled, which is not the same as broken but looks worse. It has to become a local
+  copy before anybody uses this in anger.
+- One screen exists: the parts search and one part's detail. The rest of the vertical slice —
+  purchase order, receipt, supplier invoice, payment — is the next piece, and the read surface for
+  all of it is in place.
+- A part's search results carry no price and no stock, because both live in other modules and no
+  Catalog read path composes them. A counter screen wants both on the row.
 - Nothing reconciles the ledger against a bank statement. Receipts and payments post the day the
   money moves, which is the right day for the books and not always the day it cleared.
 - Most of the read side is covered by the integration suite and not by unit tests. Read stores

@@ -31,6 +31,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Modules\Access\AutoPartsErp.Modules.Access.Presentation\AutoPartsErp.Modules.Access.Presentation.csproj" />
+    <ProjectReference Include="..\..\Web\AutoPartsErp.Web\AutoPartsErp.Web.csproj" />
     <ProjectReference Include="..\..\Modules\Catalog\AutoPartsErp.Modules.Catalog.Presentation\AutoPartsErp.Modules.Catalog.Presentation.csproj" />
     <ProjectReference Include="..\..\Modules\Finance\AutoPartsErp.Modules.Finance.Presentation\AutoPartsErp.Modules.Finance.Presentation.csproj" />
     <ProjectReference Include="..\..\Modules\Inventory\AutoPartsErp.Modules.Inventory.Presentation\AutoPartsErp.Modules.Inventory.Presentation.csproj" />

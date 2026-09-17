@@ -5,6 +5,7 @@ using AutoPartsErp.IntegrationEvents.Catalog;
 using AutoPartsErp.Modules.Abstractions.DependencyInjection;
 using AutoPartsErp.Modules.Abstractions.Http;
 using AutoPartsErp.Modules.Abstractions.Modules;
+using AutoPartsErp.Modules.Abstractions.Security;
 using AutoPartsErp.Modules.Access.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Access.Infrastructure.Persistence.Seed;
 using AutoPartsErp.Modules.Access.Infrastructure.Security;
@@ -29,6 +30,8 @@ using AutoPartsErp.Modules.Purchasing.Presentation;
 using AutoPartsErp.Modules.Sales.Infrastructure.Persistence;
 using AutoPartsErp.Modules.Sales.Presentation;
 using AutoPartsErp.Persistence;
+using AutoPartsErp.Web;
+using AutoPartsErp.Web.Security;
 using AutoPartsErp.SharedKernel.Abstractions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -48,6 +51,10 @@ try
 {
     WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
+    // Kestrel announces itself on every response by default. It tells an attacker which server
+    // and which version they are talking to, and it tells everybody else nothing at all.
+    builder.WebHost.ConfigureKestrel(kestrel => kestrel.AddServerHeader = false);
+
     builder.Host.UseSerilog((context, services, configuration) => configuration
         .ReadFrom.Configuration(context.Configuration)
         .ReadFrom.Services(services)
@@ -57,6 +64,10 @@ try
     // ---------------------------------------------------------------------------------
     // Shared services
     // ---------------------------------------------------------------------------------
+    // Transport, browser and throttling. Before anything else registers, because everything
+    // else assumes a request that got here over TLS and carries the caller's real address.
+    builder.Services.AddErpSecurity(builder.Configuration);
+
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ITenantContext, HttpTenantContext>();
     builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
@@ -86,8 +97,17 @@ try
         .GetSection(AccessOptions.SectionName)
         .Get<AccessOptions>() ?? new AccessOptions();
 
+    // One host, two audiences. A browser gets a cookie and, when refused, a sign-in page; an
+    // API caller gets a 401 with nothing to click on. The selector below makes that choice once,
+    // by path, rather than on every controller and every endpoint.
     builder.Services
-        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddAuthentication(WebModule.SelectorScheme)
+        .AddPolicyScheme(WebModule.SelectorScheme, WebModule.SelectorScheme, options =>
+            options.ForwardDefaultSelector = context =>
+                context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase)
+                    ? JwtBearerDefaults.AuthenticationScheme
+                    : WebModule.CookieScheme)
+        .AddCookie(WebModule.CookieScheme, CookieOptionsSetup.Configure)
         .AddJwtBearer(options =>
         {
             options.TokenValidationParameters = new TokenValidationParameters
@@ -122,6 +142,8 @@ try
             .Build());
 
     builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+
+    builder.Services.AddErpWeb();
 
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen(options =>
@@ -201,6 +223,12 @@ try
 
     WebApplication app = builder.Build();
 
+    // First, and first for a reason. Forwarded headers rewrite the scheme and the caller's
+    // address, and every decision below is a different decision before and after that: whether
+    // this request is redirected to HTTPS, whose sign-in attempts are being counted, and what
+    // Serilog writes down as having happened.
+    app.UseErpSecurity(app.Environment);
+
     app.UseExceptionHandler();
     app.UseSerilogRequestLogging();
 
@@ -226,18 +254,26 @@ try
 
     app.MapHealthChecks("/health").AllowAnonymous();
 
-    app.MapGet("/", (IModuleRegistry registry) => Results.Ok(new
+    // At /api, not at /. The root belongs to the browser surface now, and a person typing the
+    // address of their own ERP should land on it rather than on a paragraph of JSON describing
+    // the modules to nobody. This still answers the same question, where the thing it describes
+    // actually lives.
+    app.MapGet("/api", (IModuleRegistry registry) => Results.Ok(new
     {
         service = "AutoParts ERP",
         version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "0.1.0",
         modules = registry.Modules.Select(module => new { module.Name, module.SchemaName }),
         docs = "/swagger",
     }))
-    .WithName("Root")
+    .WithName("ApiRoot")
     .AllowAnonymous()
     .ExcludeFromDescription();
 
+    app.UseRequestLocalization();
+    app.UseStaticFiles();
+
     app.MapErpModules();
+    app.MapErpWeb();
 
     await app.RunAsync();
     return 0;

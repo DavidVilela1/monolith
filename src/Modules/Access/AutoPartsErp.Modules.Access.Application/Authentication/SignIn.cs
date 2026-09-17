@@ -25,6 +25,11 @@ public sealed record SignInCommand(string Email, string Password) : ICommand<Sig
 /// <param name="UserId">Who signed in.</param>
 /// <param name="DisplayName">Their name.</param>
 /// <param name="Permissions">What they may do, resolved from their roles.</param>
+/// <param name="TenantId">
+/// The company they belong to. Carried because a browser session needs it for the same reason a
+/// token does — every query is scoped by it — and nothing else in the answer says which company
+/// this person just signed into.
+/// </param>
 /// <param name="MustChangePassword">
 /// True when an administrator set this password. The client should send them to a change-password
 /// screen and nowhere else.
@@ -36,6 +41,7 @@ public sealed record SignInResult(
     Guid UserId,
     string DisplayName,
     IReadOnlyCollection<string> Permissions,
+    Guid TenantId,
     bool MustChangePassword);
 
 /// <summary>
@@ -152,6 +158,7 @@ public sealed class SignInCommandHandler : ICommandHandler<SignInCommand, SignIn
             user.Id.Value,
             user.DisplayName,
             permissions,
+            user.TenantId,
             user.MustChangePassword);
     }
 
@@ -294,6 +301,7 @@ public sealed class RefreshSessionCommandHandler : ICommandHandler<RefreshSessio
             user.Id.Value,
             user.DisplayName,
             permissions,
+            user.TenantId,
             user.MustChangePassword);
     }
 }

@@ -1,0 +1,110 @@
+@model PartSearchResults
+@{
+    ViewData["Title"] = "Artigos";
+    PagedResult<PartSummary> results = Model.Results;
+}
+<div class="d-flex align-items-baseline justify-content-between mb-3">
+    <h1 class="h3 mb-0">Artigos</h1>
+    <span class="text-body-secondary small">
+        @results.TotalCount @(results.TotalCount == 1 ? "artigo" : "artigos")
+    </span>
+</div>
+
+<form method="get" class="card card-body shadow-sm mb-3">
+    <div class="row g-2 align-items-end">
+        <div class="col-12 col-md-7">
+            <label for="term" class="form-label small mb-1">Procurar</label>
+            <input type="search" id="term" name="term" value="@Model.Search.Term"
+                   class="form-control" autofocus
+                   placeholder="Referência, número do fabricante, equivalência ou nome" />
+        </div>
+        <div class="col-8 col-md-3">
+            <label for="status" class="form-label small mb-1">Estado</label>
+            <select id="status" name="status" class="form-select">
+                <option value="">Todos</option>
+                @foreach (string status in new[] { "Draft", "Active", "Discontinued", "Obsolete" })
+                {
+                    <option value="@status" selected="@(Model.Search.Status == status)">@status</option>
+                }
+            </select>
+        </div>
+        <div class="col-4 col-md-2">
+            <button type="submit" class="btn btn-primary w-100">Procurar</button>
+        </div>
+    </div>
+</form>
+
+<div asp-validation-summary="ModelOnly" class="alert alert-danger py-2" role="alert"></div>
+
+@if (results.Items.Count == 0)
+{
+    <div class="alert alert-light border text-body-secondary" role="status">
+        Nada encontrado.
+        @if (!string.IsNullOrWhiteSpace(Model.Search.Term))
+        {
+            <text>Os números casam pelo princípio, não pelo meio — experimente menos caracteres.</text>
+        }
+    </div>
+}
+else
+{
+    @* The table is the one thing allowed to be wider than the page: a counter screen is read
+       across, and wrapping a part number is worse than scrolling. *@
+    <div class="table-responsive">
+        <table class="table table-hover align-middle bg-body">
+            <thead>
+                <tr>
+                    <th scope="col">Referência</th>
+                    <th scope="col">Nº fabricante</th>
+                    <th scope="col">Marca</th>
+                    <th scope="col">Designação</th>
+                    <th scope="col">Família</th>
+                    <th scope="col">Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (PartSummary part in results.Items)
+                {
+                    <tr>
+                        <td>
+                            <a asp-action="Details" asp-route-id="@part.Id"
+                               class="fw-semibold text-decoration-none">@part.Sku</a>
+                        </td>
+                        <td class="font-monospace small">@part.ManufacturerPartNumber</td>
+                        <td>@part.BrandName</td>
+                        <td>@part.Name</td>
+                        <td class="text-body-secondary small">@part.CategoryName</td>
+                        <td>
+                            <span class="badge @(part.Status == "Active" ? "text-bg-success" : "text-bg-secondary")">
+                                @part.Status
+                            </span>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (results.TotalPages > 1)
+    {
+        <nav aria-label="Páginas">
+            <ul class="pagination">
+                <li class="page-item @(results.Page <= 1 ? "disabled" : string.Empty)">
+                    <a class="page-link" asp-action="Index" asp-route-term="@Model.Search.Term"
+                       asp-route-status="@Model.Search.Status" asp-route-page="@(results.Page - 1)">
+                        Anterior
+                    </a>
+                </li>
+                <li class="page-item disabled">
+                    <span class="page-link">@results.Page / @results.TotalPages</span>
+                </li>
+                <li class="page-item @(results.Page >= results.TotalPages ? "disabled" : string.Empty)">
+                    <a class="page-link" asp-action="Index" asp-route-term="@Model.Search.Term"
+                       asp-route-status="@Model.Search.Status" asp-route-page="@(results.Page + 1)">
+                        Seguinte
+                    </a>
+                </li>
+            </ul>
+        </nav>
+    }
+}

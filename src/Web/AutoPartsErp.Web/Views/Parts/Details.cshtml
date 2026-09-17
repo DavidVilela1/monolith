@@ -1,0 +1,128 @@
+@model PartDetail
+@{
+    ViewData["Title"] = Model.Sku;
+}
+<nav aria-label="Voltar" class="mb-3">
+    <a asp-action="Index" class="text-decoration-none small">&larr; Artigos</a>
+</nav>
+
+<div class="d-flex align-items-baseline gap-3 mb-1">
+    <h1 class="h3 mb-0">@Model.Sku</h1>
+    <span class="badge @(Model.Status == "Active" ? "text-bg-success" : "text-bg-secondary")">
+        @Model.Status
+    </span>
+</div>
+<p class="text-body-secondary mb-4">@Model.Name</p>
+
+<div class="row g-3">
+    <div class="col-12 col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h2 class="h6 text-body-secondary text-uppercase small mb-3">Identificação</h2>
+                <dl class="row mb-0 small">
+                    <dt class="col-5">Nº fabricante</dt>
+                    <dd class="col-7 font-monospace">@Model.ManufacturerPartNumber</dd>
+
+                    <dt class="col-5">Marca</dt>
+                    <dd class="col-7">@Model.BrandName (@Model.BrandCode)</dd>
+
+                    <dt class="col-5">Família</dt>
+                    <dd class="col-7">@Model.CategoryName</dd>
+
+                    <dt class="col-5">Unidade</dt>
+                    <dd class="col-7">@Model.StockUnit</dd>
+
+                    @if (Model.RequiresCoreReturn)
+                    {
+                        <dt class="col-5">Troca</dt>
+                        <dd class="col-7">
+                            @Model.CoreChargeAmount?.ToString("N2") @Model.CoreChargeCurrency
+                        </dd>
+                    }
+                </dl>
+                @if (!string.IsNullOrWhiteSpace(Model.Description))
+                {
+                    <p class="small text-body-secondary mt-3 mb-0">@Model.Description</p>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h2 class="h6 text-body-secondary text-uppercase small mb-3">Equivalências</h2>
+                @if (Model.CrossReferences.Count == 0)
+                {
+                    <p class="small text-body-secondary mb-0">Nenhuma registada.</p>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm small mb-0">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Tipo</th>
+                                    <th scope="col">Marca</th>
+                                    <th scope="col">Número</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (CrossReferenceDto reference in Model.CrossReferences)
+                                {
+                                    <tr>
+                                        <td>@reference.Kind</td>
+                                        <td>@reference.SourceBrand</td>
+                                        <td class="font-monospace">@reference.Number</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h2 class="h6 text-body-secondary text-uppercase small mb-3">Aplicações</h2>
+                @if (Model.Fitments.Count == 0)
+                {
+                    <p class="small text-body-secondary mb-0">Nenhuma registada.</p>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm small mb-0">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Marca</th>
+                                    <th scope="col">Modelo</th>
+                                    <th scope="col">Motor</th>
+                                    <th scope="col">De</th>
+                                    <th scope="col">Até</th>
+                                    <th scope="col">Posição</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (FitmentDto fitment in Model.Fitments)
+                                {
+                                    <tr>
+                                        <td>@fitment.Make</td>
+                                        <td>@fitment.Model</td>
+                                        <td class="font-monospace">@fitment.EngineCode</td>
+                                        <td>@fitment.YearFrom</td>
+                                        <td>@fitment.YearTo</td>
+                                        <td>@fitment.Position</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>

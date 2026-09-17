@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <RootNamespace>AutoPartsErp.Web</RootNamespace>
+    <AssemblyName>AutoPartsErp.Web</AssemblyName>
+    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
+    <Description>
+      The browser surface: server-rendered MVC and Razor views over the same modules the API
+      serves. A library rather than a host, so the API project stays the single composition
+      root — the same shape every module's Presentation project already has.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Modules\Access\AutoPartsErp.Modules.Access.Presentation\AutoPartsErp.Modules.Access.Presentation.csproj" />
+    <ProjectReference Include="..\..\Modules\Catalog\AutoPartsErp.Modules.Catalog.Presentation\AutoPartsErp.Modules.Catalog.Presentation.csproj" />
+  </ItemGroup>
+
+</Project>

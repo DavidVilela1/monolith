@@ -1,0 +1,21 @@
+@{
+    ViewData["Title"] = "Início";
+}
+<h1 class="h3 mb-4">Bom dia, @User.DisplayName().</h1>
+
+<div class="row g-3">
+    @if (User.Can(Permissions.Catalog.Read))
+    {
+        <div class="col-12 col-md-6 col-lg-4">
+            <a class="card h-100 text-decoration-none shadow-sm" asp-controller="Parts" asp-action="Index">
+                <div class="card-body">
+                    <h2 class="h5 card-title">Artigos</h2>
+                    <p class="card-text text-body-secondary small mb-0">
+                        Procurar por referência, por número do fabricante ou por qualquer
+                        equivalência.
+                    </p>
+                </div>
+            </a>
+        </div>
+    }
+</div>
