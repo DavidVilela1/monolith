@@ -1,0 +1,587 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   Monolith — the ERP's own stylesheet.
+
+   Written from the Nocturne mockups. No framework: the screens are grids and
+   tokens of their own, and a framework would be a second opinion about every
+   one of them. Nothing is loaded from anywhere else either — a counter in a
+   warehouse on a thin line renders the same as one on a desk, and the content
+   security policy can say 'self' and mean it.
+
+   Order: fonts, tokens, base, shell, chrome, controls, surfaces, data, states.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* — fonts —
+   Inter as one variable file rather than three static weights: one request,
+   and every weight between 100 and 900 available to a screen that wants one.
+   IBM Plex Mono carries every identifier and every number in this system. */
+@font-face {
+  font-family: "Inter";
+  src: url("../fonts/inter-latin-variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plex Mono";
+  src: url("../fonts/plex-mono-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plex Mono";
+  src: url("../fonts/plex-mono-500.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* — tokens — */
+:root {
+  --bg: #161826;          /* the page */
+  --sf: #1d1f2c;          /* sidebar, header, panel */
+  --pn: #232532;          /* raised surface */
+  --hv: #232532;          /* hover */
+  --tx: #e9e9ed;          /* text */
+  --mu: #9397ab;          /* secondary text */
+  --dm: #75798c;          /* column headings, metadata */
+  --ln: rgba(233, 233, 237, 0.10);
+  --ln2: #3f424d;
+  --ac: #9184d9;          /* accent */
+  --acl: #5d5294;         /* accent outline */
+  --acs: #2b2741;         /* accent wash */
+  --ok: #8fb8a2;
+  --oks: #1f2b28;
+  --wn: #d9b884;
+  --wnl: #57492c;
+  --wns: #2e2a1f;
+  --dg: #d98a8a;
+  --dgs: #2e1f22;
+
+  --r-sm: 3px;
+  --r: 5px;
+  --r-md: 6px;
+  --r-lg: 8px;
+
+  --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  --side: 212px;
+  --bar: 52px;
+
+  color-scheme: dark;
+}
+
+/* — base — */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--tx);
+  font-family: var(--sans);
+  font-size: 12px;
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 { margin: 0; font-weight: 500; line-height: 1.2; }
+
+a { color: var(--ac); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 2px; }
+
+button { font: inherit; color: inherit; }
+
+/* Every interactive thing gets the same ring. The browser default is a blue
+   that belongs to no part of this palette, and on a dark ground it glares. */
+:focus { outline: none; }
+:focus-visible { outline: 1px solid var(--ac); outline-offset: 1px; border-radius: 2px; }
+::selection { background: var(--acs); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #2f3241; border-radius: 6px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: #3c4052; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* An icon sits on the text baseline of whatever contains it and takes that
+   text's colour, which is the whole reason the set is inline SVG. */
+.ico { display: block; flex: none; }
+
+/* — type utilities —
+   .mono is the signature of this design: every identifier and every number.
+   .num adds tabular figures and right alignment, because a column of money
+   that does not line up on the decimal is a column nobody can scan. */
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.muted { color: var(--mu); }
+.dim { color: var(--dm); }
+.ok { color: var(--ok); }
+.warn { color: var(--wn); }
+.bad { color: var(--dg); }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dm);
+}
+
+/* — shell — */
+.shell { display: flex; height: 100vh; overflow: hidden; }
+
+.side {
+  width: var(--side);
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: var(--sf);
+  border-right: 1px solid var(--ln);
+}
+
+.side-head {
+  height: var(--bar);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--ln);
+}
+.side-brand { display: flex; align-items: center; gap: 9px; color: var(--tx); }
+.side-brand:hover { text-decoration: none; }
+.side-mark {
+  display: grid;
+  grid-template-columns: 7px 7px;
+  grid-template-rows: 7px 7px;
+  gap: 2px;
+}
+.side-mark i { background: var(--ac); }
+.side-mark i:nth-child(2), .side-mark i:nth-child(3) { opacity: 0.45; }
+.side-name { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+.side-ver { margin-left: auto; font-family: var(--mono); font-size: 9.5px; color: var(--dm); }
+
+.side-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 10px 8px;
+  overflow-y: auto;
+}
+.side-group { padding: 6px 8px 4px; }
+.side-group + .nav-item { margin-top: 0; }
+.side-nav .side-group ~ .side-group { padding-top: 14px; }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--r);
+  color: var(--mu);
+  font-size: 12px;
+}
+.nav-item:hover { background: var(--hv); color: var(--tx); text-decoration: none; }
+.nav-item[aria-current="page"] { background: var(--acs); color: var(--ac); }
+.nav-count { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--dm); }
+
+/* An entry whose screen is not built yet: present, legible, and plainly not a
+   link. The dot on the right is what says so without a word of explanation. */
+.nav-item.is-pending { color: var(--dm); cursor: default; }
+.nav-item.is-pending:hover { background: none; color: var(--dm); }
+.nav-item.is-pending::after {
+  content: "";
+  margin-left: auto;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  border: 1px solid var(--ln2);
+}
+
+.side-foot { flex: none; padding: 10px; border-top: 1px solid var(--ln); }
+.place {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--ln);
+  border-radius: var(--r-md);
+  color: var(--tx);
+}
+.place:hover { text-decoration: none; background: var(--hv); }
+.place > .truncate { min-width: 0; }
+.place-name { display: block; font-size: 11.5px; }
+.place-note { display: block; font-size: 10px; color: var(--dm); }
+
+/* — main column — */
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+.top {
+  height: var(--bar);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--ln);
+  background: var(--sf);
+}
+.top-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.top-title h1 { font-size: 14px; font-weight: 500; }
+.top-ctx { font-family: var(--mono); font-size: 10px; color: var(--dm); text-transform: uppercase; }
+.top-tools { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 280px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--ln);
+  border-radius: var(--r-md);
+  background: var(--bg);
+  color: var(--dm);
+}
+.search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--tx);
+  font: inherit;
+  font-size: 11.5px;
+}
+.search input::placeholder { color: var(--dm); }
+.search:focus-within { border-color: var(--acl); }
+.kbd {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--dm);
+  border: 1px solid var(--ln);
+  border-radius: var(--r-sm);
+  padding: 1px 4px;
+}
+
+.avatar {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--acs);
+  color: var(--ac);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+.page { flex: 1; min-height: 0; overflow: auto; padding: 16px 18px; }
+.page-tight { padding: 0; display: flex; flex-direction: column; }
+
+/* — buttons —
+   Outlined, never filled. The accent in this system is a line and a glow. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--ln);
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--tx);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--hv); text-decoration: none; }
+.btn:active { background: var(--pn); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary { border-color: var(--acl); color: var(--ac); }
+.btn-primary:hover { background: var(--acs); }
+.btn-quiet { border-color: transparent; color: var(--mu); }
+.btn-quiet:hover { color: var(--tx); }
+.btn-link { border: 0; background: none; padding: 0; height: auto; color: var(--ac); font-size: 11.5px; cursor: pointer; }
+.btn-link:hover { text-decoration: underline; }
+.btn-sq { width: 26px; height: 26px; padding: 0; color: var(--mu); }
+.btn-block { width: 100%; height: 34px; margin-top: 16px; }
+
+/* — fields — */
+.field { display: block; margin-bottom: 11px; }
+.field > label { display: block; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dm); margin-bottom: 5px; }
+.input, .select {
+  width: 100%;
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--ln);
+  border-radius: var(--r-md);
+  background: var(--bg);
+  color: var(--tx);
+  font: inherit;
+  font-size: 12px;
+}
+.select { appearance: none; background-image: none; padding-right: 26px; cursor: pointer; }
+.input:hover, .select:hover { border-color: var(--ln2); }
+.input:focus-visible, .select:focus-visible { border-color: var(--ac); outline-offset: 0; }
+.input::placeholder { color: var(--dm); }
+.select-wrap { position: relative; display: block; }
+.select-wrap .ico { position: absolute; right: 8px; top: 50%; margin-top: -8px; color: var(--dm); pointer-events: none; }
+
+.check { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-size: 11.5px; color: var(--mu); }
+.check input { position: absolute; opacity: 0; width: 0; height: 0; }
+.check .box {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--ln2);
+  border-radius: 2px;
+  color: transparent;
+}
+.check:hover .box { border-color: var(--ac); }
+.check input:checked + .box { border-color: var(--ac); background: var(--ac); color: var(--bg); }
+.check input:focus-visible + .box { outline: 1px solid var(--ac); outline-offset: 1px; }
+
+/* — filter chips — */
+.chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--ln);
+  border-radius: var(--r-md);
+  color: var(--mu);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.chip:hover { background: var(--hv); color: var(--tx); text-decoration: none; }
+.chip b { font-weight: 500; color: var(--tx); font-family: var(--mono); font-size: 11px; }
+.chip-on { background: var(--acs); border-color: transparent; color: var(--ac); }
+.chip-on b { color: var(--ac); }
+.chip-on:hover { background: var(--acs); color: var(--ac); }
+
+/* — surfaces — */
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--sf);
+  border: 1px solid var(--ln);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.panel-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 13px;
+  border-bottom: 1px solid var(--ln);
+}
+.panel-head h2 { font-size: 12.5px; font-weight: 500; }
+.panel-note { font-family: var(--mono); font-size: 10px; color: var(--dm); }
+.panel-head .right { margin-left: auto; font-size: 11px; }
+.panel-body { padding: 13px; }
+.panel-body-flush { padding: 0; }
+.panel-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 40px;
+  padding: 0 13px;
+  border-top: 1px solid var(--ln);
+}
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+
+/* Panels sit at their natural height rather than stretching to match the
+   tallest one in the row: a panel padded out with empty space reads as a
+   panel that failed to load something. */
+.panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 13px 14px;
+  background: var(--sf);
+  border: 1px solid var(--ln);
+  border-radius: var(--r-lg);
+}
+.kpi-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dm); }
+.kpi-value { font-family: var(--mono); font-size: 24px; font-weight: 500; letter-spacing: -0.01em; line-height: 1.1; }
+.kpi-value small { font-family: var(--sans); font-size: 12px; font-weight: 400; color: var(--mu); margin-left: 3px; }
+.kpi-note { font-size: 10.5px; color: var(--dm); }
+
+/* — tags —
+   A status is a word in a tinted box, never a colour alone: colour-blindness
+   is common and a warehouse screen is read at an angle in bad light. */
+.tag {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: nowrap;
+  background: var(--pn);
+  color: var(--mu);
+}
+.tag-ac { background: var(--acs); color: var(--ac); }
+.tag-ok { background: var(--oks); color: var(--ok); }
+.tag-wn { background: var(--wns); color: var(--wn); }
+.tag-dg { background: var(--dgs); color: var(--dg); }
+
+/* — data table —
+   A real <table>: it is a table, so it reads correctly to a screen reader and
+   it survives being copied into a spreadsheet, which is a thing this business
+   will do on day one. The look is the mockup's grid. */
+.grid { width: 100%; border-collapse: collapse; }
+.grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 28px;
+  padding: 0 7px;
+  background: var(--sf);
+  border-bottom: 1px solid var(--ln);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 400;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--dm);
+  white-space: nowrap;
+}
+.grid thead th.num { text-align: right; }
+.grid tbody td {
+  height: 29px;
+  padding: 0 7px;
+  border-bottom: 1px solid var(--ln);
+  font-size: 11.5px;
+  vertical-align: middle;
+}
+.grid tbody tr:hover { background: var(--hv); }
+.grid tbody tr.is-selected { background: var(--acs); }
+.grid a { color: var(--ac); }
+.grid .cell-id { font-family: var(--mono); font-size: 11px; color: var(--ac); white-space: nowrap; }
+.grid-wrap { flex: 1; min-height: 0; overflow: auto; }
+.grid-pad th:first-child, .grid-pad td:first-child { padding-left: 18px; }
+.grid-pad th:last-child, .grid-pad td:last-child { padding-right: 18px; }
+
+/* — banners — */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 13px;
+  border: 1px solid var(--ln);
+  border-radius: var(--r-md);
+  background: var(--pn);
+  font-size: 11.5px;
+}
+.banner .ico { color: var(--mu); }
+.banner-wn { background: var(--wns); border-color: var(--wnl); }
+.banner-wn .ico { color: var(--wn); }
+.banner-dg { background: var(--dgs); border-color: var(--dg); }
+.banner-dg .ico { color: var(--dg); }
+.banner-title { font-weight: 500; }
+.banner-note { color: var(--mu); }
+.banner .right { margin-left: auto; }
+
+/* — empty state —
+   Says what to do next, not "no results". A blank panel reads as broken. */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 48px 20px;
+  color: var(--dm);
+  text-align: center;
+}
+.empty .ico { color: var(--ln2); }
+.empty strong { font-weight: 500; color: var(--mu); font-size: 12px; }
+
+/* — pagination — */
+.pager { display: flex; align-items: center; gap: 4px; }
+.pager .btn-sq[aria-disabled="true"] { opacity: 0.35; pointer-events: none; }
+
+/* — sign-in —
+   Its own page, with none of the chrome: there is nothing to navigate to yet,
+   and a sidebar full of links that all bounce back here is a cruel joke. */
+.auth { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.auth-card { width: 100%; max-width: 310px; }
+.auth-brand { display: flex; align-items: center; gap: 9px; margin-bottom: 22px; }
+.auth-title { font-size: 15px; font-weight: 500; margin-bottom: 3px; }
+.auth-note { font-size: 11.5px; color: var(--dm); margin-bottom: 18px; }
+.auth-box {
+  padding: 20px;
+  background: var(--sf);
+  border: 1px solid var(--ln);
+  border-radius: var(--r-lg);
+}
+.auth-foot { margin-top: 14px; font-size: 10.5px; color: var(--dm); text-align: center; }
+
+/* — validation — */
+.errors {
+  margin: 0 0 13px;
+  padding: 8px 10px;
+  border: 1px solid var(--dg);
+  border-radius: var(--r-md);
+  background: var(--dgs);
+  color: var(--dg);
+  font-size: 11.5px;
+  list-style: none;
+}
+.errors li + li { margin-top: 3px; }
+.field-error { display: block; margin-top: 4px; font-size: 10.5px; color: var(--dg); }
+.input.input-invalid { border-color: var(--dg); }
+
+/* — definition rows, used on detail screens — */
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; margin: 0; font-size: 11.5px; }
+.facts dt { color: var(--dm); white-space: nowrap; }
+.facts dd { margin: 0; text-align: right; }
+
+.strip { display: flex; gap: 0; border-bottom: 1px solid var(--ln); background: var(--sf); }
+.strip-fact { flex: 1; min-width: 0; padding: 11px 16px; border-right: 1px solid var(--ln); }
+.strip-fact:last-child { border-right: 0; }
+.strip-fact .label { margin-bottom: 4px; }
+.strip-fact .value { font-size: 12.5px; }
+.strip-fact .note { font-size: 10.5px; color: var(--dm); margin-top: 2px; }
+
+/* — narrow screens —
+   A parts counter is a desktop, but a van driver has a phone. The sidebar
+   becomes a strip of icons rather than disappearing behind a button nobody
+   finds. */
+@media (max-width: 860px) {
+  :root { --side: 48px; }
+  .side-name, .side-ver, .side-group, .nav-count, .place-name, .place-note { display: none; }
+  .side-head, .nav-item, .place { justify-content: center; padding: 0; }
+  .side-foot { padding: 8px 6px; }
+  .search { width: 150px; }
+  .page { padding: 12px; }
+}

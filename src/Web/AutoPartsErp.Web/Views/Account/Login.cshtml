@@ -1,42 +1,60 @@
 @model LoginForm
 @{
     ViewData["Title"] = "Entrar";
-    Layout = "_Layout";
+    Layout = "_LayoutAuth";
 }
-<div class="row justify-content-center">
-    <div class="col-12 col-sm-10 col-md-6 col-lg-4">
-        <div class="card shadow-sm mt-5">
-            <div class="card-body p-4">
-                <h1 class="h4 mb-1">AutoParts ERP</h1>
-                <p class="text-body-secondary small mb-4">Entre para continuar.</p>
+<div class="auth">
+    <div class="auth-card">
 
-                <form method="post" asp-action="Login">
-                    <input type="hidden" asp-for="ReturnUrl" />
-
-                    <div asp-validation-summary="ModelOnly" class="alert alert-danger py-2" role="alert"></div>
-
-                    <div class="mb-3">
-                        <label asp-for="Email" class="form-label"></label>
-                        <input asp-for="Email" class="form-control" autocomplete="username"
-                               autofocus inputmode="email" />
-                        <span asp-validation-for="Email" class="text-danger small"></span>
-                    </div>
-
-                    <div class="mb-3">
-                        <label asp-for="Password" class="form-label"></label>
-                        <input asp-for="Password" class="form-control"
-                               autocomplete="current-password" />
-                        <span asp-validation-for="Password" class="text-danger small"></span>
-                    </div>
-
-                    <div class="form-check mb-4">
-                        <input asp-for="StayTrusted" class="form-check-input" />
-                        <label asp-for="StayTrusted" class="form-check-label small"></label>
-                    </div>
-
-                    <button type="submit" class="btn btn-primary w-100">Entrar</button>
-                </form>
-            </div>
+        <div class="auth-brand">
+            <span class="side-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+            <span class="side-name">Monolith</span>
         </div>
+
+        <div class="auth-box">
+            <div class="auth-title">Entrar</div>
+            <p class="auth-note">Gestão de peças automóvel.</p>
+
+            <form method="post" asp-action="Login">
+                <input type="hidden" asp-for="ReturnUrl" />
+
+                @* The module refuses to say whether it was the email or the password that was
+                   wrong, which is deliberate, so this shows its sentence rather than one of
+                   its own. *@
+                @if (!ViewData.ModelState.IsValid && ViewData.ModelState[string.Empty]?.Errors.Count > 0)
+                {
+                    <ul class="errors" role="alert">
+                        @foreach (var error in ViewData.ModelState[string.Empty]!.Errors)
+                        {
+                            <li>@error.ErrorMessage</li>
+                        }
+                    </ul>
+                }
+
+                <div class="field">
+                    <label asp-for="Email"></label>
+                    <input asp-for="Email" class="input" type="email" autocomplete="username"
+                           autofocus spellcheck="false" placeholder="nome@@empresa.pt" />
+                    <span asp-validation-for="Email" class="field-error"></span>
+                </div>
+
+                <div class="field">
+                    <label asp-for="Password"></label>
+                    <input asp-for="Password" class="input" type="password"
+                           autocomplete="current-password" />
+                    <span asp-validation-for="Password" class="field-error"></span>
+                </div>
+
+                <label class="check">
+                    <input asp-for="StayTrusted" type="checkbox" />
+                    <span class="box">@Icons.Render("check", 10)</span>
+                    <span>@Html.DisplayNameFor(model => model.StayTrusted)</span>
+                </label>
+
+                <button type="submit" class="btn btn-primary btn-block">Entrar</button>
+            </form>
+        </div>
+
+        <p class="auth-foot">Sessão de 8 horas. Num balcão partilhado, saia ao fim do turno.</p>
     </div>
 </div>

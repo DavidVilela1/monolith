@@ -1,21 +1,166 @@
+@model Dashboard
+@using System.Globalization
 @{
-    ViewData["Title"] = "Início";
+    ViewData["Title"] = "Painel";
+    CatalogueCounts parts = Model.Parts;
+    CultureInfo pt = CultureInfo.CurrentCulture;
 }
-<h1 class="h3 mb-4">Bom dia, @User.DisplayName().</h1>
 
-<div class="row g-3">
+@section Tools {
     @if (User.Can(Permissions.Catalog.Read))
     {
-        <div class="col-12 col-md-6 col-lg-4">
-            <a class="card h-100 text-decoration-none shadow-sm" asp-controller="Parts" asp-action="Index">
-                <div class="card-body">
-                    <h2 class="h5 card-title">Artigos</h2>
-                    <p class="card-text text-body-secondary small mb-0">
-                        Procurar por referência, por número do fabricante ou por qualquer
-                        equivalência.
-                    </p>
-                </div>
-            </a>
-        </div>
+        <a class="btn btn-primary" asp-controller="Parts" asp-action="Index">
+            @Icons.Render("magnifying-glass", 14) Procurar peça
+        </a>
     }
-</div>
+}
+
+@if (!User.Can(Permissions.Catalog.Read))
+{
+    <div class="empty">
+        @Icons.Render("hand-palm", 26)
+        <strong>Nada para mostrar aqui</strong>
+        <span>A sua conta ainda não tem permissões sobre nenhum dos ecrãs construídos.</span>
+    </div>
+}
+else
+{
+    <div class="cards" style="margin-bottom:12px">
+        <div class="kpi">
+            <span class="kpi-label">Referências</span>
+            <span class="kpi-value">@parts.Total.ToString("N0", pt)</span>
+            <span class="kpi-note">tudo o que está em ficha</span>
+        </div>
+        <div class="kpi">
+            <span class="kpi-label">Ativas</span>
+            <span class="kpi-value">@parts.Active.ToString("N0", pt)</span>
+            <span class="kpi-note">podem ser vendidas hoje</span>
+        </div>
+        <div class="kpi">
+            <span class="kpi-label">Rascunho</span>
+            <span class="kpi-value">@parts.Draft.ToString("N0", pt)</span>
+            <span class="kpi-note">começadas e por acabar</span>
+        </div>
+        <div class="kpi">
+            <span class="kpi-label">Fora de linha</span>
+            <span class="kpi-value">@parts.Retired.ToString("N0", pt)</span>
+            <span class="kpi-note">descontinuadas e obsoletas</span>
+        </div>
+    </div>
+
+    <div class="panels">
+
+        <section class="panel">
+            <div class="panel-head">
+                <h2>Marcas</h2>
+                <span class="panel-note">@Model.Brands.Count.ToString("N0", pt) com mais peças</span>
+            </div>
+            <div class="panel-body panel-body-flush">
+                @if (Model.Brands.Count == 0)
+                {
+                    <div class="empty">
+                        @Icons.Render("tag", 24)
+                        <strong>Nenhuma marca</strong>
+                        <span>As marcas entram com o catálogo.</span>
+                    </div>
+                }
+                else
+                {
+                    <table class="grid grid-pad">
+                        <thead>
+                            <tr>
+                                <th scope="col">Código</th>
+                                <th scope="col">Marca</th>
+                                <th scope="col">Origem</th>
+                                <th scope="col" class="num">Peças</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (BrandDto brand in Model.Brands)
+                            {
+                                <tr>
+                                    <td class="cell-id">@brand.Code</td>
+                                    <td class="truncate">@brand.Name</td>
+                                    <td>
+                                        @if (brand.IsOriginalEquipment)
+                                        {
+                                            <span class="tag tag-ac">OE</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="dim">—</span>
+                                        }
+                                    </td>
+                                    <td class="num">@brand.PartCount.ToString("N0", pt)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <h2>Famílias</h2>
+                <span class="panel-note">@Model.Categories.Count.ToString("N0", pt) com mais peças</span>
+            </div>
+            <div class="panel-body panel-body-flush">
+                @if (Model.Categories.Count == 0)
+                {
+                    <div class="empty">
+                        @Icons.Render("stack", 24)
+                        <strong>Nenhuma família</strong>
+                        <span>As famílias entram com o catálogo.</span>
+                    </div>
+                }
+                else
+                {
+                    <table class="grid grid-pad">
+                        <thead>
+                            <tr>
+                                <th scope="col">Código</th>
+                                <th scope="col">Família</th>
+                                <th scope="col" class="num">Peças</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (CategoryDto category in Model.Categories)
+                            {
+                                <tr>
+                                    <td class="cell-id">@category.Code</td>
+                                    <td class="truncate">@category.Name</td>
+                                    <td class="num">@category.PartCount.ToString("N0", pt)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </section>
+
+        @* Deliberately here, and deliberately not four empty panels with dashes in them. The
+           design calls for what is going out today, what has to be ordered and what is overdue;
+           those modules exist and this project cannot reach them yet. Saying so is honest.
+           Drawing the panels with placeholder figures would not be. *@
+        <section class="panel">
+            <div class="panel-head">
+                @Icons.Render("package", 15)
+                <h2>Ainda por ligar</h2>
+            </div>
+            <div class="panel-body">
+                <dl class="facts" style="grid-template-columns:1fr auto">
+                    <dt>Encomendas a expedir</dt><dd class="dim">Sales</dd>
+                    <dt>Sugestões de reposição</dt><dd class="dim">Purchasing</dd>
+                    <dt>Stock e localizações</dt><dd class="dim">Inventory</dd>
+                    <dt>Contas a receber e vencido</dt><dd class="dim">Finance</dd>
+                </dl>
+                <p class="dim" style="margin:11px 0 0;font-size:10.5px">
+                    Os módulos existem e têm os dados. Falta a este projeto referenciá-los e um
+                    modelo de leitura que junte o catálogo ao stock.
+                </p>
+            </div>
+        </section>
+
+    </div>
+}

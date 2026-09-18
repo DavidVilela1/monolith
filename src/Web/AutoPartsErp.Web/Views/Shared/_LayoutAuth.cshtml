@@ -1,0 +1,19 @@
+@{
+    string title = ViewData["Title"] as string ?? "Monolith";
+}
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>@title · Monolith</title>
+    <link rel="preload" href="~/_content/AutoPartsErp.Web/fonts/inter-latin-variable.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="~/_content/AutoPartsErp.Web/css/monolith.css" asp-append-version="true" />
+</head>
+@* No shell. Before signing in there is nothing to navigate to, and a sidebar of links that all
+   bounce back to this page is a menu that lies about what is available. *@
+<body>
+    @RenderBody()
+</body>
+</html>

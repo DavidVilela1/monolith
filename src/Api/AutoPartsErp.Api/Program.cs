@@ -244,6 +244,15 @@ try
         await MigrateAndSeedAsync(app);
     }
 
+    app.UseRequestLocalization();
+
+    // Before authentication, which is where it belongs and where it did not used to be.
+    // Everything on this system is behind the fallback policy, and a request for a stylesheet
+    // does not match an endpoint, so with these the other way round the sign-in page can be
+    // redirected to the sign-in page while asking for the stylesheet that would have made it
+    // legible. It did not show before because the stylesheet came from a CDN.
+    app.UseStaticFiles();
+
     app.UseCors();
 
     // Order matters and is not interchangeable: authentication works out who the caller is,
@@ -268,9 +277,6 @@ try
     .WithName("ApiRoot")
     .AllowAnonymous()
     .ExcludeFromDescription();
-
-    app.UseRequestLocalization();
-    app.UseStaticFiles();
 
     app.MapErpModules();
     app.MapErpWeb();

@@ -1,16 +1,17 @@
 @{
     ViewData["Title"] = "Sem permissão";
 }
-<div class="row justify-content-center">
-    <div class="col-12 col-md-8 col-lg-6">
-        <div class="card shadow-sm mt-5">
-            <div class="card-body p-4">
-                <h1 class="h4">Sem permissão</h1>
-                <p class="mb-0 text-body-secondary">
-                    A sua conta não tem permissão para este ecrã. Se devia ter, fale com quem
-                    gere os acessos — é uma permissão que se atribui ao perfil, não à pessoa.
-                </p>
-            </div>
-        </div>
+@* Inside the shell, not on a bare page: the person is signed in, and taking the navigation away
+   from them would make a refusal look like being thrown out. *@
+<div class="panel" style="max-width:520px">
+    <div class="panel-head">
+        @Icons.Render("hand-palm", 15)
+        <h2>Sem permissão</h2>
+    </div>
+    <div class="panel-body">
+        <p class="muted" style="margin:0">
+            A sua conta não tem permissão para este ecrã. Se devia ter, fale com quem gere os
+            acessos — é uma permissão que se atribui ao perfil, não à pessoa.
+        </p>
     </div>
 </div>

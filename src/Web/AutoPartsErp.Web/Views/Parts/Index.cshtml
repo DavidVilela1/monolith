@@ -1,64 +1,157 @@
 @model PartSearchResults
+@using System.Globalization
 @{
-    ViewData["Title"] = "Artigos";
-    PagedResult<PartSummary> results = Model.Results;
-}
-<div class="d-flex align-items-baseline justify-content-between mb-3">
-    <h1 class="h3 mb-0">Artigos</h1>
-    <span class="text-body-secondary small">
-        @results.TotalCount @(results.TotalCount == 1 ? "artigo" : "artigos")
-    </span>
-</div>
+    ViewData["Title"] = "Peças";
+    ViewData["Flush"] = true;
 
-<form method="get" class="card card-body shadow-sm mb-3">
-    <div class="row g-2 align-items-end">
-        <div class="col-12 col-md-7">
-            <label for="term" class="form-label small mb-1">Procurar</label>
-            <input type="search" id="term" name="term" value="@Model.Search.Term"
-                   class="form-control" autofocus
-                   placeholder="Referência, número do fabricante, equivalência ou nome" />
-        </div>
-        <div class="col-8 col-md-3">
-            <label for="status" class="form-label small mb-1">Estado</label>
-            <select id="status" name="status" class="form-select">
-                <option value="">Todos</option>
-                @foreach (string status in new[] { "Draft", "Active", "Discontinued", "Obsolete" })
-                {
-                    <option value="@status" selected="@(Model.Search.Status == status)">@status</option>
-                }
-            </select>
-        </div>
-        <div class="col-4 col-md-2">
-            <button type="submit" class="btn btn-primary w-100">Procurar</button>
-        </div>
+    PagedResult<PartSummary> results = Model.Results;
+    PartSearchForm search = Model.Search;
+    CultureInfo pt = CultureInfo.CurrentCulture;
+
+    ViewData["Context"] = $"CATÁLOGO · {results.TotalCount.ToString("N0", pt)} REFERÊNCIAS";
+
+    int first = results.TotalCount == 0 ? 0 : ((results.Page - 1) * results.PageSize) + 1;
+    int last = Math.Min(results.Page * results.PageSize, results.TotalCount);
+
+    // What the pager has to carry with it. A "next page" link that dropped the filters would
+    // silently show page two of a different search, which is the kind of bug somebody trusts.
+    var filters = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    if (!string.IsNullOrWhiteSpace(search.Term))
+    {
+        filters["term"] = search.Term;
+    }
+
+    if (!string.IsNullOrWhiteSpace(search.Status))
+    {
+        filters["status"] = search.Status;
+    }
+
+    if (search.BrandId is Guid brandId)
+    {
+        filters["brandId"] = brandId.ToString();
+    }
+
+    if (search.CategoryId is Guid categoryId)
+    {
+        filters["categoryId"] = categoryId.ToString();
+    }
+}
+
+@section Tools {
+    <a class="btn" asp-action="Index">@Icons.Render("arrows-clockwise", 14) Atualizar</a>
+}
+
+<form method="get" asp-action="Index">
+    <input type="hidden" name="page" value="1" />
+
+    <div class="chips" style="padding:11px 18px;border-bottom:1px solid var(--ln);background:var(--sf)">
+
+        <label class="search" style="width:330px">
+            @Icons.Render("magnifying-glass", 13)
+            <input type="search" name="term" value="@search.Term" autofocus spellcheck="false"
+                   placeholder="Referência, nº do fabricante, equivalência ou nome"
+                   aria-label="Procurar peça" />
+        </label>
+
+        <span class="chip">
+            @Icons.Render("tag", 13)
+            Marca
+            <span class="select-wrap" style="width:130px">
+                <select name="brandId" class="select" style="height:22px;border:0;background:none;padding:0 18px 0 0">
+                    <option value="">todas</option>
+                    @foreach (BrandDto brand in Model.Brands)
+                    {
+                        <option value="@brand.Id" selected="@(search.BrandId == brand.Id)">@brand.Name</option>
+                    }
+                </select>
+                @Icons.Render("caret-down", 12)
+            </span>
+        </span>
+
+        <span class="chip">
+            @Icons.Render("stack", 13)
+            Família
+            <span class="select-wrap" style="width:130px">
+                <select name="categoryId" class="select" style="height:22px;border:0;background:none;padding:0 18px 0 0">
+                    <option value="">todas</option>
+                    @foreach (CategoryDto category in Model.Categories)
+                    {
+                        <option value="@category.Id" selected="@(search.CategoryId == category.Id)">@category.Name</option>
+                    }
+                </select>
+                @Icons.Render("caret-down", 12)
+            </span>
+        </span>
+
+        <span class="chip">
+            @Icons.Render("funnel", 13)
+            Estado
+            <span class="select-wrap" style="width:108px">
+                <select name="status" class="select" style="height:22px;border:0;background:none;padding:0 18px 0 0">
+                    <option value="">todos</option>
+                    @foreach (string status in new[] { "Active", "Draft", "Discontinued", "Obsolete" })
+                    {
+                        <option value="@status" selected="@(search.Status == status)">@PartStatusText.Of(status)</option>
+                    }
+                </select>
+                @Icons.Render("caret-down", 12)
+            </span>
+        </span>
+
+        <button type="submit" class="btn btn-primary">Procurar</button>
+
+        @if (search.IsFiltered)
+        {
+            <a class="chip chip-on" asp-action="Index" title="Limpar tudo">
+                @Icons.Render("x", 12) Limpar
+            </a>
+        }
+
+        <span class="mono dim" style="margin-left:auto;font-size:10.5px">
+            @results.TotalCount.ToString("N0", pt) resultados
+        </span>
     </div>
 </form>
 
-<div asp-validation-summary="ModelOnly" class="alert alert-danger py-2" role="alert"></div>
+@if (!ViewData.ModelState.IsValid)
+{
+    <div style="padding:11px 18px">
+        <div class="banner banner-dg" role="alert">
+            @Icons.Render("warning", 15)
+            <span>@ViewData.ModelState[string.Empty]?.Errors.FirstOrDefault()?.ErrorMessage</span>
+        </div>
+    </div>
+}
 
 @if (results.Items.Count == 0)
 {
-    <div class="alert alert-light border text-body-secondary" role="status">
-        Nada encontrado.
-        @if (!string.IsNullOrWhiteSpace(Model.Search.Term))
+    <div class="empty" style="flex:1">
+        @Icons.Render("list-magnifying-glass", 28)
+        <strong>Nada encontrado</strong>
+        @if (!string.IsNullOrWhiteSpace(search.Term))
         {
-            <text>Os números casam pelo princípio, não pelo meio — experimente menos caracteres.</text>
+            <span>Os números casam pelo princípio, não pelo meio — experimente menos caracteres.</span>
+        }
+        else
+        {
+            <span>Nenhuma peça corresponde a estes filtros.</span>
         }
     </div>
 }
 else
 {
-    @* The table is the one thing allowed to be wider than the page: a counter screen is read
-       across, and wrapping a part number is worse than scrolling. *@
-    <div class="table-responsive">
-        <table class="table table-hover align-middle bg-body">
+    <div class="grid-wrap">
+        <table class="grid grid-pad">
             <thead>
                 <tr>
-                    <th scope="col">Referência</th>
+                    <th scope="col">SKU</th>
+                    <th scope="col">Designação</th>
                     <th scope="col">Nº fabricante</th>
                     <th scope="col">Marca</th>
-                    <th scope="col">Designação</th>
                     <th scope="col">Família</th>
+                    <th scope="col">Un.</th>
+                    <th scope="col">Troca</th>
                     <th scope="col">Estado</th>
                 </tr>
             </thead>
@@ -66,45 +159,50 @@ else
                 @foreach (PartSummary part in results.Items)
                 {
                     <tr>
-                        <td>
-                            <a asp-action="Details" asp-route-id="@part.Id"
-                               class="fw-semibold text-decoration-none">@part.Sku</a>
+                        <td class="cell-id">
+                            <a asp-action="Details" asp-route-id="@part.Id">@part.Sku</a>
                         </td>
-                        <td class="font-monospace small">@part.ManufacturerPartNumber</td>
-                        <td>@part.BrandName</td>
-                        <td>@part.Name</td>
-                        <td class="text-body-secondary small">@part.CategoryName</td>
+                        <td class="truncate" style="max-width:1px;width:40%">@part.Name</td>
+                        <td class="mono dim" style="font-size:11px">@part.ManufacturerPartNumber</td>
+                        <td class="muted truncate">@part.BrandName</td>
+                        <td class="muted truncate">@part.CategoryName</td>
+                        <td class="mono dim" style="font-size:10.5px">@part.StockUnit</td>
                         <td>
-                            <span class="badge @(part.Status == "Active" ? "text-bg-success" : "text-bg-secondary")">
-                                @part.Status
-                            </span>
+                            @if (part.RequiresCoreReturn)
+                            {
+                                <span class="tag tag-wn">troca</span>
+                            }
+                            else
+                            {
+                                <span class="dim">—</span>
+                            }
                         </td>
+                        <td><span class="tag @PartStatusText.Tone(part.Status)">@PartStatusText.Of(part.Status)</span></td>
                     </tr>
                 }
             </tbody>
         </table>
     </div>
 
-    @if (results.TotalPages > 1)
-    {
-        <nav aria-label="Páginas">
-            <ul class="pagination">
-                <li class="page-item @(results.Page <= 1 ? "disabled" : string.Empty)">
-                    <a class="page-link" asp-action="Index" asp-route-term="@Model.Search.Term"
-                       asp-route-status="@Model.Search.Status" asp-route-page="@(results.Page - 1)">
-                        Anterior
-                    </a>
-                </li>
-                <li class="page-item disabled">
-                    <span class="page-link">@results.Page / @results.TotalPages</span>
-                </li>
-                <li class="page-item @(results.Page >= results.TotalPages ? "disabled" : string.Empty)">
-                    <a class="page-link" asp-action="Index" asp-route-term="@Model.Search.Term"
-                       asp-route-status="@Model.Search.Status" asp-route-page="@(results.Page + 1)">
-                        Seguinte
-                    </a>
-                </li>
-            </ul>
-        </nav>
-    }
+    <div class="panel-foot" style="padding:0 18px">
+        <span class="mono dim" style="font-size:10.5px">
+            @first.ToString("N0", pt)–@last.ToString("N0", pt) de @results.TotalCount.ToString("N0", pt)
+        </span>
+
+        <div class="pager" style="margin-left:auto">
+            <a class="btn btn-sq" aria-label="Página anterior"
+               aria-disabled="@(results.Page <= 1 ? "true" : null)"
+               asp-action="Index" asp-all-route-data="filters"
+               asp-route-page="@(results.Page - 1)">@Icons.Render("caret-left", 12)</a>
+
+            <span class="mono dim" style="font-size:10.5px;padding:0 4px">
+                @results.Page / @Math.Max(results.TotalPages, 1)
+            </span>
+
+            <a class="btn btn-sq" aria-label="Página seguinte"
+               aria-disabled="@(results.Page >= results.TotalPages ? "true" : null)"
+               asp-action="Index" asp-all-route-data="filters"
+               asp-route-page="@(results.Page + 1)">@Icons.Render("caret-right", 12)</a>
+        </div>
+    </div>
 }

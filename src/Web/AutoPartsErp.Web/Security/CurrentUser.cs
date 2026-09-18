@@ -51,4 +51,28 @@ public static class CurrentUser
         principal?.FindFirstValue(ClaimTypes.Name)
         ?? principal?.FindFirstValue(ClaimTypes.Email)
         ?? string.Empty;
+
+    /// <summary>
+    /// Two letters for the avatar.
+    /// <para>
+    /// The first letter of the first word and of the last: "Duarte Vilela" is DV, and so is
+    /// "Duarte Miguel Vilela", which is the point — a person's initials should not change
+    /// because somebody typed their middle name in one week and not the next.
+    /// </para>
+    /// </summary>
+    /// <param name="principal">Whoever is signed in.</param>
+    public static string Initials(this ClaimsPrincipal? principal)
+    {
+        string name = principal.DisplayName();
+
+        string[] words = name.Split(
+            ' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        return words.Length switch
+        {
+            0 => "?",
+            1 => words[0][..1].ToUpperInvariant(),
+            _ => string.Concat(words[0][..1], words[^1][..1]).ToUpperInvariant(),
+        };
+    }
 }

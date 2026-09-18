@@ -1,3 +1,5 @@
+using AutoPartsErp.Modules.Catalog.Application.Brands;
+using AutoPartsErp.Modules.Catalog.Application.Categories;
 using AutoPartsErp.Modules.Catalog.Application.Contracts;
 using AutoPartsErp.Modules.Catalog.Application.Parts.Queries;
 using AutoPartsErp.SharedKernel.Authorization;
@@ -40,22 +42,32 @@ public sealed class PartsController : Controller
         Result<PagedResult<PartSummary>> found = await _dispatcher.SendAsync(
             new SearchPartsQuery(
                 search.Term,
-                BrandId: null,
-                CategoryId: null,
-                Status: search.Status,
+                search.BrandId,
+                search.CategoryId,
+                search.Status,
                 RequiresCoreReturn: null,
-                Page: search.Page,
-                PageSize: PartSearchForm.PageSize),
+                search.Page,
+                PartSearchForm.PageSize),
             cancellationToken);
+
+        Result<IReadOnlyList<BrandDto>> brands =
+            await _dispatcher.SendAsync(new ListBrandsQuery(), cancellationToken);
+
+        Result<IReadOnlyList<CategoryDto>> categories =
+            await _dispatcher.SendAsync(new ListCategoriesQuery(), cancellationToken);
 
         if (found.IsFailure)
         {
             ModelState.AddModelError(string.Empty, found.Error.Description);
-
-            return View(new PartSearchResults(search, PagedResult<PartSummary>.Empty(1, PartSearchForm.PageSize)));
         }
 
-        return View(new PartSearchResults(search, found.Value));
+        return View(new PartSearchResults(
+            search,
+            found.IsSuccess
+                ? found.Value
+                : PagedResult<PartSummary>.Empty(1, PartSearchForm.PageSize),
+            Names(brands, brand => brand.Name),
+            Names(categories, category => category.Name)));
     }
 
     /// <summary>Shows one part.</summary>
@@ -69,4 +81,16 @@ public sealed class PartsController : Controller
 
         return part.IsFailure ? NotFound() : View(part.Value);
     }
+
+    /// <summary>
+    /// A filter list, in the order a person reads one.
+    /// <para>
+    /// By name, not by whatever order the database handed back. A dropdown of four hundred
+    /// brands in insertion order is a dropdown nobody finds anything in.
+    /// </para>
+    /// </summary>
+    private static IReadOnlyList<T> Names<T>(Result<IReadOnlyList<T>> result, Func<T, string> by) =>
+        result.IsFailure
+            ? []
+            : [.. result.Value.OrderBy(by, StringComparer.CurrentCulture)];
 }
