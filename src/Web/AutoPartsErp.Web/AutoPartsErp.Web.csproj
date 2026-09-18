@@ -16,8 +16,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!--
+      The contracts assembly, deliberately first. It is how one module asks another a question,
+      and it is how this project reads stock onto a catalogue screen without either module
+      knowing the other exists. A join across the two schemas would be quicker to write and
+      would be the moment the modular monolith stopped being one.
+    -->
+    <ProjectReference Include="..\..\Shared\AutoPartsErp.ModuleContracts\AutoPartsErp.ModuleContracts.csproj" />
+
     <ProjectReference Include="..\..\Modules\Access\AutoPartsErp.Modules.Access.Presentation\AutoPartsErp.Modules.Access.Presentation.csproj" />
     <ProjectReference Include="..\..\Modules\Catalog\AutoPartsErp.Modules.Catalog.Presentation\AutoPartsErp.Modules.Catalog.Presentation.csproj" />
+    <ProjectReference Include="..\..\Modules\Inventory\AutoPartsErp.Modules.Inventory.Presentation\AutoPartsErp.Modules.Inventory.Presentation.csproj" />
   </ItemGroup>
 
 </Project>

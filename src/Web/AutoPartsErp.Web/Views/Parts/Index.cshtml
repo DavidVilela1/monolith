@@ -1,14 +1,18 @@
 @model PartSearchResults
 @using System.Globalization
+@using AutoPartsErp.ModuleContracts.Inventory
+@using AutoPartsErp.Modules.Inventory.Application.Contracts
 @{
     ViewData["Title"] = "Peças";
     ViewData["Flush"] = true;
 
-    PagedResult<PartSummary> results = Model.Results;
+    PagedResult<PartSummary> results = Model.Page;
     PartSearchForm search = Model.Search;
+    WarehouseDto? place = Model.Warehouse;
     CultureInfo pt = CultureInfo.CurrentCulture;
 
     ViewData["Context"] = $"CATÁLOGO · {results.TotalCount.ToString("N0", pt)} REFERÊNCIAS";
+    ViewData["Warehouse"] = place;
 
     int first = results.TotalCount == 0 ? 0 : ((results.Page - 1) * results.PageSize) + 1;
     int last = Math.Min(results.Page * results.PageSize, results.TotalCount);
@@ -36,10 +40,17 @@
     {
         filters["categoryId"] = categoryId.ToString();
     }
+
+    if (search.WarehouseId is Guid warehouseId)
+    {
+        filters["warehouseId"] = warehouseId.ToString();
+    }
 }
 
 @section Tools {
-    <a class="btn" asp-action="Index">@Icons.Render("arrows-clockwise", 14) Atualizar</a>
+    <a class="btn" asp-action="Index" asp-all-route-data="filters">
+        @Icons.Render("arrows-clockwise", 14) Atualizar
+    </a>
 }
 
 <form method="get" asp-action="Index">
@@ -47,18 +58,41 @@
 
     <div class="chips" style="padding:11px 18px;border-bottom:1px solid var(--ln);background:var(--sf)">
 
-        <label class="search" style="width:330px">
+        <label class="search" style="width:196px">
             @Icons.Render("magnifying-glass", 13)
             <input type="search" name="term" value="@search.Term" autofocus spellcheck="false"
                    placeholder="Referência, nº do fabricante, equivalência ou nome"
                    aria-label="Procurar peça" />
         </label>
 
+        @if (Model.Warehouses.Count > 0)
+        {
+            <span class="chip">
+                @Icons.Render("warehouse", 13)
+                Armazém
+                <span class="select-wrap" style="width:70px">
+                    <select name="warehouseId" class="select"
+                            style="height:22px;border:0;background:none;padding:0 18px 0 0"
+                            aria-label="Armazém">
+                        @foreach (WarehouseDto warehouse in Model.Warehouses)
+                        {
+                            <option value="@warehouse.Id" selected="@(search.WarehouseId == warehouse.Id)">
+                                @warehouse.Code
+                            </option>
+                        }
+                    </select>
+                    @Icons.Render("caret-down", 12)
+                </span>
+            </span>
+        }
+
         <span class="chip">
             @Icons.Render("tag", 13)
             Marca
-            <span class="select-wrap" style="width:130px">
-                <select name="brandId" class="select" style="height:22px;border:0;background:none;padding:0 18px 0 0">
+            <span class="select-wrap" style="width:92px">
+                <select name="brandId" class="select"
+                        style="height:22px;border:0;background:none;padding:0 18px 0 0"
+                        aria-label="Marca">
                     <option value="">todas</option>
                     @foreach (BrandDto brand in Model.Brands)
                     {
@@ -72,8 +106,10 @@
         <span class="chip">
             @Icons.Render("stack", 13)
             Família
-            <span class="select-wrap" style="width:130px">
-                <select name="categoryId" class="select" style="height:22px;border:0;background:none;padding:0 18px 0 0">
+            <span class="select-wrap" style="width:92px">
+                <select name="categoryId" class="select"
+                        style="height:22px;border:0;background:none;padding:0 18px 0 0"
+                        aria-label="Família">
                     <option value="">todas</option>
                     @foreach (CategoryDto category in Model.Categories)
                     {
@@ -87,8 +123,10 @@
         <span class="chip">
             @Icons.Render("funnel", 13)
             Estado
-            <span class="select-wrap" style="width:108px">
-                <select name="status" class="select" style="height:22px;border:0;background:none;padding:0 18px 0 0">
+            <span class="select-wrap" style="width:82px">
+                <select name="status" class="select"
+                        style="height:22px;border:0;background:none;padding:0 18px 0 0"
+                        aria-label="Estado">
                     <option value="">todos</option>
                     @foreach (string status in new[] { "Active", "Draft", "Discontinued", "Obsolete" })
                     {
@@ -103,7 +141,8 @@
 
         @if (search.IsFiltered)
         {
-            <a class="chip chip-on" asp-action="Index" title="Limpar tudo">
+            <a class="chip chip-on" asp-action="Index"
+               asp-route-warehouseId="@search.WarehouseId" title="Limpar os filtros">
                 @Icons.Render("x", 12) Limpar
             </a>
         }
@@ -124,7 +163,24 @@
     </div>
 }
 
-@if (results.Items.Count == 0)
+@if (Model.Warehouses.Count == 0)
+{
+    @* Not a silent absence. Without a warehouse there is no such thing as "how many", and three
+       empty columns with no explanation is how somebody concludes the stock is zero. *@
+    <div style="padding:11px 18px 0">
+        <div class="banner banner-wn">
+            @Icons.Render("warehouse", 15)
+            <span>
+                <span class="banner-title">Sem armazéns.</span>
+                <span class="banner-note">
+                    Enquanto não existir um armazém não há stock para mostrar — só o catálogo.
+                </span>
+            </span>
+        </div>
+    </div>
+}
+
+@if (Model.Rows.Count == 0)
 {
     <div class="empty" style="flex:1">
         @Icons.Render("list-magnifying-glass", 28)
@@ -150,22 +206,42 @@ else
                     <th scope="col">Nº fabricante</th>
                     <th scope="col">Marca</th>
                     <th scope="col">Família</th>
+                    @if (place is not null)
+                    {
+                        <th scope="col" class="num" title="Fisicamente no armazém @place.Code">Stock</th>
+                        <th scope="col" class="num" title="Já prometido a alguém">Reserv.</th>
+                        <th scope="col" class="num" title="Stock menos reservado">Disp.</th>
+                    }
                     <th scope="col">Un.</th>
                     <th scope="col">Troca</th>
                     <th scope="col">Estado</th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (PartSummary part in results.Items)
+                @foreach (PartRow row in Model.Rows)
                 {
+                    PartSummary part = row.Part;
+                    StockAvailability? stock = row.Stock;
+
                     <tr>
                         <td class="cell-id">
                             <a asp-action="Details" asp-route-id="@part.Id">@part.Sku</a>
                         </td>
-                        <td class="truncate" style="max-width:1px;width:40%">@part.Name</td>
+                        <td class="truncate" style="max-width:1px;width:34%">@part.Name</td>
                         <td class="mono dim" style="font-size:11px">@part.ManufacturerPartNumber</td>
                         <td class="muted truncate">@part.BrandName</td>
                         <td class="muted truncate">@part.CategoryName</td>
+
+                        @if (place is not null)
+                        {
+                            @* A part Inventory has never heard of shows a dash, never a zero.
+                               Zero means "none left"; a dash means "nobody has counted". Those
+                               are different answers and only one of them stops a sale. *@
+                            <td class="num">@Qty(stock?.OnHand)</td>
+                            <td class="num muted">@Qty(stock?.Reserved)</td>
+                            <td class="num @Tone(stock)">@Qty(stock?.Available)</td>
+                        }
+
                         <td class="mono dim" style="font-size:10.5px">@part.StockUnit</td>
                         <td>
                             @if (part.RequiresCoreReturn)
@@ -189,6 +265,13 @@ else
             @first.ToString("N0", pt)–@last.ToString("N0", pt) de @results.TotalCount.ToString("N0", pt)
         </span>
 
+        @if (place is not null)
+        {
+            <span class="dim" style="font-size:10.5px">
+                stock em <span class="mono">@place.Code</span> · @place.Name
+            </span>
+        }
+
         <div class="pager" style="margin-left:auto">
             <a class="btn btn-sq" aria-label="Página anterior"
                aria-disabled="@(results.Page <= 1 ? "true" : null)"
@@ -205,4 +288,23 @@ else
                asp-route-page="@(results.Page + 1)">@Icons.Render("caret-right", 12)</a>
         </div>
     </div>
+}
+
+@functions {
+    /// <summary>A quantity, or a dash when nobody has counted.</summary>
+    private static string Qty(decimal? quantity) =>
+        quantity?.ToString("N0", CultureInfo.CurrentCulture) ?? "—";
+
+    /// <summary>
+    /// Red when there is nothing left to promise, amber when the shelf is empty but something is
+    /// still reserved off it, and nothing at all otherwise. A screen that colours every row stops
+    /// being read.
+    /// </summary>
+    private static string Tone(StockAvailability? stock) => stock switch
+    {
+        null => "dim",
+        { Available: <= 0m } => "bad",
+        { OnHand: <= 0m } => "warn",
+        _ => string.Empty,
+    };
 }

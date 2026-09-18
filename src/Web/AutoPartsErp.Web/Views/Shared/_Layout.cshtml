@@ -1,9 +1,11 @@
 @using System.Globalization
+@using AutoPartsErp.Modules.Inventory.Application.Contracts
 @{
     string title = ViewData["Title"] as string ?? "Monolith";
     string? context = ViewData["Context"] as string;
     bool flush = ViewData["Flush"] as bool? ?? false;
     string? current = ViewContext.RouteData.Values["controller"] as string;
+    var place = ViewData["Warehouse"] as WarehouseDto;
 
     // TERÇA · 18/09/2026, the way the mockup's header reads it. Portuguese, upper case, and
     // through the request culture rather than the machine's: a server in another timezone
@@ -77,14 +79,15 @@
         </nav>
 
         <div class="side-foot">
-            @* Not a selector yet. The warehouse a person is working in comes from Inventory,
-               which this project does not reference, and a picker that cannot pick is worse
-               than none. *@
+            @* Whatever warehouse the screen is currently counting, put here by that screen. It
+               follows the page rather than leading it: the choice belongs to the screen where the
+               figures are, and a second picker in the sidebar would be two controls that have to
+               agree. *@
             <span class="place">
                 @Icons.Render("warehouse", 15)
                 <span class="truncate">
-                    <span class="place-name">Armazém</span>
-                    <span class="place-note">por configurar</span>
+                    <span class="place-name">@(place?.Code ?? "Armazém")</span>
+                    <span class="place-note">@(place?.Name ?? "nenhum escolhido")</span>
                 </span>
             </span>
         </div>
