@@ -60,6 +60,13 @@ public static class CookieSignIn
             claims.Add(new Claim(ErpClaims.Permission, permission));
         }
 
+        // Carried in the cookie rather than looked up per request. The alternative is a query
+        // against the users table on every page, to answer a question whose answer changes once.
+        if (result.MustChangePassword)
+        {
+            claims.Add(new Claim(ErpWebClaims.MustChangePassword, "true"));
+        }
+
         var identity = new ClaimsIdentity(
             claims, CookieAuthenticationDefaults.AuthenticationScheme);
 
@@ -67,6 +74,43 @@ public static class CookieSignIn
             CookieAuthenticationDefaults.AuthenticationScheme,
             new ClaimsPrincipal(identity),
             new AuthenticationProperties { IsPersistent = stayTrusted });
+    }
+
+    /// <summary>
+    /// Reissues the cookie without the must-change-password mark, once they have changed it.
+    /// <para>
+    /// The same identity minus one claim, rather than signing in again: signing in again would
+    /// mean asking for the password a second time, and the permissions are already here. The
+    /// "keep me signed in" choice they made is read back off the existing cookie and kept, so
+    /// changing a password does not quietly turn a trusted browser into a session one.
+    /// </para>
+    /// </summary>
+    /// <param name="context">The request.</param>
+    public static async Task ClearPasswordChangeAsync(this HttpContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        AuthenticateResult existing = await context.AuthenticateAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme);
+
+        if (!existing.Succeeded || existing.Principal is null)
+        {
+            return;
+        }
+
+        List<Claim> claims =
+        [
+            .. existing.Principal.Claims.Where(claim =>
+                !string.Equals(claim.Type, ErpWebClaims.MustChangePassword, StringComparison.Ordinal)),
+        ];
+
+        var identity = new ClaimsIdentity(
+            claims, CookieAuthenticationDefaults.AuthenticationScheme);
+
+        await context.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            new ClaimsPrincipal(identity),
+            existing.Properties ?? new AuthenticationProperties());
     }
 
     /// <summary>Signs the person out of this browser.</summary>

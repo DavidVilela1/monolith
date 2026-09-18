@@ -1,4 +1,5 @@
 using System.Globalization;
+using AutoPartsErp.Web.Security;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -44,7 +45,14 @@ public static class WebModule
         // whoever is signed in — and the cookie below travels on that request, because a form post
         // from another origin is exactly what SameSite=Lax still allows through on navigation.
         services.AddControllersWithViews(mvc =>
-            mvc.Filters.Add(new AutoValidateAntiforgeryTokenAttribute()));
+        {
+            mvc.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
+
+            // Also global, and for the same reason: a screen built next month cannot forget to
+            // keep somebody off it while they are still on the password an administrator gave
+            // them.
+            mvc.Filters.Add<RequirePasswordChangeFilter>();
+        });
 
         services.AddAntiforgery(antiforgery =>
         {

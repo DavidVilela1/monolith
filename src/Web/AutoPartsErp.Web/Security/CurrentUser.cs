@@ -53,6 +53,13 @@ public static class CurrentUser
         ?? string.Empty;
 
     /// <summary>
+    /// True while they are signed in on a password somebody else chose for them.
+    /// </summary>
+    /// <param name="principal">Whoever is signed in.</param>
+    public static bool MustChangePassword(this ClaimsPrincipal? principal) =>
+        principal?.HasClaim(ErpWebClaims.MustChangePassword, "true") == true;
+
+    /// <summary>
     /// Two letters for the avatar.
     /// <para>
     /// The first letter of the first word and of the last: "Duarte Vilela" is DV, and so is

@@ -100,7 +100,11 @@
             <div class="top-tools">
                 @await RenderSectionAsync("Tools", required: false)
 
-                <span class="avatar" title="@User.DisplayName()">@User.Initials()</span>
+                @* The avatar is the way to the password screen. A parts business has no profile
+                   to edit — the name on a document comes from the account an administrator made —
+                   so one destination is the whole menu, and a menu of one is a link. *@
+                <a class="avatar" asp-controller="Account" asp-action="ChangePassword"
+                   title="@User.DisplayName() — palavra-passe">@User.Initials()</a>
 
                 <form asp-controller="Account" asp-action="Logout" method="post">
                     <button type="submit" class="btn btn-sq" title="Sair" aria-label="Sair">

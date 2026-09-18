@@ -284,7 +284,9 @@ button { font: inherit; color: inherit; }
   font-family: var(--mono);
   font-size: 10px;
   letter-spacing: 0.02em;
+  text-decoration: none;
 }
+a.avatar:hover { background: var(--acl); color: var(--tx); text-decoration: none; }
 
 .page { flex: 1; min-height: 0; overflow: auto; padding: 16px 18px; }
 .page-tight { padding: 0; display: flex; flex-direction: column; }
