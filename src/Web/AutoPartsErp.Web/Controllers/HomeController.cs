@@ -4,7 +4,9 @@ using AutoPartsErp.Modules.Catalog.Application.Categories;
 using AutoPartsErp.Modules.Catalog.Application.Contracts;
 using AutoPartsErp.Modules.Catalog.Application.Parts.Queries;
 using AutoPartsErp.Modules.Inventory.Application.Contracts;
-using AutoPartsErp.Modules.Inventory.Application.Stock.Queries;
+using AutoPartsErp.Modules.Inventory.Application.Warehouses;
+using AutoPartsErp.Modules.Purchasing.Application.Contracts;
+using AutoPartsErp.Modules.Purchasing.Application.Replenishment;
 using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
 using AutoPartsErp.SharedKernel.Paging;
@@ -36,9 +38,9 @@ public sealed class HomeController : Controller
     [HttpGet]
     public async Task<IActionResult> Index(CancellationToken cancellationToken)
     {
-        // Each panel is behind the permission for the module it reads. Somebody given only
-        // Inventory sees the replenishment panel and no catalogue figures, and somebody given
-        // only Catalog sees the reverse — rather than being thrown off the page they land on.
+        // Each panel is behind the permission for the module it reads. A buyer sees the
+        // replenishment queue and no catalogue figures, a counter clerk sees the reverse — rather
+        // than either being thrown off the page they land on when they sign in.
         CatalogueCounts counts = new(0, 0, 0, 0);
         IReadOnlyList<BrandDto> brands = [];
         IReadOnlyList<CategoryDto> categories = [];
@@ -61,8 +63,12 @@ public sealed class HomeController : Controller
                 category => category.PartCount);
         }
 
-        (IReadOnlyList<ReplenishmentRow> replenishment, int shortTotal) =
-            User.Can(Permissions.Inventory.Read)
+        // Purchasing's queue, not Inventory's balances. Inventory says what is below its line;
+        // Purchasing says what nobody has decided about yet, which is what a person can act on.
+        // The panel used to read the first and nagged about parts the buyer had already
+        // dismissed.
+        (IReadOnlyList<SuggestionRow> replenishment, int shortTotal) =
+            User.Can(Permissions.Purchasing.Read)
                 ? await ReplenishmentAsync(cancellationToken)
                 : ([], 0);
 
@@ -70,31 +76,39 @@ public sealed class HomeController : Controller
     }
 
     /// <summary>
-    /// What has fallen to its reorder point, with the catalogue's words on it.
+    /// What the buyer has not dealt with, with the catalogue's words and the warehouse's code on it.
     /// <para>
-    /// Inventory orders the list by how far under the line each part has fallen, and knows
-    /// nothing about what any of them is called. Catalog knows the names and nothing about the
-    /// shelves. Two questions, one round trip each, joined here.
+    /// Purchasing orders the list by how far under the line each part has fallen and knows nothing
+    /// about what any of them is called; Catalog knows the names; Inventory knows the warehouses.
+    /// Three questions, one round trip each, joined here.
     /// </para>
     /// </summary>
-    private async Task<(IReadOnlyList<ReplenishmentRow> Rows, int Total)> ReplenishmentAsync(
+    private async Task<(IReadOnlyList<SuggestionRow> Rows, int Total)> ReplenishmentAsync(
         CancellationToken cancellationToken)
     {
-        Result<PagedResult<StockBalance>> shortages = await _dispatcher.SendAsync(
-            new GetReplenishmentListQuery(WarehouseId: null, Page: 1, PageSize: PanelRows),
+        Result<PagedResult<ReplenishmentSuggestionDto>> open = await _dispatcher.SendAsync(
+            new ListReplenishmentSuggestionsQuery(
+                WarehouseId: null, PartId: null, Status: "Open", Page: 1, PageSize: PanelRows),
             cancellationToken);
 
-        if (shortages.IsFailure || shortages.Value.Items.Count == 0)
+        if (open.IsFailure || open.Value.Items.Count == 0)
         {
-            return ([], shortages.IsSuccess ? shortages.Value.TotalCount : 0);
+            return ([], open.IsSuccess ? open.Value.TotalCount : 0);
         }
 
-        IReadOnlyList<StockBalance> balances = shortages.Value.Items;
+        IReadOnlyList<ReplenishmentSuggestionDto> suggestions = open.Value.Items;
 
         IReadOnlyDictionary<Guid, PartDescriptor> parts = await _catalogue.GetManyAsync(
-            [.. balances.Select(balance => balance.PartId).Distinct()], cancellationToken);
+            [.. suggestions.Select(suggestion => suggestion.PartId).Distinct()], cancellationToken);
 
-        return (ReplenishmentRow.Combine(balances, parts), shortages.Value.TotalCount);
+        Result<IReadOnlyList<WarehouseDto>> warehouses =
+            await _dispatcher.SendAsync(new ListWarehousesQuery(ActiveOnly: false), cancellationToken);
+
+        Dictionary<Guid, string> codes = warehouses.IsFailure
+            ? []
+            : warehouses.Value.ToDictionary(place => place.Id, place => place.Code);
+
+        return (SuggestionRow.Combine(suggestions, parts, codes), open.Value.TotalCount);
     }
 
     /// <summary>

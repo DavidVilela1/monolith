@@ -46,7 +46,7 @@ public static class Navigation
             new NavItem("Painel", "gauge", "Home", Permission: null),
             new NavItem("Vendas", "shopping-cart", Controller: null, Permissions.Sales.Read),
             new NavItem("Peças", "nut", "Parts", Permissions.Catalog.Read),
-            new NavItem("Compras", "truck", Controller: null, Permissions.Purchasing.Read),
+            new NavItem("Compras", "truck", "Purchasing", Permissions.Purchasing.Read),
             new NavItem("Stock", "stack", Controller: null, Permissions.Inventory.Read),
             new NavItem("Faturação", "file-text", Controller: null, Permissions.Invoicing.Read),
         ]),

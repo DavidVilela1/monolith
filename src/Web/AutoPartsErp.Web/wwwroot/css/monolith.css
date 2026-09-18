@@ -113,7 +113,14 @@ button { font: inherit; color: inherit; }
    .mono is the signature of this design: every identifier and every number.
    .num adds tabular figures and right alignment, because a column of money
    that does not line up on the decimal is a column nobody can scan. */
-.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+/* Nowrap as well: every identifier in this system is mono, and a warehouse
+   code or a part number broken across two lines makes a 29px row into a 44px
+   one and is harder to read besides. */
+.mono {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .num {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
@@ -126,6 +133,20 @@ button { font: inherit; color: inherit; }
 .warn { color: var(--wn); }
 .bad { color: var(--dg); }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* For a column whose heading is obvious to somebody looking and invisible to
+   somebody listening — an actions column, say. Removing the heading entirely
+   would leave a screen reader announcing an unnamed column. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .label {
   font-family: var(--mono);
   font-size: 9px;

@@ -7,7 +7,7 @@
     CultureInfo pt = CultureInfo.CurrentCulture;
 
     bool catalogue = User.Can(Permissions.Catalog.Read);
-    bool stock = User.Can(Permissions.Inventory.Read);
+    bool buying = User.Can(Permissions.Purchasing.Read);
 }
 
 @section Tools {
@@ -19,7 +19,7 @@
     }
 }
 
-@if (!catalogue && !stock)
+@if (!catalogue && !buying)
 {
     <div class="empty">
         @Icons.Render("hand-palm", 26)
@@ -54,7 +54,7 @@ else
             </div>
         }
 
-        @if (stock)
+        @if (buying)
         {
             @* The only number on this page somebody can act on today, so it carries colour when
                it is not zero and none at all when it is. *@
@@ -63,14 +63,14 @@ else
                 <span class="kpi-value @(Model.ReplenishmentTotal > 0 ? "warn" : null)">
                     @Model.ReplenishmentTotal.ToString("N0", pt)
                 </span>
-                <span class="kpi-note">no ponto de reposição ou abaixo</span>
+                <span class="kpi-note">sugestões por decidir</span>
             </div>
         }
     </div>
 
     <div class="panels">
 
-        @if (stock)
+        @if (buying)
         {
             <section class="panel" style="grid-column:span 2">
                 <div class="panel-head">
@@ -92,8 +92,8 @@ else
                     {
                         <div class="empty">
                             @Icons.Render("check", 24)
-                            <strong>Nada por repor</strong>
-                            <span>Nenhuma peça chegou ao ponto de reposição.</span>
+                            <strong>Nada por decidir</strong>
+                            <span>Nenhuma sugestão à espera do comprador.</span>
                         </div>
                     }
                     else
@@ -108,11 +108,11 @@ else
                                     <th scope="col" class="num" title="Já encomendado a fornecedor">A caminho</th>
                                     <th scope="col" class="num" title="A linha que desencadeia a reposição">Ponto</th>
                                     <th scope="col" class="num" title="Quanto falta para voltar ao ponto">Falta</th>
-                                    <th scope="col" class="num" title="Quantidade de encomenda definida">Encomendar</th>
+                                    <th scope="col" class="num" title="Quantidade sugerida">Sugerido</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (ReplenishmentRow row in Model.Replenishment)
+                                @foreach (SuggestionRow row in Model.Replenishment)
                                 {
                                     <tr>
                                         <td class="cell-id">
@@ -132,7 +132,7 @@ else
                                         <td class="num muted">@Qty(row.OnOrder)</td>
                                         <td class="num dim">@Qty(row.ReorderPoint)</td>
                                         <td class="num @(row.Shortfall > 0m ? "warn" : null)">@Qty(row.Shortfall)</td>
-                                        <td class="num">@Qty(row.ReorderQuantity)</td>
+                                        <td class="num">@Qty(row.Suggested)</td>
                                     </tr>
                                 }
                             </tbody>
@@ -261,7 +261,7 @@ else
 }
 
 @functions {
-    /// <summary>A quantity, or a dash when nobody has said.</summary>
-    private static string Qty(decimal? quantity) =>
-        quantity?.ToString("N0", CultureInfo.CurrentCulture) ?? "—";
+    /// <summary>A quantity, in the counter's own numerals.</summary>
+    private static string Qty(decimal quantity) =>
+        quantity.ToString("N0", CultureInfo.CurrentCulture);
 }

@@ -1,0 +1,259 @@
+@model SuggestionResults
+@using System.Globalization
+@using AutoPartsErp.Modules.Inventory.Application.Contracts
+@using AutoPartsErp.Modules.Purchasing.Application.Contracts
+@{
+    ViewData["Title"] = "Compras";
+    ViewData["Flush"] = true;
+
+    PagedResult<ReplenishmentSuggestionDto> results = Model.Page;
+    SuggestionSearchForm search = Model.Search;
+    CultureInfo pt = CultureInfo.CurrentCulture;
+
+    WarehouseDto? place = Model.Warehouses
+        .FirstOrDefault(warehouse => warehouse.Id == search.WarehouseId);
+
+    ViewData["Warehouse"] = place;
+    ViewData["Context"] = $"REPOSIÇÃO · {results.TotalCount.ToString("N0", pt)} SUGESTÕES";
+
+    bool manages = User.Can(Permissions.Purchasing.Manage);
+    string here = Context.Request.Path + Context.Request.QueryString;
+
+    int first = results.TotalCount == 0 ? 0 : ((results.Page - 1) * results.PageSize) + 1;
+    int last = Math.Min(results.Page * results.PageSize, results.TotalCount);
+
+    var filters = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    if (!string.IsNullOrWhiteSpace(search.Status))
+    {
+        filters["status"] = search.Status;
+    }
+
+    if (search.WarehouseId is Guid warehouseId)
+    {
+        filters["warehouseId"] = warehouseId.ToString();
+    }
+}
+
+<form method="get" asp-action="Index">
+    <input type="hidden" name="page" value="1" />
+
+    <div class="chips" style="padding:11px 18px;border-bottom:1px solid var(--ln);background:var(--sf)">
+
+        <span class="chip">
+            @Icons.Render("warehouse", 13)
+            Armazém
+            <span class="select-wrap" style="width:96px">
+                <select name="warehouseId" class="select"
+                        style="height:22px;border:0;background:none;padding:0 18px 0 0"
+                        aria-label="Armazém">
+                    <option value="">todos</option>
+                    @foreach (WarehouseDto warehouse in Model.Warehouses)
+                    {
+                        <option value="@warehouse.Id" selected="@(search.WarehouseId == warehouse.Id)">
+                            @warehouse.Code
+                        </option>
+                    }
+                </select>
+                @Icons.Render("caret-down", 12)
+            </span>
+        </span>
+
+        <span class="chip">
+            @Icons.Render("funnel", 13)
+            Estado
+            <span class="select-wrap" style="width:108px">
+                <select name="status" class="select"
+                        style="height:22px;border:0;background:none;padding:0 18px 0 0"
+                        aria-label="Estado">
+                    @foreach (string status in new[] { "Open", "Ordered", "Dismissed" })
+                    {
+                        <option value="@status" selected="@(search.EffectiveStatus == status)">
+                            @SuggestionStatusText.Of(status)
+                        </option>
+                    }
+                </select>
+                @Icons.Render("caret-down", 12)
+            </span>
+        </span>
+
+        <button type="submit" class="btn btn-primary">Filtrar</button>
+
+        <span class="mono dim" style="margin-left:auto;font-size:10.5px">
+            @results.TotalCount.ToString("N0", pt) sugestões
+        </span>
+    </div>
+</form>
+
+@if (TempData["Done"] is string done)
+{
+    <div style="padding:11px 18px 0">
+        <div class="banner" role="status">
+            @Icons.Render("check", 15)
+            <span>@done</span>
+        </div>
+    </div>
+}
+
+@if (TempData["Error"] is string problem)
+{
+    <div style="padding:11px 18px 0">
+        <div class="banner banner-dg" role="alert">
+            @Icons.Render("warning", 15)
+            <span>@problem</span>
+        </div>
+    </div>
+}
+
+@if (!ViewData.ModelState.IsValid)
+{
+    <div style="padding:11px 18px 0">
+        <div class="banner banner-dg" role="alert">
+            @Icons.Render("warning", 15)
+            <span>@ViewData.ModelState[string.Empty]?.Errors.FirstOrDefault()?.ErrorMessage</span>
+        </div>
+    </div>
+}
+
+@if (Model.Rows.Count == 0)
+{
+    <div class="empty" style="flex:1">
+        @Icons.Render("check", 28)
+        @if (search.EffectiveStatus == "Open")
+        {
+            <strong>Nada por decidir</strong>
+            <span>Nenhuma peça chegou ao ponto de reposição sem alguém já ter tratado dela.</span>
+        }
+        else
+        {
+            <strong>Nada nesta lista</strong>
+            <span>Nenhuma sugestão neste estado.</span>
+        }
+    </div>
+}
+else
+{
+    <div class="grid-wrap">
+        <table class="grid grid-pad">
+            <thead>
+                <tr>
+                    <th scope="col">SKU</th>
+                    <th scope="col">Designação</th>
+                    <th scope="col">Arm.</th>
+                    <th scope="col" class="num" title="Disponível para venda">Disp.</th>
+                    <th scope="col" class="num" title="Já encomendado a fornecedor">A caminho</th>
+                    <th scope="col" class="num" title="A linha que desencadeia a reposição">Ponto</th>
+                    <th scope="col" class="num" title="Quanto falta para voltar ao ponto">Falta</th>
+                    <th scope="col" class="num" title="Quantidade sugerida">Sugerido</th>
+                    <th scope="col">Desde</th>
+                    <th scope="col">Estado</th>
+                    @if (manages)
+                    {
+                        <th scope="col"><span class="visually-hidden">Ações</span></th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (SuggestionRow row in Model.Rows)
+                {
+                    <tr>
+                        <td class="cell-id">
+                            @if (User.Can(Permissions.Catalog.Read))
+                            {
+                                <a asp-controller="Parts" asp-action="Details"
+                                   asp-route-id="@row.PartId">@row.Sku</a>
+                            }
+                            else
+                            {
+                                @row.Sku
+                            }
+                        </td>
+                        <td class="truncate" style="max-width:1px;width:34%">
+                            @row.Name
+                            @if (!string.IsNullOrWhiteSpace(row.DismissedReason))
+                            {
+                                <span class="dim" style="font-size:10.5px"> — @row.DismissedReason</span>
+                            }
+                        </td>
+                        <td class="mono dim" style="font-size:10.5px">@row.WarehouseCode</td>
+                        <td class="num @(row.Available <= 0m ? "bad" : null)">@Qty(row.Available)</td>
+                        <td class="num muted">@Qty(row.OnOrder)</td>
+                        <td class="num dim">@Qty(row.ReorderPoint)</td>
+                        <td class="num @(row.Shortfall > 0m ? "warn" : null)">@Qty(row.Shortfall)</td>
+                        <td class="num">@Qty(row.Suggested)</td>
+                        <td class="mono dim" style="font-size:10.5px">
+                            @row.RaisedOn.ToString("dd/MM/yy", pt)
+                        </td>
+                        <td>
+                            <span class="tag @SuggestionStatusText.Tone(row.Status)">
+                                @SuggestionStatusText.Of(row.Status)
+                            </span>
+                        </td>
+                        @if (manages)
+                        {
+                            <td style="text-align:right">
+                                @if (row.IsOpen)
+                                {
+                                    @* A reason is required, so the form asks for one rather than
+                                       posting an empty string the domain would refuse. Native
+                                       validation, because this surface carries no script. *@
+                                    <form method="post" asp-action="Dismiss"
+                                          style="display:flex;gap:5px;justify-content:flex-end">
+                                        <input type="hidden" name="SuggestionId" value="@row.SuggestionId" />
+                                        <input type="hidden" name="ReturnUrl" value="@here" />
+                                        <input class="input" type="text" name="Reason"
+                                               required minlength="3" maxlength="200"
+                                               placeholder="Motivo"
+                                               aria-label="Motivo para retirar @row.Sku"
+                                               style="width:122px;height:24px;font-size:11px" />
+                                        <button type="submit" class="btn btn-quiet"
+                                                style="height:24px;padding:0 8px"
+                                                title="Retirar da lista">
+                                            @Icons.Render("x", 12) Retirar
+                                        </button>
+                                    </form>
+                                }
+                                else if (row.PurchaseOrderId is not null)
+                                {
+                                    <span class="dim" style="font-size:10.5px">em encomenda</span>
+                                }
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="panel-foot" style="padding:0 18px">
+        <span class="mono dim" style="font-size:10.5px">
+            @first.ToString("N0", pt)–@last.ToString("N0", pt) de @results.TotalCount.ToString("N0", pt)
+        </span>
+
+        <span class="dim" style="font-size:10.5px">
+            Transformar uma sugestão em encomenda ainda não está construído.
+        </span>
+
+        <div class="pager" style="margin-left:auto">
+            <a class="btn btn-sq" aria-label="Página anterior"
+               aria-disabled="@(results.Page <= 1 ? "true" : null)"
+               asp-action="Index" asp-all-route-data="filters"
+               asp-route-page="@(results.Page - 1)">@Icons.Render("caret-left", 12)</a>
+
+            <span class="mono dim" style="font-size:10.5px;padding:0 4px">
+                @results.Page / @Math.Max(results.TotalPages, 1)
+            </span>
+
+            <a class="btn btn-sq" aria-label="Página seguinte"
+               aria-disabled="@(results.Page >= results.TotalPages ? "true" : null)"
+               asp-action="Index" asp-all-route-data="filters"
+               asp-route-page="@(results.Page + 1)">@Icons.Render("caret-right", 12)</a>
+        </div>
+    </div>
+}
+
+@functions {
+    /// <summary>A quantity, in the counter's own numerals.</summary>
+    private static string Qty(decimal quantity) =>
+        quantity.ToString("N0", CultureInfo.CurrentCulture);
+}
