@@ -35,6 +35,8 @@
     }
 }
 
+@await Html.PartialAsync("_Tabs", "Index")
+
 <form method="get" asp-action="Index">
     <input type="hidden" name="page" value="1" />
 

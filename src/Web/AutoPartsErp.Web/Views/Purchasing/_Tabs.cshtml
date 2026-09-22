@@ -1,0 +1,15 @@
+@model string
+@* Two views of one job — the queue, and the orders it turns into. A partial rather than a copy,
+   because the day a third view appears it must appear on both. *@
+<nav class="tabs" aria-label="Compras">
+    <a class="tab" asp-action="Index"
+       aria-current="@(Model == "Index" ? "page" : null)">
+        @Icons.Render("list-magnifying-glass", 14)
+        Sugestões
+    </a>
+    <a class="tab" asp-action="Orders"
+       aria-current="@(Model == "Orders" ? "page" : null)">
+        @Icons.Render("receipt", 14)
+        Encomendas
+    </a>
+</nav>

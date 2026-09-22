@@ -1,0 +1,229 @@
+@model OrderResults
+@using System.Globalization
+@using AutoPartsErp.Modules.Inventory.Application.Contracts
+@using AutoPartsErp.Modules.Purchasing.Application.Contracts
+@{
+    ViewData["Title"] = "Compras";
+    ViewData["Flush"] = true;
+
+    PagedResult<PurchaseOrderSummary> results = Model.Page;
+    OrderSearchForm search = Model.Search;
+    CultureInfo pt = CultureInfo.CurrentCulture;
+
+    WarehouseDto? place = Model.Warehouses
+        .FirstOrDefault(warehouse => warehouse.Id == search.WarehouseId);
+
+    ViewData["Warehouse"] = place;
+    ViewData["Context"] = $"ENCOMENDAS · {results.TotalCount.ToString("N0", pt)}";
+
+    int first = results.TotalCount == 0 ? 0 : ((results.Page - 1) * results.PageSize) + 1;
+    int last = Math.Min(results.Page * results.PageSize, results.TotalCount);
+
+    var filters = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    if (!string.IsNullOrWhiteSpace(search.Term))
+    {
+        filters["term"] = search.Term;
+    }
+
+    if (!string.IsNullOrWhiteSpace(search.Status))
+    {
+        filters["status"] = search.Status;
+    }
+
+    if (search.WarehouseId is Guid warehouseId)
+    {
+        filters["warehouseId"] = warehouseId.ToString();
+    }
+
+    if (!search.OutstandingOnly)
+    {
+        filters["outstanding"] = "false";
+    }
+}
+
+@await Html.PartialAsync("_Tabs", "Orders")
+
+<form method="get" asp-action="Orders">
+    <input type="hidden" name="page" value="1" />
+
+    <div class="chips" style="padding:11px 18px;border-bottom:1px solid var(--ln);background:var(--sf)">
+
+        <label class="search" style="width:196px">
+            @Icons.Render("magnifying-glass", 13)
+            <input type="search" name="term" value="@search.Term" spellcheck="false"
+                   placeholder="Número da encomenda" aria-label="Procurar encomenda" />
+        </label>
+
+        <span class="chip">
+            @Icons.Render("warehouse", 13)
+            Armazém
+            <span class="select-wrap" style="width:78px">
+                <select name="warehouseId" class="select"
+                        style="height:22px;border:0;background:none;padding:0 18px 0 0"
+                        aria-label="Armazém">
+                    <option value="">todos</option>
+                    @foreach (WarehouseDto warehouse in Model.Warehouses)
+                    {
+                        <option value="@warehouse.Id" selected="@(search.WarehouseId == warehouse.Id)">
+                            @warehouse.Code
+                        </option>
+                    }
+                </select>
+                @Icons.Render("caret-down", 12)
+            </span>
+        </span>
+
+        <span class="chip">
+            @Icons.Render("funnel", 13)
+            Estado
+            <span class="select-wrap" style="width:118px">
+                <select name="status" class="select"
+                        style="height:22px;border:0;background:none;padding:0 18px 0 0"
+                        aria-label="Estado">
+                    <option value="">todos</option>
+                    @foreach (string status in PurchaseOrderStatusText.All)
+                    {
+                        <option value="@status" selected="@(search.Status == status)">
+                            @PurchaseOrderStatusText.Of(status)
+                        </option>
+                    }
+                </select>
+                @Icons.Render("caret-down", 12)
+            </span>
+        </span>
+
+        @* A checkbox rather than another dropdown: it is on by default and turning it off is the
+           unusual thing, which is exactly what a checked box says. *@
+        <label class="check" style="height:30px">
+            <input type="checkbox" name="outstanding" value="true"
+                   checked="@search.OutstandingOnly" />
+            <span class="box">@Icons.Render("check", 10)</span>
+            <span>Só o que falta receber</span>
+        </label>
+
+        <button type="submit" class="btn btn-primary">Filtrar</button>
+
+        <span class="mono dim" style="margin-left:auto;font-size:10.5px">
+            @results.TotalCount.ToString("N0", pt) encomendas
+        </span>
+    </div>
+</form>
+
+@if (!ViewData.ModelState.IsValid)
+{
+    <div style="padding:11px 18px 0">
+        <div class="banner banner-dg" role="alert">
+            @Icons.Render("warning", 15)
+            <span>@ViewData.ModelState[string.Empty]?.Errors.FirstOrDefault()?.ErrorMessage</span>
+        </div>
+    </div>
+}
+
+@if (results.Items.Count == 0)
+{
+    <div class="empty" style="flex:1">
+        @Icons.Render("receipt", 28)
+        @if (search.OutstandingOnly)
+        {
+            <strong>Nada por receber</strong>
+            <span>Nenhuma encomenda com mercadoria ainda por chegar. Desligue o filtro para ver as fechadas.</span>
+        }
+        else
+        {
+            <strong>Nenhuma encomenda</strong>
+            <span>Nenhuma encomenda corresponde a estes filtros.</span>
+        }
+    </div>
+}
+else
+{
+    <div class="grid-wrap">
+        <table class="grid grid-pad">
+            <thead>
+                <tr>
+                    <th scope="col">Número</th>
+                    <th scope="col">Fornecedor</th>
+                    <th scope="col" class="num">Linhas</th>
+                    <th scope="col">Encomendada</th>
+                    <th scope="col">Prevista</th>
+                    <th scope="col" class="num">Total</th>
+                    <th scope="col" class="num" title="Valor da mercadoria ainda por entregar">Por receber</th>
+                    <th scope="col">Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (PurchaseOrderSummary order in results.Items)
+                {
+                    <tr>
+                        <td class="cell-id">@order.OrderNumber</td>
+                        <td class="mono muted">@order.SupplierCode</td>
+                        <td class="num dim">@order.LineCount.ToString("N0", pt)</td>
+                        <td class="mono dim" style="font-size:10.5px">@Day(order.OrderedOn)</td>
+                        <td class="mono @(order.IsOverdue ? "bad" : "dim")" style="font-size:10.5px">
+                            @Day(order.ExpectedOn)
+                            @if (order.IsOverdue)
+                            {
+                                @* Not a separate column. A late order is a date that has passed,
+                                   and saying it twice takes a column from something else. *@
+                                <span title="A data prevista passou e falta mercadoria"> atrasada</span>
+                            }
+                        </td>
+                        <td class="num">@Money(order.Total, order.CurrencyCode, pt)</td>
+                        <td class="num @(order.OutstandingValue > 0m ? "warn" : "dim")">
+                            @Money(order.OutstandingValue, order.CurrencyCode, pt)
+                        </td>
+                        <td>
+                            <span class="tag @PurchaseOrderStatusText.Tone(order.Status)">
+                                @PurchaseOrderStatusText.Of(order.Status)
+                            </span>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="panel-foot" style="padding:0 18px">
+        <span class="mono dim" style="font-size:10.5px">
+            @first.ToString("N0", pt)–@last.ToString("N0", pt) de @results.TotalCount.ToString("N0", pt)
+        </span>
+
+        <span class="dim" style="font-size:10.5px">
+            Abrir uma encomenda e receber mercadoria ainda não está construído.
+        </span>
+
+        <div class="pager" style="margin-left:auto">
+            <a class="btn btn-sq" aria-label="Página anterior"
+               aria-disabled="@(results.Page <= 1 ? "true" : null)"
+               asp-action="Orders" asp-all-route-data="filters"
+               asp-route-page="@(results.Page - 1)">@Icons.Render("caret-left", 12)</a>
+
+            <span class="mono dim" style="font-size:10.5px;padding:0 4px">
+                @results.Page / @Math.Max(results.TotalPages, 1)
+            </span>
+
+            <a class="btn btn-sq" aria-label="Página seguinte"
+               aria-disabled="@(results.Page >= results.TotalPages ? "true" : null)"
+               asp-action="Orders" asp-all-route-data="filters"
+               asp-route-page="@(results.Page + 1)">@Icons.Render("caret-right", 12)</a>
+        </div>
+    </div>
+}
+
+@functions {
+    /// <summary>A day, or a dash when the order has not reached that point yet.</summary>
+    private static string Day(DateOnly? day) =>
+        day?.ToString("dd/MM/yy", CultureInfo.CurrentCulture) ?? "—";
+
+    /// <summary>
+    /// An amount with its currency.
+    /// <para>
+    /// The code rather than a symbol. A buyer's orders can be in euros and in the supplier's own
+    /// currency on the same screen, and two amounts that both show € when one of them is not is
+    /// worse than no symbol at all.
+    /// </para>
+    /// </summary>
+    private static string Money(decimal amount, string currency, CultureInfo culture) =>
+        string.Concat(amount.ToString("N2", culture), " ", currency);
+}

@@ -2,6 +2,7 @@ using AutoPartsErp.ModuleContracts.Catalog;
 using AutoPartsErp.Modules.Inventory.Application.Contracts;
 using AutoPartsErp.Modules.Inventory.Application.Warehouses;
 using AutoPartsErp.Modules.Purchasing.Application.Contracts;
+using AutoPartsErp.Modules.Purchasing.Application.Orders.Queries;
 using AutoPartsErp.Modules.Purchasing.Application.Replenishment;
 using AutoPartsErp.SharedKernel.Authorization;
 using AutoPartsErp.SharedKernel.Messaging;
@@ -75,6 +76,46 @@ public sealed class PurchasingController : Controller
             SuggestionRow.Combine(page.Items, await NamesAsync(page.Items, cancellationToken), Codes(places)),
             page,
             places));
+    }
+
+    /// <summary>The purchase orders themselves.</summary>
+    /// <param name="search">How the list is narrowed.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    [HttpGet]
+    public async Task<IActionResult> Orders(
+        OrderSearchForm search,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(search);
+
+        Result<PagedResult<PurchaseOrderSummary>> found = await _dispatcher.SendAsync(
+            new SearchPurchaseOrdersQuery(
+                search.Term,
+                SupplierId: null,
+                search.WarehouseId,
+                search.Status,
+                search.OutstandingOnly,
+                OverdueOnly: false,
+                search.Page,
+                OrderSearchForm.PageSize),
+            cancellationToken);
+
+        Result<IReadOnlyList<WarehouseDto>> warehouses =
+            await _dispatcher.SendAsync(new ListWarehousesQuery(), cancellationToken);
+
+        if (found.IsFailure)
+        {
+            ModelState.AddModelError(string.Empty, found.Error.Description);
+        }
+
+        return View(new OrderResults(
+            search,
+            found.IsSuccess
+                ? found.Value
+                : PagedResult<PurchaseOrderSummary>.Empty(1, OrderSearchForm.PageSize),
+            warehouses.IsFailure
+                ? []
+                : [.. warehouses.Value.OrderBy(place => place.Code, StringComparer.CurrentCulture)]));
     }
 
     /// <summary>Takes a suggestion off the list, with a reason.</summary>

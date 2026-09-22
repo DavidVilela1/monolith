@@ -177,3 +177,44 @@ public sealed class DismissSuggestionForm
     /// <summary>Where to go back to, so the filters survive the action.</summary>
     public string? ReturnUrl { get; set; }
 }
+
+/// <summary>How the purchase order list is narrowed.</summary>
+public sealed class OrderSearchForm
+{
+    /// <summary>How many rows a page shows.</summary>
+    public const int PageSize = 40;
+
+    /// <summary>An order number, or part of one.</summary>
+    public string? Term { get; set; }
+
+    /// <summary>One status only, when chosen.</summary>
+    public string? Status { get; set; }
+
+    /// <summary>One warehouse only, when chosen.</summary>
+    public Guid? WarehouseId { get; set; }
+
+    /// <summary>
+    /// Whether to show only orders with something still to come.
+    /// <para>
+    /// On unless somebody turns it off. A buyer opening this screen is asking what is still owed
+    /// to them, not what arrived last March — and once a company has traded for a year, the
+    /// second list buries the first.
+    /// </para>
+    /// </summary>
+    public bool? Outstanding { get; set; }
+
+    /// <summary>Which page, one-based.</summary>
+    public int Page { get; set; } = 1;
+
+    /// <summary>Whether the outstanding-only filter is actually applied.</summary>
+    public bool OutstandingOnly => Outstanding ?? true;
+}
+
+/// <summary>The purchase order list, and what the filters are chosen from.</summary>
+/// <param name="Search">What was asked.</param>
+/// <param name="Page">What came back.</param>
+/// <param name="Warehouses">Every active warehouse, for the filter.</param>
+public sealed record OrderResults(
+    OrderSearchForm Search,
+    PagedResult<PurchaseOrderSummary> Page,
+    IReadOnlyList<WarehouseDto> Warehouses);

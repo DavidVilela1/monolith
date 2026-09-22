@@ -309,6 +309,33 @@ button { font: inherit; color: inherit; }
 }
 a.avatar:hover { background: var(--acl); color: var(--tx); text-decoration: none; }
 
+/* — tabs —
+   For a screen that is two views of one job: the buyer's queue and the
+   orders it turns into. A row under the header rather than two sidebar
+   entries, because they are the same destination seen two ways. */
+.tabs {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--ln);
+  background: var(--sf);
+}
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 11px;
+  color: var(--mu);
+  font-size: 12px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.tab:hover { color: var(--tx); text-decoration: none; }
+.tab[aria-current="page"] { color: var(--ac); border-bottom-color: var(--ac); }
+.tab-count { font-family: var(--mono); font-size: 10px; color: var(--dm); }
+
 .page { flex: 1; min-height: 0; overflow: auto; padding: 16px 18px; }
 .page-tight { padding: 0; display: flex; flex-direction: column; }
 

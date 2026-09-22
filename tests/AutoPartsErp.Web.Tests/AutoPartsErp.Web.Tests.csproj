@@ -30,6 +30,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Web\AutoPartsErp.Web\AutoPartsErp.Web.csproj" />
     <ProjectReference Include="..\..\src\Modules\Catalog\AutoPartsErp.Modules.Catalog.Domain\AutoPartsErp.Modules.Catalog.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Purchasing\AutoPartsErp.Modules.Purchasing.Domain\AutoPartsErp.Modules.Purchasing.Domain.csproj" />
   </ItemGroup>
 
   <ItemGroup>
