@@ -1,0 +1,203 @@
+@model OrderDetail
+@using System.Globalization
+@using AutoPartsErp.Modules.Purchasing.Application.Contracts
+@{
+    PurchaseOrderDetail order = Model.Order;
+    CultureInfo pt = CultureInfo.CurrentCulture;
+
+    ViewData["Title"] = order.OrderNumber;
+    ViewData["Context"] = order.SupplierCode.ToUpperInvariant();
+    ViewData["Flush"] = true;
+    ViewData["WarehouseCode"] = Model.WarehouseCode;
+    ViewData["WarehouseName"] = "entrega desta encomenda";
+
+}
+
+@section Tools {
+    <a class="btn" asp-action="Orders">@Icons.Render("arrow-left", 14) Encomendas</a>
+}
+
+<div class="strip">
+    <div class="strip-fact" style="flex:1.4">
+        <div class="label">Encomenda</div>
+        <div class="value mono">@order.OrderNumber</div>
+        <div class="note">
+            <span class="tag @PurchaseOrderStatusText.Tone(order.Status)">
+                @PurchaseOrderStatusText.Of(order.Status)
+            </span>
+        </div>
+    </div>
+    <div class="strip-fact">
+        <div class="label">Fornecedor</div>
+        <div class="value mono">@order.SupplierCode</div>
+        <div class="note">
+            @if (string.IsNullOrWhiteSpace(order.SupplierReference))
+            {
+                <span class="dim">sem referência deles</span>
+            }
+            else
+            {
+                <text>ref. </text><span class="mono">@order.SupplierReference</span>
+            }
+        </div>
+    </div>
+    <div class="strip-fact">
+        <div class="label">Entrega em</div>
+        <div class="value mono">@(Model.WarehouseCode ?? "—")</div>
+        <div class="note">
+            @if (order.ExpectedOn is DateOnly expected)
+            {
+                <text>prevista </text>
+                <span class="mono">@expected.ToString("dd/MM/yy", pt)</span>
+            }
+            else
+            {
+                <span class="dim">sem data prevista</span>
+            }
+        </div>
+    </div>
+    <div class="strip-fact">
+        <div class="label">Encomendada</div>
+        <div class="value mono">
+            @(order.OrderedOn?.ToString("dd/MM/yy", pt) ?? "—")
+        </div>
+        <div class="note">@order.Lines.Count.ToString("N0", pt) linhas</div>
+    </div>
+    <div class="strip-fact">
+        <div class="label">Total</div>
+        <div class="value mono">@Money(order.Total, order.CurrencyCode, pt)</div>
+        <div class="note">
+            @* By value, not by line count. Eleven of twelve lines received sounds like an order
+               almost done; if the twelfth is the engine block, it is not. *@
+            @Model.ReceivedShare.ToString("P0", pt) recebido
+        </div>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(order.ClosureReason))
+{
+    <div style="padding:11px 18px 0">
+        <div class="banner banner-dg">
+            @Icons.Render("warning", 15)
+            <span>
+                <span class="banner-title">@PurchaseOrderStatusText.Of(order.Status).</span>
+                <span class="banner-note">@order.ClosureReason</span>
+            </span>
+        </div>
+    </div>
+}
+
+@if (order.OutstandingValue > 0m && order.Status != "Draft")
+{
+    <div style="padding:11px 18px 0">
+        <div class="banner banner-wn">
+            @Icons.Render("truck", 15)
+            <span>
+                <span class="banner-title">
+                    @Money(order.OutstandingValue, order.CurrencyCode, pt) por receber.
+                </span>
+                <span class="banner-note">
+                    @if (order.CanReceive)
+                    {
+                        <text>Registar a receção de mercadoria ainda não está construído.</text>
+                    }
+                    else
+                    {
+                        <text>Esta encomenda não aceita receções no estado em que está.</text>
+                    }
+                </span>
+            </span>
+        </div>
+    </div>
+}
+
+<div class="grid-wrap">
+    <table class="grid grid-pad">
+        <thead>
+            <tr>
+                <th scope="col">SKU</th>
+                <th scope="col">Descrição</th>
+                <th scope="col" class="num">Encomendado</th>
+                <th scope="col" class="num">Recebido</th>
+                <th scope="col" class="num" title="O que ainda falta chegar">Por receber</th>
+                <th scope="col">Un.</th>
+                <th scope="col" class="num">Preço</th>
+                <th scope="col" class="num">Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (PurchaseOrderLineDto line in order.Lines)
+            {
+                <tr>
+                    <td class="cell-id">
+                        @if (User.Can(Permissions.Catalog.Read))
+                        {
+                            <a asp-controller="Parts" asp-action="Details"
+                               asp-route-id="@line.PartId">@line.Sku</a>
+                        }
+                        else
+                        {
+                            @line.Sku
+                        }
+                    </td>
+                    @* The description as it was when the order was raised, not as the catalogue
+                       says today. A part renamed next year must not rewrite what was bought. *@
+                    <td class="truncate" style="max-width:1px;width:38%">@line.Description</td>
+                    <td class="num">@Qty(line.Quantity, pt)</td>
+                    <td class="num @(line.IsFullyReceived ? "ok" : "muted")">
+                        @Qty(line.ReceivedQuantity, pt)
+                    </td>
+                    <td class="num @(line.OutstandingQuantity > 0m ? "warn" : "dim")">
+                        @Qty(line.OutstandingQuantity, pt)
+                    </td>
+                    <td class="mono dim" style="font-size:10.5px">@line.UnitCode</td>
+                    <td class="num muted">@line.UnitPrice.ToString("N4", pt)</td>
+                    <td class="num">@line.LineTotal.ToString("N2", pt)</td>
+                </tr>
+            }
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="6"></td>
+                <td class="num dim">Total</td>
+                <td class="num" style="font-weight:500">
+                    @Money(order.Total, order.CurrencyCode, pt)
+                </td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(order.Notes))
+{
+    <div class="panel-foot" style="padding:0 18px">
+        @Icons.Render("file-text", 14)
+        <span class="muted" style="font-size:11.5px">@order.Notes</span>
+    </div>
+}
+else if (order.Lines.Count == 0)
+{
+    <div class="empty" style="flex:1">
+        @Icons.Render("receipt", 28)
+        <strong>Encomenda sem linhas</strong>
+        <span>Um rascunho a que ninguém acrescentou nada ainda.</span>
+    </div>
+}
+
+@functions {
+    /// <summary>
+    /// A quantity, to three decimals and no trailing noise.
+    /// <para>
+    /// Parts are bought by the unit, by the litre and by the metre, so a quantity is not always a
+    /// whole number — but 4,000 where somebody means four is a column that reads as money.
+    /// </para>
+    /// </summary>
+    private static string Qty(decimal quantity, CultureInfo culture) =>
+        quantity == decimal.Truncate(quantity)
+            ? quantity.ToString("N0", culture)
+            : quantity.ToString("N3", culture);
+
+    /// <summary>An amount with its currency code, never a symbol.</summary>
+    private static string Money(decimal amount, string currency, CultureInfo culture) =>
+        string.Concat(amount.ToString("N2", culture), " ", currency);
+}

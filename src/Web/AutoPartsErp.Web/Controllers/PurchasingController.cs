@@ -118,6 +118,33 @@ public sealed class PurchasingController : Controller
                 : [.. warehouses.Value.OrderBy(place => place.Code, StringComparer.CurrentCulture)]));
     }
 
+    /// <summary>One purchase order, with its lines.</summary>
+    /// <param name="id">The order.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    [HttpGet]
+    public async Task<IActionResult> Order(Guid id, CancellationToken cancellationToken)
+    {
+        Result<PurchaseOrderDetail> found = await _dispatcher.SendAsync(
+            new GetPurchaseOrderQuery(id), cancellationToken);
+
+        if (found.IsFailure)
+        {
+            return NotFound();
+        }
+
+        Result<IReadOnlyList<WarehouseDto>> warehouses =
+            await _dispatcher.SendAsync(new ListWarehousesQuery(ActiveOnly: false), cancellationToken);
+
+        // Inactive warehouses included on purpose. An order delivered into a site that has since
+        // been closed still has to say where it went.
+        string? code = warehouses.IsSuccess
+            ? warehouses.Value
+                .FirstOrDefault(place => place.Id == found.Value.DeliverToWarehouseId)?.Code
+            : null;
+
+        return View(new OrderDetail(found.Value, code));
+    }
+
     /// <summary>Takes a suggestion off the list, with a reason.</summary>
     /// <param name="form">Which one, and why.</param>
     /// <param name="cancellationToken">Cancellation token.</param>

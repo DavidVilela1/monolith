@@ -12,7 +12,8 @@
     CultureInfo pt = CultureInfo.CurrentCulture;
 
     ViewData["Context"] = $"CATÁLOGO · {results.TotalCount.ToString("N0", pt)} REFERÊNCIAS";
-    ViewData["Warehouse"] = place;
+    ViewData["WarehouseCode"] = place?.Code;
+    ViewData["WarehouseName"] = place?.Name;
 
     int first = results.TotalCount == 0 ? 0 : ((results.Page - 1) * results.PageSize) + 1;
     int last = Math.Min(results.Page * results.PageSize, results.TotalCount);

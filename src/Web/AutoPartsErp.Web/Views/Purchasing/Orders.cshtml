@@ -13,7 +13,8 @@
     WarehouseDto? place = Model.Warehouses
         .FirstOrDefault(warehouse => warehouse.Id == search.WarehouseId);
 
-    ViewData["Warehouse"] = place;
+    ViewData["WarehouseCode"] = place?.Code;
+    ViewData["WarehouseName"] = place?.Name;
     ViewData["Context"] = $"ENCOMENDAS · {results.TotalCount.ToString("N0", pt)}";
 
     int first = results.TotalCount == 0 ? 0 : ((results.Page - 1) * results.PageSize) + 1;
@@ -156,7 +157,9 @@ else
                 @foreach (PurchaseOrderSummary order in results.Items)
                 {
                     <tr>
-                        <td class="cell-id">@order.OrderNumber</td>
+                        <td class="cell-id">
+                            <a asp-action="Order" asp-route-id="@order.Id">@order.OrderNumber</a>
+                        </td>
                         <td class="mono muted">@order.SupplierCode</td>
                         <td class="num dim">@order.LineCount.ToString("N0", pt)</td>
                         <td class="mono dim" style="font-size:10.5px">@Day(order.OrderedOn)</td>
@@ -190,7 +193,7 @@ else
         </span>
 
         <span class="dim" style="font-size:10.5px">
-            Abrir uma encomenda e receber mercadoria ainda não está construído.
+            Registar a receção de mercadoria ainda não está construído.
         </span>
 
         <div class="pager" style="margin-left:auto">

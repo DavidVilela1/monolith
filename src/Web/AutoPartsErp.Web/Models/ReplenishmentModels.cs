@@ -218,3 +218,23 @@ public sealed record OrderResults(
     OrderSearchForm Search,
     PagedResult<PurchaseOrderSummary> Page,
     IReadOnlyList<WarehouseDto> Warehouses);
+
+/// <summary>One purchase order, ready to be read.</summary>
+/// <param name="Order">What Purchasing holds.</param>
+/// <param name="WarehouseCode">
+/// The delivery warehouse's code, from Inventory. The order carries the identifier and nothing
+/// else, because a warehouse renamed in 2027 should not rewrite an order raised in 2026 — but a
+/// person reading the screen wants the code, not a GUID.
+/// </param>
+public sealed record OrderDetail(PurchaseOrderDetail Order, string? WarehouseCode)
+{
+    /// <summary>What has arrived, as a share of what was ordered.</summary>
+    /// <remarks>
+    /// By value rather than by line count. Eleven of twelve lines received sounds like an order
+    /// almost done; if the twelfth is the engine block, it is not.
+    /// </remarks>
+    public decimal ReceivedShare =>
+        Order.Total <= 0m
+            ? 0m
+            : Math.Clamp((Order.Total - Order.OutstandingValue) / Order.Total, 0m, 1m);
+}

@@ -13,7 +13,8 @@
     WarehouseDto? place = Model.Warehouses
         .FirstOrDefault(warehouse => warehouse.Id == search.WarehouseId);
 
-    ViewData["Warehouse"] = place;
+    ViewData["WarehouseCode"] = place?.Code;
+    ViewData["WarehouseName"] = place?.Name;
     ViewData["Context"] = $"REPOSIÇÃO · {results.TotalCount.ToString("N0", pt)} SUGESTÕES";
 
     bool manages = User.Can(Permissions.Purchasing.Manage);
@@ -233,7 +234,7 @@ else
         </span>
 
         <span class="dim" style="font-size:10.5px">
-            Transformar uma sugestão em encomenda ainda não está construído.
+            Passar uma sugestão para uma encomenda ainda não está construído.
         </span>
 
         <div class="pager" style="margin-left:auto">
